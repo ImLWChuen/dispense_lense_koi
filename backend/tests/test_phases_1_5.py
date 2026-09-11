@@ -17,11 +17,13 @@ import sys
 import os
 
 # Ensure UTF-8 output on Windows terminals
-if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+if sys.platform == "win32":
+    reconfigure_fn = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure_fn):
+        try:
+            reconfigure_fn(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

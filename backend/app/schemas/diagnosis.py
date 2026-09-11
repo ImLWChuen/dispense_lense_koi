@@ -94,6 +94,9 @@ class CheckExecutionStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
     SKIPPED = "SKIPPED"
 
 
@@ -190,6 +193,7 @@ class QuestionDefinition(BaseModel):
     applicable_defects: list[str] = []
     expected_answer_type: str = "yes_no"
     follow_up_questions: list[str] = []
+    evidence_mapping: dict[str, Any] = Field(default_factory=dict)
 
 
 class CheckDefinition(BaseModel):
@@ -203,6 +207,7 @@ class CheckDefinition(BaseModel):
     required_access: str = ""
     effort_level: str = "medium"
     source_references: list[str] = []
+    evidence_mapping: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceRule(BaseModel):
@@ -317,6 +322,8 @@ class StructuredCase(BaseModel):
     material: str | None = None
     method: str | None = None
     machine_context: dict[str, Any] | None = None
+    defect_code: str | None = None
+    defect_name: str | None = None
     observations: list[Observation] = []
     previous_answers: list[QuestionAnswer] = []
     previous_check_results: list[CheckResult] = []
@@ -332,10 +339,11 @@ class StructuredCase(BaseModel):
 class DiagnosisRequest(BaseModel):
     """Input to the diagnostic engine."""
     case_id: str | None = None
-    description: str
+    description: str = ""
     material: str | None = None
     method: str | None = None
     machine_context: dict[str, Any] | None = None
+    defect_code: str | None = None
     observations: list[Observation] = []
     previous_answers: list[QuestionAnswer] = []
     previous_check_results: list[CheckResult] = []

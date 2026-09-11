@@ -234,8 +234,13 @@ class EvidenceEngine:
                 else:
                     neutral.append(evidence)
 
-            # 4. Identify missing evidence
-            cause_rules = [r for r in all_rules if r.cause_id == cause_def.id]
+            # 4. Identify missing evidence (symptom observations only, not unexecuted checks)
+            cause_rules = [
+                r for r in all_rules
+                if r.cause_id == cause_def.id
+                and not r.observation_type.startswith("check_")
+                and r.observation_type != "check_result"
+            ]
             observed_types = {(o.observation_type, o.value) for o in observations}
             for rule in cause_rules:
                 if (rule.observation_type, rule.observation_value) not in observed_types:
@@ -251,7 +256,7 @@ class EvidenceEngine:
             )
             score_breakdown["missing_penalty"] = missing_penalty
 
-            # 5. Calculate final score
+            # 5. Calculate final score (each cause score clamped between 0 and 100)
             raw_score = (
                 score_breakdown["base"]
                 + score_breakdown["positive_evidence"]

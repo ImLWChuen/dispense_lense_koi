@@ -42,7 +42,7 @@ class ScoringConfig:
     # --- uncertainty penalty per missing evidence item ---
     missing_evidence_penalty: float = 2.0
 
-    # --- score boundaries ---
+    # --- score boundaries (each cause score is at most max_score) ---
     min_score: float = 0.0
     max_score: float = 100.0
 

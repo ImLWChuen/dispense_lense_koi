@@ -145,7 +145,7 @@ get_check_by_id = get_action_by_id
 # ---------------------------------------------------------------------------
 
 def load_evidence_rules() -> list[EvidenceRule]:
-    """Load all evidence evaluation rules from rules.json."""
+    """Load all evidence evaluation rules from rules.json and actions.json mappings."""
     data = _load_json("rules.json")
     rules = []
     for r in data.get("rules", []):
@@ -158,6 +158,47 @@ def load_evidence_rules() -> list[EvidenceRule]:
             strength=EvidenceStrength(r.get("strength", "MODERATE")),
             explanation=r.get("explanation", ""),
         ))
+
+    # Also load action evidence mappings as structured rules
+    try:
+        actions_data = _load_json("actions.json")
+        existing_keys = {(r.cause_id, r.observation_type, r.observation_value) for r in rules}
+        for a in actions_data.get("actions", []):
+            aid = a["id"]
+            for outcome, causes_map in a.get("evidence_mapping", {}).items():
+                for cause_id, spec in causes_map.items():
+                    rel = spec.get("relation", "NEUTRAL")
+                    stn = spec.get("strength", "MODERATE")
+                    # Check result rule format: check_result -> ACT01:no_blockage
+                    key1 = (cause_id, "check_result", f"{aid}:{outcome}")
+                    if key1 not in existing_keys:
+                        rules.append(EvidenceRule(
+                            id=f"AR_{aid}_{outcome}_{cause_id}",
+                            observation_type="check_result",
+                            observation_value=f"{aid}:{outcome}",
+                            cause_id=cause_id,
+                            relation=EvidenceRelation(rel),
+                            strength=EvidenceStrength(stn),
+                            explanation=f"Troubleshooting check '{a.get('name', aid)}' finding '{outcome}' {rel.lower()} {cause_id}.",
+                        ))
+                        existing_keys.add(key1)
+
+                    # Action outcome rule format: check_ACT01 -> no_blockage
+                    key2 = (cause_id, f"check_{aid}", outcome)
+                    if key2 not in existing_keys:
+                        rules.append(EvidenceRule(
+                            id=f"AR_{aid}_{outcome}_{cause_id}_direct",
+                            observation_type=f"check_{aid}",
+                            observation_value=outcome,
+                            cause_id=cause_id,
+                            relation=EvidenceRelation(rel),
+                            strength=EvidenceStrength(stn),
+                            explanation=f"Troubleshooting check '{a.get('name', aid)}' finding '{outcome}' {rel.lower()} {cause_id}.",
+                        ))
+                        existing_keys.add(key2)
+    except Exception:
+        pass
+
     return rules
 
 
