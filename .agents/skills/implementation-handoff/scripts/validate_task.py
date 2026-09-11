@@ -61,6 +61,14 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
+def _has_acceptance_checklist(text: str) -> bool:
+    match = re.search(r"(?ms)^## Acceptance criteria\s*\n(.*?)(?=^## |\Z)", text)
+    if not match:
+        return False
+    section = match.group(1)
+    return bool(re.search(r"(?m)^- \[[ xX]\] .+", section))
+
+
 def validate(path: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -93,8 +101,8 @@ def validate(path: Path) -> list[str]:
     if missing_headings:
         errors.append("Missing required headings: " + ", ".join(missing_headings))
 
-    if not re.search(r"(?m)^- \[ \] .+", text):
-        errors.append("Acceptance criteria must contain at least one unchecked checklist item.")
+    if not _has_acceptance_checklist(text):
+        errors.append("Acceptance criteria must contain at least one checklist item.")
 
     if "Do not push" not in text:
         errors.append("Git instructions must explicitly include 'Do not push'.")

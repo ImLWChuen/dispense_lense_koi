@@ -95,6 +95,47 @@ class ValidateTaskTests(unittest.TestCase):
 
         self.assertTrue(any("Do not push" in error for error in errors))
 
+    def test_accepts_fully_checked_checklist(self) -> None:
+        task = VALID_TASK.replace(
+            "- [ ] The behavior is covered by a focused test.",
+            "- [x] The behavior is covered by a focused test.\n- [X] Upper-case checked item.",
+        )
+
+        self.assertEqual(self.validate_text(task), [])
+
+    def test_rejects_missing_acceptance_checklist(self) -> None:
+        task = VALID_TASK.replace(
+            "- [ ] The behavior is covered by a focused test.",
+            "No checklist items are present.",
+        )
+
+        errors = self.validate_text(task)
+
+        self.assertTrue(
+            any(
+                "Acceptance criteria must contain at least one checklist item." in error
+                for error in errors
+            )
+        )
+
+    def test_rejects_checklist_item_outside_acceptance_section(self) -> None:
+        task = VALID_TASK.replace(
+            "## Requirements\n- Preserve existing behavior.",
+            "## Requirements\n- [x] Preserve existing behavior.",
+        ).replace(
+            "- [ ] The behavior is covered by a focused test.",
+            "Acceptance criteria provided in prose without checklist items.",
+        )
+
+        errors = self.validate_text(task)
+
+        self.assertTrue(
+            any(
+                "Acceptance criteria must contain at least one checklist item." in error
+                for error in errors
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
