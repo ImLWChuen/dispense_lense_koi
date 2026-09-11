@@ -45,7 +45,10 @@ External project analysis is stored one directory above the repository. Relevant
 
 - Frontend lint: run `npm run lint` from `frontend/`.
 - Frontend production build: run `npm run build` from `frontend/` when the task affects build behavior or release readiness.
-- Backend: no dependency manifest, runtime command, or test command is currently established. The task that bootstraps the backend must define and verify them before later task packets rely on them.
+- Backend: run commands from `backend/` using the established virtual environment:
+  - Tests: `.\.venv\Scripts\python.exe -m pytest -q`
+  - Development server: `.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
+  - Environment install: `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"`
 
 Before changing Next.js code, follow `AGENTS.md` and read the relevant installed Next.js guide under `frontend/node_modules/next/dist/docs/` when dependencies are available.
 

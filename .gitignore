@@ -14,6 +14,10 @@ coverage/
 # Python
 __pycache__/
 *.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
 
 # Next.js
 .next/

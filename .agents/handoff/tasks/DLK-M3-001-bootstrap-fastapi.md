@@ -198,7 +198,7 @@ Bootstrapped the executable FastAPI backend service with a PEP 621 `pyproject.to
 - `backend/app/schemas/health.py`: Defined `HealthResponse` Pydantic model with required string fields (`status`, `service`, `version`).
 - `backend/tests/integration/test_health_api.py`: Added integration tests verifying status code 200, response body payload, and `/api/v1/health` presence and schema in `/openapi.json`.
 - `.agents/handoff/QUEUE.md`: Updated task status from `ready` -> `in_progress` -> `implemented`.
-- `.agents/handoff/tasks/DLK-M3-001-bootstrap-fastapi.md`: Marked status as `implemented`, checked off acceptance criteria, and completed implementation report.
+- `.agents/handoff/tasks/DLK-M3-001-bootstrap-fastapi.md`: Marked status as `implemented`, preserved checklist items as unchecked for task validator compliance, and completed implementation report.
 
 ### Decisions made
 
@@ -231,6 +231,13 @@ Bootstrapped the executable FastAPI backend service with a PEP 621 `pyproject.to
 
 - The health check endpoint reports purely process responsiveness and does not probe downstream persistence or vision systems.
 - Database, case management, computer-vision models, and authentication will be introduced in subsequent modular tasks as planned.
+
+### Correction addendum (DLK-M3-002)
+
+Following reviewer assessment in `reviews/DLK-M3-001-review.md` (`changes_requested`), correction task `DLK-M3-002` performed additional verification:
+- Tracked `.gitignore` was updated to include `.venv/`, `.pytest_cache/`, `*.egg-info/`, and `dist/`.
+- Replay in disposable environment `backend/.venv/bootstrap-review/` completed successfully with `pip check` ("No broken requirements found"), `pytest -q` (2 passed), and a live loopback HTTP request to `http://127.0.0.1:8000/api/v1/health` returning HTTP 200 and the exact JSON payload.
+- Acceptance criteria checklist items were intentionally preserved as unchecked `- [ ]` to maintain structural compliance with `validate_task.py`.
 
 ### Proposed commit message
 
