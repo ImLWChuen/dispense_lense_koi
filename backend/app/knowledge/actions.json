@@ -1,0 +1,236 @@
+{
+  "actions": [
+    {
+      "id": "ACT01",
+      "name": "Inspect Nozzle",
+      "description": "Visually inspect the dispensing nozzle for blockage, dried material, damage, or contamination.",
+      "procedure": "1. Stop dispensing operation.\n2. Remove the nozzle from the dispense head.\n3. Inspect the nozzle tip under magnification for blockage or damage.\n4. Check for dried material buildup at the tip face.\n5. Verify the nozzle bore is clear by visual or light-pass inspection.\n6. Document findings.",
+      "applicable_causes": ["nozzle_restriction", "nozzle_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "required_access": "dispensing_head",
+      "effort_level": "low",
+      "source_references": ["nozzle_maintenance_guide"],
+      "evidence_mapping": {
+        "blockage_found": {
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        },
+        "no_blockage": {
+          "nozzle_restriction": {"relation": "CONTRADICTS", "strength": "STRONG"},
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "WEAK"}
+        },
+        "damage_found": {
+          "nozzle_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "ACT02",
+      "name": "Check Material Supply Condition",
+      "description": "Inspect the dispensing material syringe or reservoir for air bubbles, separation, contamination, or depletion.",
+      "procedure": "1. Visually inspect the syringe/reservoir for trapped air bubbles.\n2. Check material level — note if nearly depleted.\n3. Look for phase separation or settling.\n4. Verify the material is within its specified pot life.\n5. Check for contamination or discoloration.\n6. Document findings.",
+      "applicable_causes": ["material_condition", "air_supply_issue"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "required_access": "material_supply",
+      "effort_level": "low",
+      "source_references": ["material_handling_guide"],
+      "evidence_mapping": {
+        "air_bubbles_found": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "material_depleted": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "material_normal": {
+          "material_condition": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        },
+        "separation_found": {
+          "material_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "ACT03",
+      "name": "Perform Test Shots",
+      "description": "Dispense a series of test dots and measure volume/size consistency to quantify the defect.",
+      "procedure": "1. Set up standard test substrate.\n2. Dispense 10-20 test shots at current parameters.\n3. Measure dot diameter or weight for each shot.\n4. Calculate mean, standard deviation, and coefficient of variation.\n5. Record any visible anomalies per shot.\n6. Compare against specification limits.\n7. Document results.",
+      "applicable_causes": ["pressure_instability", "parameter_issue", "equipment_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE"],
+      "required_access": "dispensing_station",
+      "effort_level": "medium",
+      "source_references": ["process_validation_guide"],
+      "evidence_mapping": {
+        "high_variation": {
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "consistent_but_wrong_size": {
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "pressure_instability": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        },
+        "consistent_and_correct": {
+          "parameter_issue": {"relation": "CONTRADICTS", "strength": "STRONG"},
+          "equipment_condition": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "ACT04",
+      "name": "Check Dispensing Pressure",
+      "description": "Verify the dispensing pressure reading and stability over a period of operation.",
+      "procedure": "1. Record the pressure setpoint.\n2. Monitor the actual pressure gauge reading during dispensing.\n3. Record pressure over 5-10 minute window.\n4. Note any fluctuations, drift, or spikes.\n5. Compare actual vs setpoint.\n6. Check for pneumatic leaks in the supply line.\n7. Document findings.",
+      "applicable_causes": ["pressure_instability", "air_supply_issue", "equipment_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "required_access": "pressure_system",
+      "effort_level": "low",
+      "source_references": ["pressure_management_guide"],
+      "evidence_mapping": {
+        "pressure_unstable": {
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "pressure_stable": {
+          "pressure_instability": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        },
+        "pressure_low": {
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "ACT05",
+      "name": "Perform Purge Cycle",
+      "description": "Execute a material purge to clear trapped air and evaluate whether it improves dispensing.",
+      "procedure": "1. Perform a standard purge cycle per machine procedure.\n2. Dispense 5 test shots immediately after purge.\n3. Compare results to pre-purge performance.\n4. Record whether improvement is temporary or sustained.\n5. Document findings.",
+      "applicable_causes": ["air_supply_issue", "nozzle_restriction", "material_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "required_access": "dispensing_station",
+      "effort_level": "low",
+      "source_references": ["air_management_guide"],
+      "evidence_mapping": {
+        "improvement_temporary": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "improvement_sustained": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "WEAK"}
+        },
+        "no_improvement": {
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "WEAK"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "ACT06",
+      "name": "Verify Dispensing Parameters",
+      "description": "Review and verify all dispensing parameter settings against the process specification.",
+      "procedure": "1. Record current parameter settings (pressure, time, speed, gap).\n2. Compare against the process specification for the current material.\n3. Identify any deviations.\n4. Check parameter change history if available.\n5. Document findings.",
+      "applicable_causes": ["parameter_issue"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING"],
+      "required_access": "machine_interface",
+      "effort_level": "low",
+      "source_references": ["dispensing_setup_guide"],
+      "evidence_mapping": {
+        "parameters_correct": {
+          "parameter_issue": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        },
+        "parameters_deviated": {
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "ACT07",
+      "name": "Check Valve Condition",
+      "description": "Inspect the dispensing valve for wear, leakage, or improper seating.",
+      "procedure": "1. Stop dispensing and depressurize.\n2. Inspect valve seat for wear or damage.\n3. Check for material leakage around seals.\n4. Test valve open/close response.\n5. Verify valve timing settings.\n6. Document findings.",
+      "applicable_causes": ["valve_issue", "equipment_condition"],
+      "applicable_defects": ["D02_TOO_MUCH", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "required_access": "dispensing_head",
+      "effort_level": "medium",
+      "source_references": ["valve_maintenance_guide"],
+      "evidence_mapping": {
+        "valve_worn": {
+          "valve_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "valve_leaking": {
+          "valve_issue": {"relation": "SUPPORTS", "strength": "STRONG"}
+        },
+        "valve_normal": {
+          "valve_issue": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "ACT08",
+      "name": "Check Temperature Conditions",
+      "description": "Measure ambient and material temperature to identify thermal effects on dispensing.",
+      "procedure": "1. Record ambient temperature at the dispensing station.\n2. Measure material temperature if sensor is available.\n3. Compare against material specification limits.\n4. Note any recent changes in environmental conditions.\n5. Document findings.",
+      "applicable_causes": ["temperature_issue", "material_condition"],
+      "applicable_defects": ["D05_SPREADING", "D03_INCONSISTENT_SIZE"],
+      "required_access": "dispensing_station",
+      "effort_level": "low",
+      "source_references": ["thermal_management_guide"],
+      "evidence_mapping": {
+        "temperature_high": {
+          "temperature_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "temperature_normal": {
+          "temperature_issue": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        },
+        "temperature_low": {
+          "temperature_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "ACT09",
+      "name": "Inspect Substrate Surface",
+      "description": "Examine the substrate surface for contamination, moisture, or surface energy issues.",
+      "procedure": "1. Visually inspect substrate for contamination or residue.\n2. Check for moisture or condensation.\n3. Perform water-break test if applicable.\n4. Verify substrate preparation was completed per specification.\n5. Document findings.",
+      "applicable_causes": ["substrate_condition"],
+      "applicable_defects": ["D05_SPREADING"],
+      "required_access": "substrate",
+      "effort_level": "low",
+      "source_references": ["substrate_preparation_guide"],
+      "evidence_mapping": {
+        "contamination_found": {
+          "substrate_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        },
+        "surface_clean": {
+          "substrate_condition": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "ACT10",
+      "name": "Run Equipment Calibration Check",
+      "description": "Perform a calibration verification on the dispensing equipment.",
+      "procedure": "1. Run the machine's built-in calibration routine.\n2. Verify axis alignment and positioning accuracy.\n3. Check dispense head height calibration.\n4. Verify timing and repeatability.\n5. Compare against last known good calibration.\n6. Document findings.",
+      "applicable_causes": ["equipment_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "required_access": "full_machine_access",
+      "effort_level": "high",
+      "source_references": ["calibration_procedures"],
+      "evidence_mapping": {
+        "calibration_drift": {
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        },
+        "calibration_ok": {
+          "equipment_condition": {"relation": "CONTRADICTS", "strength": "STRONG"}
+        }
+      }
+    }
+  ]
+}
