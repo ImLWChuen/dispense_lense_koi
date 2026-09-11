@@ -11,6 +11,10 @@ node_modules/
 # testing
 coverage/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Next.js
 .next/
 out/
