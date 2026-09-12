@@ -3,7 +3,7 @@
 ## Repository
 
 - Project name: `DispenseLens / DispenseIQ competition prototype`
-- Feature branch: `cskee-branch`
+- Feature branch: `backend-database`
 - Base branch: `main`
 - Sequential shared checkout: `yes`
 - Task ID prefix: `DLK-M3`
@@ -20,7 +20,7 @@ ChatGPT may inspect the repository, create task and review artifacts, and review
 
 - Local commits by implementer: `allowed after required checks pass`
 - Push: `prohibited until Kee Chun Shang explicitly instructs it`
-- Pull requests: `create only after explicit instruction; target main from cskee-branch`
+- Pull requests: `create only after explicit instruction; target main from backend-database`
 - Merge: `prohibited; Team KOI will review and merge manually`
 - Commit format: `type(scope): concise outcome`
 - Task packet commit policy: `The planner leaves the ready packet and review records uncommitted. Gemini includes pending handoff records, the completed implementation report, QUEUE.md, and task-related code in the next atomic implementation commit. If no implementation task follows, the planner may release a bounded handoff-closeout task for a local documentation commit.`

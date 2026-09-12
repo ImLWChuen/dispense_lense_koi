@@ -52,11 +52,10 @@ class SkillPackageTests(unittest.TestCase):
             REPOSITORY_ROOT / ".agents" / "handoff" / "PROJECT.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("Feature branch: `cskee-branch`", project_config)
+        self.assertIn("Feature branch: `backend-database`", project_config)
         self.assertIn("Push: `prohibited", project_config)
         self.assertIn("Merge: `prohibited", project_config)
 
 
 if __name__ == "__main__":
     unittest.main()
-
