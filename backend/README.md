@@ -74,6 +74,9 @@ Run the test suite using pytest:
 # Run focused PostgreSQL persistence integration tests
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_persistence.py -q
 
+# Run durable case API integration tests (requires PostgreSQL)
+.\.venv\Scripts\python.exe -m pytest tests/integration/test_case_api.py -q
+
 # Run all backend tests
 .\.venv\Scripts\python.exe -m pytest -q
 ```
@@ -124,3 +127,15 @@ It **does not** perform or verify:
   - Returns `422 Unprocessable Entity` for empty evidence, defect code alone, unknown defect codes, or forbidden extra fields.
   - Returns sanitized `500 Internal Server Error` on unexpected engine errors without leaking internal stack traces or user payload data.
 - **Full Specification:** See [API Specification](../docs/api/api-spec.md) for full schemas, field definitions, and execution payloads.
+
+## Durable Case Endpoints
+
+- **Endpoints:**
+  - `POST /api/v1/cases` — Submits a diagnostic case, runs the deterministic engine, and atomically persists the case, observations, and initial revision-1 diagnosis to PostgreSQL, returning `201 Created`.
+  - `GET /api/v1/cases/{case_id}` — Retrieves the persisted state of a case and its immutable revision-1 diagnosis by case UUID without recalculating diagnosis.
+- **Contract & Scope:**
+  - Requires active PostgreSQL database connection.
+  - Uses `CaseRepository` to guarantee atomic writes and consistent reads.
+  - GET endpoint performs zero recalculation and does not mutate case revisions.
+  - Returns `404 Not Found` for unknown case UUIDs and `422 Unprocessable Entity` for malformed IDs.
+- **Full Specification:** See [API Specification](../docs/api/api-spec.md) for full schemas and execution payloads.

@@ -6,7 +6,7 @@ Planner snapshot: 2026-09-12, baseline `b953ebf`. Only DLK-M3-004 is executable.
 | --- | --- | --- |
 | 1: DLK-M3-004, implemented | Initial diagnosis HTTP API plus import compatibility | Member 2 merge gate satisfied. Implementation complete, ready for review. |
 | 2: DLK-M3-006, implemented | PostgreSQL persistence contract and minimal case + immutable initial-analysis storage | Implementation complete, ready for review. Real PostgreSQL verified via Docker Compose, Alembic migrations, and integration tests. |
-| 3: planned | Create and retrieve a durable diagnosed case through API | Persistence accepted; agree additive request/response and error contract with Member 1. Verify restart durability and atomic writes. |
+| 3: DLK-M3-009, implemented | Create and retrieve a durable diagnosed case through API | Implementation complete, ready for review. Atomic POST /api/v1/cases and read-only GET /api/v1/cases/{case_id} verified against real PostgreSQL with zero engine recalculation on read. |
 | 4: planned | Submit one answer and append a new analysis revision | Durable case accepted; verify Member 2 answer semantics and define stale-revision conflict behavior. Previous revisions must remain unchanged. |
 | 5: planned | Record check execution/finding and subsequent ranking | Answer flow accepted; Member 2 must resolve any reproduced check-mapping problems before this becomes a technician-facing workflow. |
 | 6: planned | Explicit cause confirmation and separate recovery verification | Agree human-confirmation semantics with Member 2; no automatic coupling between a high score, confirmed cause, and issue resolved. |
