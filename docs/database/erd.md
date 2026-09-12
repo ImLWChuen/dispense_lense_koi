@@ -22,11 +22,11 @@ erDiagram
     CASES {
         uuid case_id PK "UUID-compatible identifier"
         text description "Original technician description"
-        varchar material "Dispensing fluid material"
-        varchar method "Dispensing method"
+        text material "Dispensing fluid material"
+        text method "Dispensing method"
         jsonb machine_context "Equipment parameters"
         varchar defect_code "Identified defect category"
-        varchar defect_name "Defect title"
+        text defect_name "Defect title"
         varchar issue_condition "Lifecycle condition"
         timestamptz created_at "Timezone-aware creation timestamp"
     }
@@ -34,9 +34,9 @@ erDiagram
     CASE_OBSERVATIONS {
         serial id PK "Surrogate primary key"
         uuid case_id FK "Owning case reference"
-        varchar observation_id "Domain observation UUID"
+        text observation_id "Domain observation identifier"
         varchar observation_type "Observation category"
-        varchar value "Normalized observation value"
+        text value "Normalized observation value"
         text original_text "Extracted source phrasing"
         varchar statement_type "Statement category"
         varchar source "Provenance source"
@@ -67,11 +67,11 @@ Stores the top-level investigation record.
 |---|---|---|---|
 | `case_id` | `UUID` | No | Primary key, preserving the domain UUID string. |
 | `description` | `TEXT` | No | Technician's natural-language symptom description. |
-| `material` | `VARCHAR(255)` | Yes | Dispensing fluid name / chemistry. |
-| `method` | `VARCHAR(255)` | Yes | Dispensing method (e.g. `time_pressure`, `jetting`). |
+| `material` | `TEXT` | Yes | Dispensing fluid name / chemistry (unrestricted domain string). |
+| `method` | `TEXT` | Yes | Dispensing method (e.g. `time_pressure`, `jetting`) (unrestricted domain string). |
 | `machine_context` | `JSONB` | Yes | Machine telemetry, parameters, and equipment details. |
-| `defect_code` | `VARCHAR(64)` | Yes | Defect code (e.g. `D03_INCONSISTENT_SIZE`). |
-| `defect_name` | `VARCHAR(255)` | Yes | Defect title (e.g. `Inconsistent Dot Size / Line Width`). |
+| `defect_code` | `VARCHAR(64)` | Yes | Enum-backed defect code (e.g. `D03_INCONSISTENT_SIZE`). |
+| `defect_name` | `TEXT` | Yes | Defect title (unrestricted domain string). |
 | `issue_condition` | `VARCHAR(64)` | No | State: `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, `RECURRED`. |
 | `created_at` | `TIMESTAMPTZ` | No | Timezone-aware case creation timestamp. |
 
@@ -87,13 +87,13 @@ Stores individual structured observations extracted from user descriptions or pr
 |---|---|---|---|
 | `id` | `SERIAL` | No | Surrogate integer primary key. |
 | `case_id` | `UUID` | No | Foreign key referencing `cases.case_id`. |
-| `observation_id` | `VARCHAR(64)` | No | Domain observation UUID string. |
-| `observation_type` | `VARCHAR(64)` | No | Category (e.g. `runtime_pattern`, `deposit_size`). |
-| `value` | `VARCHAR(255)` | No | Normalized value (e.g. `after_prolonged_operation`, `smaller`). |
+| `observation_id` | `TEXT` | No | Domain observation identifier (unrestricted domain string). |
+| `observation_type` | `VARCHAR(64)` | No | Enum-backed category (e.g. `runtime_pattern`, `deposit_size`). |
+| `value` | `TEXT` | No | Normalized value (unrestricted domain string). |
 | `original_text` | `TEXT` | Yes | Verbatim phrasing from technician or user input. |
-| `statement_type` | `VARCHAR(64)` | No | `USER_OBSERVATION`, `USER_INTERPRETATION`, `AI_INFERENCE`. |
-| `source` | `VARCHAR(64)` | No | Provenance: `USER`, `MEASUREMENT`, `IMAGE`, `SYSTEM`, `HISTORICAL_CASE`. |
-| `confidence` | `FLOAT` | Yes | Optional inference confidence. |
+| `statement_type` | `VARCHAR(64)` | No | Enum-backed: `USER_OBSERVATION`, `USER_INTERPRETATION`, `AI_INFERENCE`. |
+| `source` | `VARCHAR(64)` | No | Enum-backed provenance: `USER`, `MEASUREMENT`, `IMAGE`, `SYSTEM`, `HISTORICAL_CASE`. |
+| `confidence` | `FLOAT` | Yes | Optional inference confidence score. |
 | `created_at` | `TIMESTAMPTZ` | No | Timezone-aware timestamp. |
 | `first_seen_revision` | `INTEGER` | No | The analysis revision number where this observation first appeared (default `1`). |
 

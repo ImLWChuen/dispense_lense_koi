@@ -38,23 +38,7 @@ from app.schemas.diagnosis import (
     StructuredCase,
 )
 from app.services.diagnosis.engine import DiagnosticEngine
-
-
-def _assert_safe_test_database(url: str) -> None:
-    """Ensure tests run only against clearly local/test PostgreSQL instances."""
-    lower = url.lower()
-    is_local = any(
-        host in lower
-        for host in ("localhost", "127.0.0.1", "postgres", "dispenselens-postgres")
-    )
-    is_test_db = any(
-        db in lower for db in ("dispenselens", "test")
-    )
-    if not (is_local and is_test_db):
-        raise RuntimeError(
-            f"Safety check failed: database URL '{url}' is not a local test database. "
-            "Destructive testing operations are restricted to verified local test databases."
-        )
+from tests.unit.test_persistence_safety import assert_safe_test_database
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -65,7 +49,7 @@ def configure_test_environment() -> None:
             "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
         )
     url = get_database_url()
-    _assert_safe_test_database(url)
+    assert_safe_test_database(url)
     reset_engine()
 
 
@@ -120,6 +104,24 @@ def test_alembic_schema_structure_and_constraints():
     assert "created_at" in cases_cols
     assert not cases_cols["created_at"]["nullable"]
 
+    # Verify unrestricted domain strings are Text in cases
+    assert "TEXT" in str(cases_cols["material"]["type"]).upper()
+    assert "TEXT" in str(cases_cols["method"]["type"]).upper()
+    assert "TEXT" in str(cases_cols["defect_name"]["type"]).upper()
+    # Verify enum-backed columns remain bounded
+    assert "VARCHAR" in str(cases_cols["defect_code"]["type"]).upper()
+    assert "VARCHAR" in str(cases_cols["issue_condition"]["type"]).upper()
+
+    # Check 'case_observations' columns
+    obs_cols = {c["name"]: c for c in inspector.get_columns("case_observations")}
+    # Verify unrestricted domain observation ID and value are Text
+    assert "TEXT" in str(obs_cols["observation_id"]["type"]).upper()
+    assert "TEXT" in str(obs_cols["value"]["type"]).upper()
+    # Verify enum-backed observation columns remain bounded
+    assert "VARCHAR" in str(obs_cols["observation_type"]["type"]).upper()
+    assert "VARCHAR" in str(obs_cols["statement_type"]["type"]).upper()
+    assert "VARCHAR" in str(obs_cols["source"]["type"]).upper()
+
     # Check 'case_observations' constraints
     obs_fks = inspector.get_foreign_keys("case_observations")
     assert any(fk["referred_table"] == "cases" for fk in obs_fks)
@@ -135,6 +137,78 @@ def test_alembic_schema_structure_and_constraints():
     assert any(
         set(uq["column_names"]) == {"case_id", "revision_number"} for uq in rev_uqs
     )
+
+
+def test_unrestricted_domain_strings_and_confidence_round_trip(case_repo, db_session):
+    """Verify that observation IDs > 64 chars, values/material/method > 255 chars,
+    and float confidence round-trip through PostgreSQL with exact fidelity."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    # Long valid strings exceeding legacy VARCHAR bounds
+    long_obs_id = "obs_domain_identifier_with_length_greater_than_sixty_four_characters_test_12345"
+    assert len(long_obs_id) > 64
+
+    long_obs_value = "ObsValue_" + "long_value_segment_" * 20
+    assert len(long_obs_value) > 255
+
+    long_material = "FluidChemistry_HighPerformanceEpoxy_" + "grade_additive_specifier_" * 15
+    assert len(long_material) > 255
+
+    long_method = "DispensingMethod_TimePressureWithPneumaticAssist_" + "custom_valve_profile_" * 15
+    assert len(long_method) > 255
+
+    case = StructuredCase(
+        defect_code="D03_INCONSISTENT_SIZE",
+        defect_name="Inconsistent Dot Size / Line Width",
+        description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+        material=long_material,
+        method=long_method,
+        observations=[
+            Observation(
+                id=long_obs_id,
+                observation_type=ObservationType.RUNTIME_PATTERN,
+                value=long_obs_value,
+                original_text="Detailed technician observation text",
+                statement_type=StatementType.USER_OBSERVATION,
+                source=EvidenceSource.USER,
+                confidence=0.925,
+            ),
+            Observation(
+                observation_type=ObservationType.DEPOSIT_SIZE,
+                value="smaller",
+                source=EvidenceSource.USER,
+            ),
+        ],
+    )
+    tracked_ids.append(case.case_id)
+
+    result = engine.diagnose(case)
+    assert result.analysis_revision is not None
+    assert result.analysis_revision.revision_number == 1
+
+    # Persist atomically
+    repo.save_initial_case(case, result)
+    db_session.commit()
+
+    # Read back and assert exact parity
+    persisted_case = repo.get_case(case.case_id)
+    assert persisted_case is not None
+    assert persisted_case.material == long_material
+    assert persisted_case.method == long_method
+
+    persisted_obs = repo.get_case_observations(case.case_id)
+    obs_by_id = {o.observation_id: o for o in persisted_obs}
+    assert long_obs_id in obs_by_id
+    target_obs = obs_by_id[long_obs_id]
+    assert target_obs.observation_id == long_obs_id
+    assert target_obs.value == long_obs_value
+    assert target_obs.confidence == pytest.approx(0.925, abs=0.0001)
+
+    # Verify stored JSONB snapshot contains the complete diagnosis result
+    rev = repo.get_analysis_revision(case.case_id, 1)
+    assert rev is not None
+    assert rev.result_snapshot["defect"] == result.defect
 
 
 # ---------------------------------------------------------------------------

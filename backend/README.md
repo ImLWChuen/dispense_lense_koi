@@ -65,6 +65,9 @@ Run the test suite using pytest:
 # Run the focused health API test
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_health_api.py -q
 
+# Run database test safety unit tests (connection-free)
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_persistence_safety.py -q
+
 # Run focused PostgreSQL persistence integration tests
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_persistence.py -q
 

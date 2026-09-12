@@ -44,12 +44,12 @@ class CaseModel(Base):
         comment="Original problem description provided by technician",
     )
     material: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True,
         comment="Dispensed fluid material name or category",
     )
     method: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True,
         comment="Dispensing method (e.g. time_pressure, jetting)",
     )
@@ -64,7 +64,7 @@ class CaseModel(Base):
         comment="Identified defect category code (e.g. D03_INCONSISTENT_SIZE)",
     )
     defect_name: Mapped[str | None] = mapped_column(
-        String(255),
+        Text,
         nullable=True,
         comment="Human-readable defect title",
     )
@@ -122,7 +122,7 @@ class ObservationModel(Base):
         index=True,
     )
     observation_id: Mapped[str] = mapped_column(
-        String(64),
+        Text,
         nullable=False,
         comment="Domain-assigned stable observation ID",
     )
@@ -132,7 +132,7 @@ class ObservationModel(Base):
         comment="Observation category enum value",
     )
     value: Mapped[str] = mapped_column(
-        String(255),
+        Text,
         nullable=False,
         comment="Normalized observation value",
     )
