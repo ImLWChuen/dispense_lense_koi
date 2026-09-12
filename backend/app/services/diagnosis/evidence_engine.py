@@ -16,13 +16,13 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from backend.app.knowledge import (
+from app.knowledge import (
     get_causes_for_defect,
     get_rules_for_cause,
     get_rules_for_observation,
     load_evidence_rules,
 )
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     CauseEvidence,
@@ -31,7 +31,7 @@ from backend.app.schemas.diagnosis import (
     EvidenceStrength,
     Observation,
 )
-from backend.app.utils.scoring import (
+from app.utils.scoring import (
     SCORING_CONFIG,
     clamp_score,
     contradiction_weight,

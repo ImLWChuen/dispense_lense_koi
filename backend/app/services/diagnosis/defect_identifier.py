@@ -10,8 +10,8 @@ Every identification includes a human-readable reason.
 
 from __future__ import annotations
 
-from backend.app.knowledge import get_defect_by_code, load_defects
-from backend.app.schemas.diagnosis import (
+from app.knowledge import get_defect_by_code, load_defects
+from app.schemas.diagnosis import (
     DefectCode,
     Observation,
     ObservationType,

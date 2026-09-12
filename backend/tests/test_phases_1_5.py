@@ -25,14 +25,10 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-from backend.app.services.diagnosis.symptom_extractor import SymptomExtractor
-from backend.app.services.diagnosis.defect_identifier import identify_defect
-from backend.app.services.diagnosis.evidence_engine import EvidenceEngine
-from backend.app.schemas.diagnosis import (
+from app.services.diagnosis.symptom_extractor import SymptomExtractor
+from app.services.diagnosis.defect_identifier import identify_defect
+from app.services.diagnosis.evidence_engine import EvidenceEngine
+from app.schemas.diagnosis import (
     DefectCode,
     Observation,
     ObservationType,

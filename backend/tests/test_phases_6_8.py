@@ -8,8 +8,8 @@ Verifies:
   4. Full pipeline integration from description → action
 """
 
-import sys
 import os
+import sys
 
 # Ensure UTF-8 output on Windows terminals
 if sys.platform == "win32":
@@ -20,16 +20,12 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-from backend.app.services.diagnosis.symptom_extractor import SymptomExtractor
-from backend.app.services.diagnosis.defect_identifier import identify_defect
-from backend.app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
-from backend.app.services.diagnosis.question_engine import QuestionEngine
-from backend.app.services.diagnosis.action_planner import ActionPlanner
-from backend.app.schemas.diagnosis import (
+from app.services.diagnosis.symptom_extractor import SymptomExtractor
+from app.services.diagnosis.defect_identifier import identify_defect
+from app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
+from app.services.diagnosis.question_engine import QuestionEngine
+from app.services.diagnosis.action_planner import ActionPlanner
+from app.schemas.diagnosis import (
     Observation,
     Question,
     QuestionAnswer,
@@ -201,7 +197,7 @@ def _verify_question_stopping() -> None:
     engine = QuestionEngine()
 
     # Create a mock high-confidence cause
-    from backend.app.schemas.diagnosis import CandidateCause, CauseConclusion
+    from app.schemas.diagnosis import CandidateCause, CauseConclusion
     high_cause = CandidateCause(
         cause_id="air_supply_issue",
         cause_name="Air / Supply Issue",

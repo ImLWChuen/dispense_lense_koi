@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CauseDefinition,
     CheckDefinition,
     DefectDefinition,

@@ -67,3 +67,15 @@ It **does not** perform or verify:
 - Filesystem storage or disk availability
 - AI, machine learning, or computer-vision inference readiness
 - Auxiliary worker processes or background queues
+
+## Initial Diagnosis Endpoint
+
+- **Endpoint:** `POST /api/v1/diagnoses`
+- **Description:** Stateless endpoint that accepts an initial dispensing problem description, material, dispensing method, and optional observations, executing Member 2's diagnostic engine to return ranked candidate causes, evidence assessments, and recommended follow-up questions/checks.
+- **Contract & Scope:**
+  - Stateless execution: no persistent database storage or session caching.
+  - Generates an ephemeral `case_id` for the diagnostic run.
+  - Caller cannot supply `case_id`, previous answers, or prior check results.
+  - Returns `422 Unprocessable Entity` for empty evidence, defect code alone, unknown defect codes, or forbidden extra fields.
+  - Returns sanitized `500 Internal Server Error` on unexpected engine errors without leaking internal stack traces or user payload data.
+- **Full Specification:** See [API Specification](../docs/api/api-spec.md) for full schemas, field definitions, and execution payloads.
