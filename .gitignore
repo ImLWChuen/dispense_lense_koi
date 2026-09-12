@@ -40,3 +40,11 @@ yarn-error.log*
 
 # IDE
 .idea/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg

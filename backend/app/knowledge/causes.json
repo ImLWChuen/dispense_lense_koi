@@ -1,0 +1,84 @@
+{
+  "causes": [
+    {
+      "id": "air_supply_issue",
+      "name": "Air / Supply Issue",
+      "description": "Trapped air or inconsistent air pressure in the material supply path causes erratic dispensing. Air bubbles disrupt fluid flow and create volume variation.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["dispensing_troubleshoot_ch2", "air_management_guide"]
+    },
+    {
+      "id": "nozzle_restriction",
+      "name": "Nozzle Restriction",
+      "description": "Partial or complete blockage of the dispensing nozzle reduces or blocks material flow. Can be caused by dried material, contamination, or mechanical damage.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "applicable_contexts": ["all"],
+      "source_references": ["dispensing_troubleshoot_ch3", "nozzle_maintenance_guide"]
+    },
+    {
+      "id": "material_condition",
+      "name": "Material Condition",
+      "description": "Material properties (viscosity, shelf life, homogeneity, temperature sensitivity) are outside acceptable range, causing unpredictable dispensing behaviour.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["material_handling_guide", "dispensing_troubleshoot_ch4"]
+    },
+    {
+      "id": "pressure_instability",
+      "name": "Pressure Instability",
+      "description": "Inconsistent dispensing pressure from the supply system or regulator causes volume variation. May be caused by regulator drift, supply depletion, or pneumatic leaks.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "applicable_contexts": ["all"],
+      "source_references": ["dispensing_troubleshoot_ch5", "pressure_management_guide"]
+    },
+    {
+      "id": "parameter_issue",
+      "name": "Parameter Issue",
+      "description": "Dispensing parameters (time, pressure setpoint, speed, gap height) are incorrectly configured for the current material and application.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["dispensing_setup_guide", "parameter_optimization"]
+    },
+    {
+      "id": "equipment_condition",
+      "name": "Equipment Condition",
+      "description": "Mechanical wear, misalignment, or calibration drift in the dispensing equipment causes inconsistent performance.",
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["equipment_maintenance_guide", "calibration_procedures"]
+    },
+    {
+      "id": "valve_issue",
+      "name": "Valve Issue",
+      "description": "Dispensing valve malfunction, wear, or improper seating causes material leakage, dripping, or inconsistent shot volumes.",
+      "applicable_defects": ["D02_TOO_MUCH", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["valve_maintenance_guide", "dispensing_troubleshoot_ch6"]
+    },
+    {
+      "id": "temperature_issue",
+      "name": "Temperature Issue",
+      "description": "Ambient or material temperature outside acceptable range affects viscosity and curing behaviour, leading to spreading or inconsistent deposits.",
+      "applicable_defects": ["D05_SPREADING"],
+      "applicable_contexts": ["all"],
+      "source_references": ["thermal_management_guide", "material_handling_guide"]
+    },
+    {
+      "id": "substrate_condition",
+      "name": "Substrate Condition",
+      "description": "Substrate surface energy, contamination, or moisture affects wetting behaviour and causes dispensed material to spread or bead irregularly.",
+      "applicable_defects": ["D05_SPREADING"],
+      "applicable_contexts": ["all"],
+      "source_references": ["substrate_preparation_guide", "wetting_analysis"]
+    },
+    {
+      "id": "nozzle_condition",
+      "name": "Nozzle Condition",
+      "description": "Nozzle tip damage, wear, or contamination at the tip face alters the dispensing pattern geometry.",
+      "applicable_defects": ["D02_TOO_MUCH", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "applicable_contexts": ["all"],
+      "source_references": ["nozzle_maintenance_guide", "dispensing_troubleshoot_ch3"]
+    }
+  ]
+}

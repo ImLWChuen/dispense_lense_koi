@@ -1,0 +1,281 @@
+{
+  "questions": [
+    {
+      "id": "Q01",
+      "text": "Does the problem occur immediately after startup or only after the machine has been running for a while?",
+      "purpose": "Distinguishes thermal/time-related causes (air expansion, material viscosity change) from static issues.",
+      "applicable_causes": ["air_supply_issue", "material_condition", "pressure_instability", "temperature_issue"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D05_SPREADING"],
+      "expected_answer_type": "categorical",
+      "evidence_mapping": {
+        "after_prolonged_operation": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "temperature_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "nozzle_restriction": {"relation": "NEUTRAL", "strength": "WEAK"},
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "immediately": {
+          "air_supply_issue": {"relation": "NEUTRAL", "strength": "WEAK"},
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "Q02",
+      "text": "Does the defect occur across all dispensing points or only at specific nozzles/locations?",
+      "purpose": "Distinguishes system-wide causes (pressure, material) from localized causes (nozzle blockage, valve).",
+      "applicable_causes": ["nozzle_restriction", "air_supply_issue", "pressure_instability", "valve_issue", "equipment_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "expected_answer_type": "categorical",
+      "evidence_mapping": {
+        "all_points": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "nozzle_restriction": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "valve_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        },
+        "specific_nozzle": {
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "valve_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "material_condition": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "Q03",
+      "text": "Has the nozzle recently been replaced, cleaned, or maintained?",
+      "purpose": "Determines whether nozzle condition is a likely factor.",
+      "applicable_causes": ["nozzle_restriction", "nozzle_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "nozzle_restriction": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "nozzle_condition": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "WEAK"},
+          "nozzle_condition": {"relation": "SUPPORTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q04",
+      "text": "Does performing a purge cycle improve the dispensing temporarily?",
+      "purpose": "A positive purge response strongly suggests trapped air or dried material in the path.",
+      "applicable_causes": ["air_supply_issue", "nozzle_restriction", "material_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "parameter_issue": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        },
+        "NO": {
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "WEAK"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q05",
+      "text": "Was the dispensing material recently changed, refilled, or from a new batch?",
+      "purpose": "Identifies material-related causes: batch variation, air introduction during refill, shelf-life issues.",
+      "applicable_causes": ["material_condition", "air_supply_issue"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "material_condition": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "material_condition": {"relation": "NEUTRAL", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q06",
+      "text": "Have any dispensing parameters (pressure, time, speed) been changed recently?",
+      "purpose": "Identifies whether the defect correlates with a parameter change.",
+      "applicable_causes": ["parameter_issue"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "STRONG"}
+        },
+        "NO": {
+          "parameter_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "Q07",
+      "text": "Are there visible bubbles in the dispensed material or the syringe/reservoir?",
+      "purpose": "Direct observation of air entrainment in the system.",
+      "applicable_causes": ["air_supply_issue", "material_condition"],
+      "applicable_defects": ["D03_INCONSISTENT_SIZE", "D06_BUBBLES_ABNORMAL_SHAPE", "D04_MISSING_DOTS"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q08",
+      "text": "Is the dispensing pressure gauge reading stable during operation?",
+      "purpose": "Identifies pressure regulation problems.",
+      "applicable_causes": ["pressure_instability", "air_supply_issue", "equipment_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "pressure_instability": {"relation": "CONTRADICTS", "strength": "STRONG"},
+          "equipment_condition": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        },
+        "NO": {
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "Q09",
+      "text": "Is there any material leaking or dripping from the nozzle between dispensing shots?",
+      "purpose": "Identifies valve seating or nozzle-tip issues that cause material loss or excess.",
+      "applicable_causes": ["valve_issue", "nozzle_condition", "parameter_issue"],
+      "applicable_defects": ["D02_TOO_MUCH", "D01_TOO_LITTLE", "D05_SPREADING"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "valve_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "nozzle_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "valve_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"},
+          "nozzle_condition": {"relation": "NEUTRAL", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q10",
+      "text": "Has the ambient temperature or material temperature changed noticeably?",
+      "purpose": "Identifies temperature-related viscosity changes.",
+      "applicable_causes": ["temperature_issue", "material_condition"],
+      "applicable_defects": ["D05_SPREADING", "D03_INCONSISTENT_SIZE", "D02_TOO_MUCH"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "temperature_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "temperature_issue": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        }
+      }
+    },
+    {
+      "id": "Q11",
+      "text": "Is the substrate surface clean and free of contamination or moisture?",
+      "purpose": "Identifies substrate wetting issues that cause spreading.",
+      "applicable_causes": ["substrate_condition"],
+      "applicable_defects": ["D05_SPREADING"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "substrate_condition": {"relation": "CONTRADICTS", "strength": "MODERATE"}
+        },
+        "NO": {
+          "substrate_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        }
+      }
+    },
+    {
+      "id": "Q12",
+      "text": "Does the problem persist after the machine is restarted or power-cycled?",
+      "purpose": "Distinguishes transient (thermal, air) from persistent (mechanical, parameter) issues.",
+      "applicable_causes": ["equipment_condition", "parameter_issue", "nozzle_restriction"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "equipment_condition": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "nozzle_restriction": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "air_supply_issue": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        },
+        "NO": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "temperature_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "parameter_issue": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q13",
+      "text": "How long has the dispensing material been in the syringe/reservoir since it was loaded?",
+      "purpose": "Identifies pot-life / shelf-life related material degradation.",
+      "applicable_causes": ["material_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "expected_answer_type": "free_text",
+      "evidence_mapping": {
+        "long_time": {
+          "material_condition": {"relation": "SUPPORTS", "strength": "STRONG"}
+        },
+        "recently_loaded": {
+          "material_condition": {"relation": "CONTRADICTS", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q14",
+      "text": "Are the dispensed dots showing any tailing, stringing, or satellite droplets?",
+      "purpose": "Identifies abnormal dispensing geometry related to nozzle or parameter issues.",
+      "applicable_causes": ["nozzle_condition", "parameter_issue", "material_condition"],
+      "applicable_defects": ["D06_BUBBLES_ABNORMAL_SHAPE", "D05_SPREADING"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "nozzle_condition": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "parameter_issue": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "WEAK"}
+        },
+        "NO": {
+          "nozzle_condition": {"relation": "NEUTRAL", "strength": "WEAK"}
+        }
+      }
+    },
+    {
+      "id": "Q15",
+      "text": "Is the material supply (syringe or reservoir) nearly empty or running low?",
+      "purpose": "Low material level increases risk of air aspiration and pressure drop.",
+      "applicable_causes": ["air_supply_issue", "pressure_instability", "material_condition"],
+      "applicable_defects": ["D01_TOO_LITTLE", "D03_INCONSISTENT_SIZE", "D04_MISSING_DOTS", "D06_BUBBLES_ABNORMAL_SHAPE"],
+      "expected_answer_type": "yes_no",
+      "evidence_mapping": {
+        "YES": {
+          "air_supply_issue": {"relation": "SUPPORTS", "strength": "STRONG"},
+          "pressure_instability": {"relation": "SUPPORTS", "strength": "MODERATE"},
+          "material_condition": {"relation": "SUPPORTS", "strength": "WEAK"}
+        },
+        "NO": {
+          "air_supply_issue": {"relation": "NEUTRAL", "strength": "WEAK"}
+        }
+      }
+    }
+  ]
+}

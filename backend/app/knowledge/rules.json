@@ -1,0 +1,454 @@
+{
+  "rules": [
+    {
+      "id": "R001",
+      "observation_type": "deposit_size",
+      "observation_value": "undersized",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Undersized deposits can result from air displacing material volume in the supply path."
+    },
+    {
+      "id": "R002",
+      "observation_type": "deposit_size",
+      "observation_value": "undersized",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "A restricted nozzle directly reduces the amount of material that can pass through."
+    },
+    {
+      "id": "R003",
+      "observation_type": "deposit_size",
+      "observation_value": "undersized",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "WEAK",
+      "explanation": "Degraded or thickened material may reduce flow through the nozzle."
+    },
+    {
+      "id": "R004",
+      "observation_type": "deposit_size",
+      "observation_value": "undersized",
+      "cause_id": "pressure_instability",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Low or dropping pressure reduces dispensed volume."
+    },
+    {
+      "id": "R005",
+      "observation_type": "deposit_size",
+      "observation_value": "oversized",
+      "cause_id": "parameter_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Excessive time or pressure settings directly cause oversized deposits."
+    },
+    {
+      "id": "R006",
+      "observation_type": "deposit_size",
+      "observation_value": "oversized",
+      "cause_id": "valve_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "A leaking valve allows extra material to pass after the intended dispense."
+    },
+    {
+      "id": "R007",
+      "observation_type": "deposit_size",
+      "observation_value": "inconsistent",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Intermittent air pockets cause variable displacement of material."
+    },
+    {
+      "id": "R008",
+      "observation_type": "deposit_size",
+      "observation_value": "inconsistent",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Partial blockage that shifts can cause varying flow restriction."
+    },
+    {
+      "id": "R009",
+      "observation_type": "deposit_size",
+      "observation_value": "inconsistent",
+      "cause_id": "pressure_instability",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Fluctuating pressure directly causes varying dispensed volumes."
+    },
+    {
+      "id": "R010",
+      "observation_type": "deposit_size",
+      "observation_value": "inconsistent",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Non-homogeneous material causes variable flow characteristics."
+    },
+    {
+      "id": "R011",
+      "observation_type": "runtime_pattern",
+      "observation_value": "after_prolonged_operation",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Air expansion due to heating during prolonged operation disrupts dispensing."
+    },
+    {
+      "id": "R012",
+      "observation_type": "runtime_pattern",
+      "observation_value": "after_prolonged_operation",
+      "cause_id": "temperature_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Temperature rise during prolonged operation changes material viscosity."
+    },
+    {
+      "id": "R013",
+      "observation_type": "runtime_pattern",
+      "observation_value": "after_prolonged_operation",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Extended time at operating temperature may degrade material properties."
+    },
+    {
+      "id": "R014",
+      "observation_type": "runtime_pattern",
+      "observation_value": "worsens_over_time",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Progressive air accumulation worsens dispensing over time."
+    },
+    {
+      "id": "R015",
+      "observation_type": "runtime_pattern",
+      "observation_value": "worsens_over_time",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Material degradation progresses over time causing worsening performance."
+    },
+    {
+      "id": "R016",
+      "observation_type": "runtime_pattern",
+      "observation_value": "worsens_over_time",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Progressive nozzle clogging worsens over time."
+    },
+    {
+      "id": "R017",
+      "observation_type": "frequency_pattern",
+      "observation_value": "intermittent",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Air pockets cause intermittent disruption as they pass through the fluid path."
+    },
+    {
+      "id": "R018",
+      "observation_type": "frequency_pattern",
+      "observation_value": "intermittent",
+      "cause_id": "pressure_instability",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Pressure fluctuations cause intermittent volume variation."
+    },
+    {
+      "id": "R019",
+      "observation_type": "frequency_pattern",
+      "observation_value": "consistent",
+      "cause_id": "parameter_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "A consistent defect across all shots suggests a static parameter misconfiguration."
+    },
+    {
+      "id": "R020",
+      "observation_type": "frequency_pattern",
+      "observation_value": "consistent",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "A stable blockage causes a consistent reduction in flow."
+    },
+    {
+      "id": "R021",
+      "observation_type": "location_pattern",
+      "observation_value": "specific_nozzle",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "A defect at one specific nozzle strongly suggests nozzle-specific blockage."
+    },
+    {
+      "id": "R022",
+      "observation_type": "location_pattern",
+      "observation_value": "specific_nozzle",
+      "cause_id": "air_supply_issue",
+      "relation": "CONTRADICTS",
+      "strength": "MODERATE",
+      "explanation": "Air supply issues typically affect all nozzles, not just one."
+    },
+    {
+      "id": "R023",
+      "observation_type": "location_pattern",
+      "observation_value": "specific_nozzle",
+      "cause_id": "material_condition",
+      "relation": "CONTRADICTS",
+      "strength": "MODERATE",
+      "explanation": "Material issues typically affect all nozzles uniformly."
+    },
+    {
+      "id": "R024",
+      "observation_type": "location_pattern",
+      "observation_value": "all_points",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Defect at all points suggests a system-wide issue like air in supply."
+    },
+    {
+      "id": "R025",
+      "observation_type": "location_pattern",
+      "observation_value": "all_points",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "A defect at all points suggests material-level issues."
+    },
+    {
+      "id": "R026",
+      "observation_type": "location_pattern",
+      "observation_value": "all_points",
+      "cause_id": "pressure_instability",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "System-wide pressure issues affect all dispensing points."
+    },
+    {
+      "id": "R027",
+      "observation_type": "location_pattern",
+      "observation_value": "all_points",
+      "cause_id": "nozzle_restriction",
+      "relation": "CONTRADICTS",
+      "strength": "STRONG",
+      "explanation": "Multiple nozzles are unlikely to all be restricted simultaneously."
+    },
+    {
+      "id": "R028",
+      "observation_type": "bubble_presence",
+      "observation_value": "visible_bubbles",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Visible bubbles are direct evidence of air entrainment."
+    },
+    {
+      "id": "R029",
+      "observation_type": "bubble_presence",
+      "observation_value": "visible_bubbles",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Material outgassing or improper mixing can cause bubble formation."
+    },
+    {
+      "id": "R030",
+      "observation_type": "deposit_presence",
+      "observation_value": "missing",
+      "cause_id": "nozzle_restriction",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Complete nozzle blockage prevents any material from dispensing."
+    },
+    {
+      "id": "R031",
+      "observation_type": "deposit_presence",
+      "observation_value": "missing",
+      "cause_id": "valve_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Valve failure to open causes missing deposits."
+    },
+    {
+      "id": "R032",
+      "observation_type": "deposit_presence",
+      "observation_value": "missing",
+      "cause_id": "air_supply_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Large air pockets can displace an entire shot volume."
+    },
+    {
+      "id": "R033",
+      "observation_type": "spreading_behaviour",
+      "observation_value": "excessive_spread",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Low viscosity material spreads excessively on the substrate."
+    },
+    {
+      "id": "R034",
+      "observation_type": "spreading_behaviour",
+      "observation_value": "excessive_spread",
+      "cause_id": "temperature_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Elevated temperature reduces viscosity, causing spreading."
+    },
+    {
+      "id": "R035",
+      "observation_type": "spreading_behaviour",
+      "observation_value": "excessive_spread",
+      "cause_id": "substrate_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "High surface energy or contaminated substrate increases wetting and spreading."
+    },
+    {
+      "id": "R036",
+      "observation_type": "spreading_behaviour",
+      "observation_value": "excessive_spread",
+      "cause_id": "parameter_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Excessive dispensed volume or too-low gap height causes material to spread."
+    },
+    {
+      "id": "R037",
+      "observation_type": "deposit_shape",
+      "observation_value": "abnormal",
+      "cause_id": "nozzle_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Damaged nozzle tip alters the dispensing pattern geometry."
+    },
+    {
+      "id": "R038",
+      "observation_type": "deposit_shape",
+      "observation_value": "abnormal",
+      "cause_id": "parameter_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Incorrect speed or gap settings can produce abnormal dot shapes."
+    },
+    {
+      "id": "R039",
+      "observation_type": "deposit_shape",
+      "observation_value": "tailing",
+      "cause_id": "nozzle_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Tailing or stringing indicates nozzle tip damage or improper material cutoff."
+    },
+    {
+      "id": "R040",
+      "observation_type": "deposit_shape",
+      "observation_value": "satellite_dots",
+      "cause_id": "parameter_issue",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "Satellite droplets suggest excessive speed or improperly tuned dispensing parameters."
+    },
+    {
+      "id": "R041",
+      "observation_type": "nozzle_condition",
+      "observation_value": "damaged",
+      "cause_id": "nozzle_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Direct observation of nozzle damage confirms this cause."
+    },
+    {
+      "id": "R042",
+      "observation_type": "nozzle_condition",
+      "observation_value": "clean",
+      "cause_id": "nozzle_restriction",
+      "relation": "CONTRADICTS",
+      "strength": "STRONG",
+      "explanation": "A confirmed clean nozzle contradicts blockage as a cause."
+    },
+    {
+      "id": "R043",
+      "observation_type": "pressure",
+      "observation_value": "fluctuating",
+      "cause_id": "pressure_instability",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Measured pressure fluctuation directly confirms pressure instability."
+    },
+    {
+      "id": "R044",
+      "observation_type": "pressure",
+      "observation_value": "stable",
+      "cause_id": "pressure_instability",
+      "relation": "CONTRADICTS",
+      "strength": "STRONG",
+      "explanation": "Confirmed stable pressure contradicts pressure instability."
+    },
+    {
+      "id": "R045",
+      "observation_type": "temperature",
+      "observation_value": "elevated",
+      "cause_id": "temperature_issue",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Elevated temperature directly supports temperature-related issues."
+    },
+    {
+      "id": "R046",
+      "observation_type": "temperature",
+      "observation_value": "normal",
+      "cause_id": "temperature_issue",
+      "relation": "CONTRADICTS",
+      "strength": "STRONG",
+      "explanation": "Normal temperature contradicts temperature as a cause."
+    },
+    {
+      "id": "R047",
+      "observation_type": "material_state",
+      "observation_value": "separated",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Phase separation indicates material degradation."
+    },
+    {
+      "id": "R048",
+      "observation_type": "material_state",
+      "observation_value": "low_viscosity",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Low viscosity material can cause spreading and oversized deposits."
+    },
+    {
+      "id": "R049",
+      "observation_type": "material_state",
+      "observation_value": "high_viscosity",
+      "cause_id": "material_condition",
+      "relation": "SUPPORTS",
+      "strength": "MODERATE",
+      "explanation": "High viscosity can cause undersized deposits and nozzle clogging."
+    },
+    {
+      "id": "R050",
+      "observation_type": "equipment_condition",
+      "observation_value": "worn",
+      "cause_id": "equipment_condition",
+      "relation": "SUPPORTS",
+      "strength": "STRONG",
+      "explanation": "Worn equipment directly causes dispensing inconsistencies."
+    }
+  ]
+}
