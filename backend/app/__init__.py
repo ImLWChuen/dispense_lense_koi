@@ -1,1 +1,1 @@
-"""DispenseIQ — Backend application package."""
+"""DispenseIQ backend application package."""

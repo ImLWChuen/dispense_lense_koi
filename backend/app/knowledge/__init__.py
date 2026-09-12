@@ -266,4 +266,3 @@ def get_actions(
     if cause_ids:
         return get_actions_for_causes(cause_ids)
     return load_actions()
-

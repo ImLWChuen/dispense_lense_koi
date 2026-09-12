@@ -20,4 +20,3 @@ venvPath = "."
 venv = ".venv"
 include = ["backend"]
 extraPaths = ["."]
-

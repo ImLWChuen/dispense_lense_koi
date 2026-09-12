@@ -11,6 +11,14 @@ node_modules/
 # testing
 coverage/
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+
 # Next.js
 .next/
 out/
@@ -40,11 +48,4 @@ yarn-error.log*
 
 # IDE
 .idea/
-
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
 *.egg
