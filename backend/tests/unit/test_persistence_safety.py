@@ -31,12 +31,26 @@ ALLOWED_TEST_DB_EXACT: Final[frozenset[str]] = frozenset({
 ALLOWED_TEST_DB_PREFIXES: Final[tuple[str, ...]] = ("test_", "test-")
 ALLOWED_TEST_DB_SUFFIXES: Final[tuple[str, ...]] = ("_test", "-test")
 
+# Query parameters that libpq / psycopg can use to redirect the effective host, database, or connection service
+FORBIDDEN_DESTINATION_QUERY_KEYS: Final[frozenset[str]] = frozenset({
+    "host",
+    "hostaddr",
+    "port",
+    "dbname",
+    "database",
+    "service",
+    "servicefile",
+    "passfile",
+    "target_session_attrs",
+})
+
 
 def assert_safe_test_database(url: str) -> None:
     """Validate that the given database URL points to an approved local test destination.
 
     Must be executed before any database connection or destructive test operation.
-    Fails closed if the destination is remote, missing, malformed, or targets a non-test database.
+    Fails closed if the destination is remote, missing, malformed, targets a non-test database,
+    or attempts connection redirection via query parameters.
     Does NOT echo credential-bearing URLs in rejection messages.
 
     Raises:
@@ -84,6 +98,19 @@ def assert_safe_test_database(url: str) -> None:
         raise RuntimeError(
             f"Database safety check failed: database name '{db_lower}' does not meet "
             "the disposable test database naming policy."
+        )
+
+    # 4. Query parameters check: fail closed against connection redirection or unauthorized query params
+    if parsed.query:
+        for q_key in parsed.query.keys():
+            key_lower = str(q_key).strip().lower()
+            if key_lower in FORBIDDEN_DESTINATION_QUERY_KEYS:
+                raise RuntimeError(
+                    f"Database safety check failed: query parameter '{key_lower}' is forbidden "
+                    "because it can redirect the effective connection destination."
+                )
+        raise RuntimeError(
+            "Database safety check failed: query parameters are not permitted on test database URLs."
         )
 
 
@@ -208,3 +235,100 @@ def test_error_messages_contain_no_credentials():
     err = str(exc_info.value)
     assert "super_secret_password_123" not in err
     assert "super_secret_user" not in err
+
+
+# ===========================================================================
+# Inverse Adversarial Tests: Local URL Authority + Query-Level Redirection
+# ===========================================================================
+
+def test_query_parameter_host_override_on_local_authority_rejected():
+    """A URL with an approved local authority plus query-level 'host' must be rejected before connection."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?host=production.example.com",
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens?host=remote.database.net",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?host=localhost",  # query override forbidden
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        err = str(exc_info.value)
+        assert "query parameter 'host' is forbidden" in err
+        assert "pass" not in err
+
+
+def test_query_parameter_hostaddr_override_on_local_authority_rejected():
+    """A URL with an approved local authority plus remote 'hostaddr' must be rejected before connection."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?hostaddr=203.0.113.10",
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens?hostaddr=198.51.100.25",
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        err = str(exc_info.value)
+        assert "query parameter 'hostaddr' is forbidden" in err
+
+
+def test_query_parameter_dbname_override_on_local_authority_rejected():
+    """A URL with an approved local authority plus query-level 'dbname'/'database' must be rejected."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?dbname=production",
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?database=prod_db",
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?dbname=dispenselens",  # cannot bypass via query
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        err = str(exc_info.value)
+        assert ("query parameter 'dbname' is forbidden" in err or
+                "query parameter 'database' is forbidden" in err)
+
+
+def test_query_parameter_service_override_on_local_authority_rejected():
+    """A URL with an approved local authority plus query-level 'service' must be rejected."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?service=prod_service",
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?servicefile=/etc/pg_service.conf",
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        err = str(exc_info.value)
+        assert ("query parameter 'service' is forbidden" in err or
+                "query parameter 'servicefile' is forbidden" in err)
+
+
+def test_query_parameter_port_or_target_session_attrs_rejected():
+    """Query-level destination redirection via port or target_session_attrs must be rejected."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?port=5433",
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?target_session_attrs=primary",
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        err = str(exc_info.value)
+        assert ("query parameter 'port' is forbidden" in err or
+                "query parameter 'target_session_attrs' is forbidden" in err)
+
+
+def test_arbitrary_query_parameters_fail_closed():
+    """Any other query parameters on test database URLs fail closed."""
+    urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?sslmode=disable",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?connect_timeout=10",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?application_name=test",
+    ]
+    for url in urls:
+        with pytest.raises(RuntimeError, match="query parameters are not permitted on test database URLs"):
+            assert_safe_test_database(url)
+
+
+def test_adversarial_query_redirection_exposes_no_credentials():
+    """Adversarial query redirection URLs must never leak credentials in exception strings."""
+    url = "postgresql+psycopg://top_secret_user:super_secret_pw_999@localhost:5432/test_db?host=production.example.com&dbname=prod"
+    with pytest.raises(RuntimeError) as exc_info:
+        assert_safe_test_database(url)
+    err = str(exc_info.value)
+    assert "super_secret_pw_999" not in err
+    assert "top_secret_user" not in err

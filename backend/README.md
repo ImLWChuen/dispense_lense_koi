@@ -46,6 +46,9 @@ Set `DATABASE_URL` in your shell (or copy `.env.example` to `.env` for local wor
 $env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
 ```
 
+> **Note on Test Safety Policy:**
+> Automated persistence tests enforce fail-closed destination validation on `DATABASE_URL`. Connections must target approved local test hosts (`localhost`, `127.0.0.1`, `::1`, `dispenselens-postgres`, `postgres`) and disposable test database names (`dispenselens`, `test`, `test_*`, `*_test`). All connection query parameters (such as `host`, `hostaddr`, `dbname`, or `service` overrides) are strictly prohibited on test URLs.
+
 ### 3. Apply Migrations
 
 Run from the `backend/` directory:

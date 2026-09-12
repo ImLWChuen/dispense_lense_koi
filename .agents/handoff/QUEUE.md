@@ -1,9 +1,9 @@
 # Implementation handoff queue
 
-- Active task: `DLK-M3-007`
+- Active task: `DLK-M3-008`
 - Active status: `implemented`
 - Last accepted task: `DLK-M3-005`
-- Next task ID: `DLK-M3-008`
+- Next task ID: `DLK-M3-009`
 
 - DLK-M3-001 review: `changes_requested` at commit `8b411941b002815dbafbf03738760e7ab5424204`; see `reviews/DLK-M3-001-review.md`.
 - DLK-M3-002 review: `accepted` at commit `b825500cdd4253bcbc302ac6c3baad4114bcafa3`; see `reviews/DLK-M3-002-review.md`. This correction resolves and accepts DLK-M3-001.
@@ -11,7 +11,8 @@
 - DLK-M3-004 was closed out by the accepted correction DLK-M3-005.
 - DLK-M3-005 review: `accepted` at commit `9d7a6e06c3d25b6566bc013afe79f6d8f00d367d`; see `reviews/DLK-M3-005-review.md`.
 - DLK-M3-006 review: `changes_requested` at `01c1963a9ca053a1d3d1df364817e7f5bdca6865`; see `reviews/DLK-M3-006-review.md`.
-- The only ready task is `tasks/DLK-M3-007-persistence-contract-closeout.md`. Durable HTTP work remains gated on acceptance of this correction.
+- DLK-M3-007 review: `changes_requested` at `5114c50eb75712622c5f6f8497146f325b11ab11`; see `reviews/DLK-M3-007-review.md`. Its schema widening, migration, and persistence round-trip behavior passed reviewer replay; a query-parameter destination bypass remains.
+- The only ready task is `tasks/DLK-M3-008-effective-test-destination-safety.md`. Durable HTTP work remains gated on acceptance of this correction.
 - DLK-M3-006 establishes PostgreSQL configuration, Alembic schema evolution, and minimal atomic case + observation + immutable initial-analysis persistence. The existing initial diagnosis HTTP endpoint remains stateless.
 - See `NEXT-STEPS.md` for later work and teammate dependencies. Later roadmap entries are not released for execution.
 
