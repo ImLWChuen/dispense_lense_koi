@@ -1,0 +1,148 @@
+{
+  "defects": [
+    {
+      "code": "D01_TOO_LITTLE",
+      "name": "Too Little Material",
+      "description": "Dispensed volume is consistently less than the target amount, resulting in undersized deposits.",
+      "symptom_patterns": [
+        {"type": "deposit_size", "value": "undersized"},
+        {"type": "deposit_size", "value": "small"},
+        {"type": "deposit_size", "value": "insufficient"},
+        {"type": "deposit_size", "value": "too_little"},
+        {"type": "deposit_size", "value": "below_target"},
+        {"type": "visual_appearance", "value": "thin_deposit"},
+        {"type": "visual_appearance", "value": "flat_deposit"}
+      ],
+      "applicable_causes": [
+        "nozzle_restriction",
+        "air_supply_issue",
+        "material_condition",
+        "pressure_instability",
+        "parameter_issue",
+        "equipment_condition"
+      ],
+      "source_references": ["dispensing_fundamentals_ch3", "defect_analysis_guide"]
+    },
+    {
+      "code": "D02_TOO_MUCH",
+      "name": "Too Much Material",
+      "description": "Dispensed volume is consistently more than the target amount, resulting in oversized deposits.",
+      "symptom_patterns": [
+        {"type": "deposit_size", "value": "oversized"},
+        {"type": "deposit_size", "value": "large"},
+        {"type": "deposit_size", "value": "excessive"},
+        {"type": "deposit_size", "value": "too_much"},
+        {"type": "deposit_size", "value": "above_target"},
+        {"type": "visual_appearance", "value": "tall_deposit"},
+        {"type": "visual_appearance", "value": "bulging_deposit"}
+      ],
+      "applicable_causes": [
+        "parameter_issue",
+        "pressure_instability",
+        "material_condition",
+        "nozzle_condition",
+        "equipment_condition",
+        "valve_issue"
+      ],
+      "source_references": ["dispensing_fundamentals_ch3", "defect_analysis_guide"]
+    },
+    {
+      "code": "D03_INCONSISTENT_SIZE",
+      "name": "Inconsistent Dispensing Size",
+      "description": "Dispensed volume varies from shot to shot, producing deposits of different sizes.",
+      "symptom_patterns": [
+        {"type": "deposit_size", "value": "inconsistent"},
+        {"type": "deposit_size", "value": "variable"},
+        {"type": "deposit_size", "value": "varying"},
+        {"type": "deposit_size", "value": "uneven"},
+        {"type": "frequency_pattern", "value": "intermittent"},
+        {"type": "runtime_pattern", "value": "after_prolonged_operation"},
+        {"type": "runtime_pattern", "value": "worsens_over_time"},
+        {"type": "location_pattern", "value": "varies_across_points"}
+      ],
+      "applicable_causes": [
+        "air_supply_issue",
+        "nozzle_restriction",
+        "material_condition",
+        "pressure_instability",
+        "parameter_issue",
+        "equipment_condition"
+      ],
+      "source_references": ["dispensing_fundamentals_ch4", "defect_analysis_guide"]
+    },
+    {
+      "code": "D04_MISSING_DOTS",
+      "name": "Missing Dots",
+      "description": "One or more dispensing locations receive no material at all.",
+      "symptom_patterns": [
+        {"type": "deposit_presence", "value": "missing"},
+        {"type": "deposit_presence", "value": "absent"},
+        {"type": "deposit_presence", "value": "no_deposit"},
+        {"type": "deposit_count", "value": "fewer_than_expected"},
+        {"type": "location_pattern", "value": "specific_nozzle"},
+        {"type": "location_pattern", "value": "random_locations"},
+        {"type": "frequency_pattern", "value": "intermittent"},
+        {"type": "frequency_pattern", "value": "consistent"}
+      ],
+      "applicable_causes": [
+        "nozzle_restriction",
+        "air_supply_issue",
+        "valve_issue",
+        "material_condition",
+        "equipment_condition",
+        "pressure_instability"
+      ],
+      "source_references": ["dispensing_fundamentals_ch5", "defect_analysis_guide"]
+    },
+    {
+      "code": "D05_SPREADING",
+      "name": "Spreading",
+      "description": "Dispensed material spreads excessively on the substrate instead of forming a controlled dot.",
+      "symptom_patterns": [
+        {"type": "spreading_behaviour", "value": "excessive_spread"},
+        {"type": "spreading_behaviour", "value": "flat_spread"},
+        {"type": "spreading_behaviour", "value": "bleeding"},
+        {"type": "deposit_shape", "value": "flat"},
+        {"type": "deposit_shape", "value": "irregular_spread"},
+        {"type": "visual_appearance", "value": "thin_flat"},
+        {"type": "visual_appearance", "value": "bleeding_edges"},
+        {"type": "material_state", "value": "low_viscosity"},
+        {"type": "temperature", "value": "elevated"}
+      ],
+      "applicable_causes": [
+        "material_condition",
+        "parameter_issue",
+        "temperature_issue",
+        "substrate_condition",
+        "nozzle_condition",
+        "equipment_condition"
+      ],
+      "source_references": ["dispensing_fundamentals_ch6", "defect_analysis_guide"]
+    },
+    {
+      "code": "D06_BUBBLES_ABNORMAL_SHAPE",
+      "name": "Bubbles / Abnormal Shape",
+      "description": "Dispensed deposits contain trapped air bubbles or exhibit abnormal shapes.",
+      "symptom_patterns": [
+        {"type": "bubble_presence", "value": "visible_bubbles"},
+        {"type": "bubble_presence", "value": "air_entrapment"},
+        {"type": "deposit_shape", "value": "abnormal"},
+        {"type": "deposit_shape", "value": "irregular"},
+        {"type": "deposit_shape", "value": "satellite_dots"},
+        {"type": "deposit_shape", "value": "tailing"},
+        {"type": "visual_appearance", "value": "bubbles_visible"},
+        {"type": "visual_appearance", "value": "crater_shape"},
+        {"type": "visual_appearance", "value": "void_inside"}
+      ],
+      "applicable_causes": [
+        "air_supply_issue",
+        "material_condition",
+        "nozzle_condition",
+        "parameter_issue",
+        "equipment_condition",
+        "valve_issue"
+      ],
+      "source_references": ["dispensing_fundamentals_ch7", "defect_analysis_guide"]
+    }
+  ]
+}

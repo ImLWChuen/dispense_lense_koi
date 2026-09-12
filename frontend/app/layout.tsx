@@ -1,29 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "DispenseLens KOI",
-  description: "AI-assisted industrial dispensing troubleshooting platform that helps technicians identify dispensing defects, rank probable causes, analyze visual evidence, and receive explainable troubleshooting recommendations.",
+  title: "DispenseLens",
+  description:
+      "AI-assisted industrial dispensing defect diagnosis and troubleshooting platform.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+                                     children,
+                                   }: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
+      <html lang="en">
+      <body>{children}</body>
+      </html>
   );
 }
