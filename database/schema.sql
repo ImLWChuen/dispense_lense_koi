@@ -1,0 +1,12 @@
+-- DispenseLens / DispenseIQ Schema Notice
+--
+-- Authoritative schema evolution is managed strictly through Alembic migrations
+-- located in backend/alembic/versions/.
+--
+-- Do NOT maintain hand-written duplicate DDL in this file.
+--
+-- To inspect or execute migrations against the local PostgreSQL database:
+--   cd backend
+--   $env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
+--   .\.venv\Scripts\python.exe -m alembic upgrade head
+--   .\.venv\Scripts\python.exe -m alembic current

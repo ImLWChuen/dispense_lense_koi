@@ -21,6 +21,42 @@ Run all commands from the `backend/` directory:
    .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
    ```
 
+## Database Setup and Migrations (Local PostgreSQL)
+
+DispenseLens uses PostgreSQL with SQLAlchemy 2.x and Alembic for relational persistence.
+
+### 1. Start Local PostgreSQL Service
+
+From the repository root:
+```powershell
+# Validate compose configuration
+docker compose config
+
+# Start PostgreSQL 16 service in background
+docker compose up -d postgres
+
+# Stop PostgreSQL service when finished
+docker compose down
+```
+
+### 2. Configure Environment
+
+Set `DATABASE_URL` in your shell (or copy `.env.example` to `.env` for local work, do NOT commit `.env`):
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
+```
+
+### 3. Apply Migrations
+
+Run from the `backend/` directory:
+```powershell
+# Upgrade to latest revision
+.\.venv\Scripts\python.exe -m alembic upgrade head
+
+# Inspect current revision
+.\.venv\Scripts\python.exe -m alembic current
+```
+
 ## Running Tests
 
 Run the test suite using pytest:
@@ -28,6 +64,9 @@ Run the test suite using pytest:
 ```powershell
 # Run the focused health API test
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_health_api.py -q
+
+# Run focused PostgreSQL persistence integration tests
+.\.venv\Scripts\python.exe -m pytest tests/integration/test_persistence.py -q
 
 # Run all backend tests
 .\.venv\Scripts\python.exe -m pytest -q

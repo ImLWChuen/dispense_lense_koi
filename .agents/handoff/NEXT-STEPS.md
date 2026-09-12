@@ -5,7 +5,7 @@ Planner snapshot: 2026-09-12, baseline `b953ebf`. Only DLK-M3-004 is executable.
 | Order | Outcome | Release gate / teammate dependency |
 | --- | --- | --- |
 | 1: DLK-M3-004, implemented | Initial diagnosis HTTP API plus import compatibility | Member 2 merge gate satisfied. Implementation complete, ready for review. |
-| 2: planned | PostgreSQL persistence contract and minimal case + immutable initial-analysis storage | Review 004. Inspect actual engine outputs and settle storage schema, migration tooling, and local PostgreSQL setup before implementation. Preserve original observations/provenance and independent cause/recovery records. No silent substitution with SQLite. |
+| 2: DLK-M3-006, implemented | PostgreSQL persistence contract and minimal case + immutable initial-analysis storage | Implementation complete, ready for review. Real PostgreSQL verified via Docker Compose, Alembic migrations, and integration tests. |
 | 3: planned | Create and retrieve a durable diagnosed case through API | Persistence accepted; agree additive request/response and error contract with Member 1. Verify restart durability and atomic writes. |
 | 4: planned | Submit one answer and append a new analysis revision | Durable case accepted; verify Member 2 answer semantics and define stale-revision conflict behavior. Previous revisions must remain unchanged. |
 | 5: planned | Record check execution/finding and subsequent ranking | Answer flow accepted; Member 2 must resolve any reproduced check-mapping problems before this becomes a technician-facing workflow. |
