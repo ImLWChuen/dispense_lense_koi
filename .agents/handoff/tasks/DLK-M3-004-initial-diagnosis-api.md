@@ -145,7 +145,7 @@ Implemented the initial diagnosis HTTP API endpoint `POST /api/v1/diagnoses` in 
 - **Import Normalization & Packaging:** Declared `package-data` in `backend/pyproject.toml` so editable installs reliably resolve knowledge JSON files. Normalized all `backend.app` imports to `app` so backend modules and tests work seamlessly under standard standalone installation without `sys.path` hacks.
 - **Engine Class Aliasing:** Defined `DiagnosisEngine = DiagnosticEngine` in `backend/app/services/diagnosis/engine.py` and exported it in `__init__.py` to support external consumers and verification checks while maintaining internal codebase naming consistency.
 - **Stateless Endpoint Constraints:** Forbade extra fields (`extra = "forbid"`), rejecting client-supplied `case_id`, previous answers, check results, or revision numbers. Generated transient UUIDv4 `case_id` on the server per request.
-- **Error Sanitization:** Configured unhandled engine exceptions to log server-side without logging client payloads, and return a sanitized `{"detail": "An internal diagnostic error occurred."}` 500 response to prevent leaking filesystem paths, stack traces, or credentials.
+- **Error Sanitization:** Configured unhandled engine exceptions to log server-side without logging client payloads, and return a sanitized `{"detail": "An unexpected error occurred during diagnosis evaluation."}` 500 response to prevent leaking filesystem paths, stack traces, or credentials.
 
 ### Verification results
 
@@ -167,7 +167,10 @@ Implemented the initial diagnosis HTTP API endpoint `POST /api/v1/diagnoses` in 
 - **Follow-up Interaction:** Follow-up questions, check recording, and revision updates will be introduced in subsequent roadmap tasks once the database persistence layer is implemented.
 - **Symptom Extraction:** Uses deterministic keyword mapping in this increment; LLM-based extraction is planned for future iterations.
 
+#### Addendum (DLK-M3-005 Closeout)
+- Corrected error sanitization documentation above to match the implemented canonical 500 detail string (`"An unexpected error occurred during diagnosis evaluation."`).
+- Addressed review findings (R1, R2) in DLK-M3-005: strengthened integration tests to cover known defect code rejection, state/identity isolation, and full API-versus-direct-engine semantic parity; aligned `docs/api/api-spec.md` with the executable contract; and removed trailing blank line formatting.
+
 ### Proposed commit message
 
 `feat(api): expose initial diagnosis through FastAPI`
-

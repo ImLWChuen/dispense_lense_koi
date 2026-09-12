@@ -56,12 +56,14 @@ The DispenseLens Backend provides REST APIs for automated troubleshooting and di
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
+| `id` | `string` | No | Auto-generated UUIDv4 | Unique identifier for this observation. If omitted by the caller, the server generates a UUIDv4. |
 | `observation_type` | `string` | **Yes** | — | Category of observation. Valid values: `deposit_size`, `deposit_count`, `deposit_shape`, `deposit_presence`, `time_pattern`, `runtime_pattern`, `location_pattern`, `frequency_pattern`, `material_state`, `temperature`, `pressure`, `nozzle_condition`, `equipment_condition`, `process_parameter`, `visual_appearance`, `bubble_presence`, `spreading_behaviour`, `other`. |
 | `value` | `string` | **Yes** | — | Observed descriptor or state (e.g. `"undersized"`, `"worsens_over_time"`). |
-| `confidence` | `float` \| `null` | No | `null` | Confidence score between `0.0` and `1.0`. |
-| `statement_type` | `string` | No | `"USER_OBSERVATION"` | `USER_OBSERVATION`, `USER_INTERPRETATION`, or `AI_INFERENCE`. |
-| `source` | `string` | No | `"USER"` | Evidence provenance: `USER`, `MEASUREMENT`, `IMAGE`, `SYSTEM`, `HISTORICAL_CASE`. |
 | `original_text` | `string` \| `null` | No | `null` | Original text snippet from which observation was derived. |
+| `statement_type` | `string` | No | `"USER_OBSERVATION"` | Nature of statement: `USER_OBSERVATION`, `USER_INTERPRETATION`, or `AI_INFERENCE`. |
+| `source` | `string` | No | `"USER"` | Evidence provenance: `USER`, `MEASUREMENT`, `IMAGE`, `SYSTEM`, `HISTORICAL_CASE`. |
+| `confidence` | `float` \| `null` | No | `null` | Confidence score between `0.0` and `1.0`. |
+| `timestamp` | `string` (ISO 8601) | No | Auto-generated UTC time | Timestamp when observation was created or recorded. Defaults to current UTC time. |
 
 #### Input Validation Rules (HTTP 422)
 
@@ -72,7 +74,10 @@ The endpoint validates:
 4. **Unknown Defect Code:** If `defect_code` is provided, it is checked against the knowledge base (`app.knowledge.get_defect_by_code`). Unrecognized codes return `422 Unprocessable Entity`.
 5. **Forbidden Fields:** Supplying forbidden top-level fields (e.g., `case_id`, `previous_answers`, `analysis_revision`, `extra_property`) returns `422 Unprocessable Entity`.
 
-#### Real Execution Example
+#### Representative Execution Example
+
+> [!NOTE]
+> The following request and response demonstrate an actual diagnostic run for a nozzle restriction scenario. Generated UUIDs (such as the top-level `case_id` and the generated `observation_id`) and timestamps are distinct and independently generated on each execution run.
 
 ##### Request Payload (`POST /api/v1/diagnoses`)
 ```json
@@ -104,7 +109,7 @@ The endpoint validates:
       "conclusion": "SUSPECTED",
       "supporting_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "nozzle_restriction",
           "relation": "SUPPORTS",
           "strength": "STRONG",
@@ -139,7 +144,7 @@ The endpoint validates:
       "conclusion": "SUSPECTED",
       "supporting_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "pressure_instability",
           "relation": "SUPPORTS",
           "strength": "MODERATE",
@@ -173,7 +178,7 @@ The endpoint validates:
       "conclusion": "SUSPECTED",
       "supporting_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "air_supply_issue",
           "relation": "SUPPORTS",
           "strength": "MODERATE",
@@ -212,7 +217,7 @@ The endpoint validates:
       "contradicting_evidence": [],
       "neutral_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "equipment_condition",
           "relation": "NEUTRAL",
           "strength": "WEAK",
@@ -241,7 +246,7 @@ The endpoint validates:
       "conclusion": "SUSPECTED",
       "supporting_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "material_condition",
           "relation": "SUPPORTS",
           "strength": "WEAK",
@@ -282,7 +287,7 @@ The endpoint validates:
       "contradicting_evidence": [],
       "neutral_evidence": [
         {
-          "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+          "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
           "cause_id": "parameter_issue",
           "relation": "NEUTRAL",
           "strength": "WEAK",
@@ -350,7 +355,7 @@ The endpoint validates:
         "conclusion": "SUSPECTED",
         "supporting_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "nozzle_restriction",
             "relation": "SUPPORTS",
             "strength": "STRONG",
@@ -385,7 +390,7 @@ The endpoint validates:
         "conclusion": "SUSPECTED",
         "supporting_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "pressure_instability",
             "relation": "SUPPORTS",
             "strength": "MODERATE",
@@ -419,7 +424,7 @@ The endpoint validates:
         "conclusion": "SUSPECTED",
         "supporting_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "air_supply_issue",
             "relation": "SUPPORTS",
             "strength": "MODERATE",
@@ -458,7 +463,7 @@ The endpoint validates:
         "contradicting_evidence": [],
         "neutral_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "equipment_condition",
             "relation": "NEUTRAL",
             "strength": "WEAK",
@@ -487,7 +492,7 @@ The endpoint validates:
         "conclusion": "SUSPECTED",
         "supporting_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "material_condition",
             "relation": "SUPPORTS",
             "strength": "WEAK",
@@ -528,7 +533,7 @@ The endpoint validates:
         "contradicting_evidence": [],
         "neutral_evidence": [
           {
-            "observation_id": "834965ca-4d2e-462a-a6f7-8c3a32789d89",
+            "observation_id": "5c5600d8-2b33-47ca-9be5-c60c2038c2a6",
             "cause_id": "parameter_issue",
             "relation": "NEUTRAL",
             "strength": "WEAK",
@@ -568,21 +573,61 @@ The endpoint validates:
 ## Error Handling
 
 ### HTTP 422 Unprocessable Entity
-Returned when request input fails validation rules.
+Returned when request input fails validation rules. Validation errors are returned as a structured array in the `detail` field.
 
-Example response:
+Example: Insufficient evidence input (empty/whitespace description with no observations, or defect code alone):
 ```json
 {
-  "detail": "At least one observation or a non-empty problem description must be provided."
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, Insufficient evidence input: provide a non-empty description or at least one observation.",
+      "input": {
+        "description": "   "
+      },
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
 }
 ```
-Or standard FastAPI field validation errors:
+
+Example: Unknown defect code:
+```json
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": [
+        "body"
+      ],
+      "msg": "Value error, Unknown defect code: 'D99_UNKNOWN'",
+      "input": {
+        "description": "Dispensing dots missing",
+        "defect_code": "D99_UNKNOWN"
+      },
+      "ctx": {
+        "error": {}
+      }
+    }
+  ]
+}
+```
+
+Example: Extra forbidden field (such as caller-supplied `case_id` or `analysis_revision`):
 ```json
 {
   "detail": [
     {
       "type": "extra_forbidden",
-      "loc": ["body", "case_id"],
+      "loc": [
+        "body",
+        "case_id"
+      ],
       "msg": "Extra inputs are not permitted",
       "input": "custom-id"
     }
@@ -596,7 +641,7 @@ Returned when the internal diagnostic engine encounters an unhandled exception.
 Example response:
 ```json
 {
-  "detail": "An internal diagnostic error occurred."
+  "detail": "An unexpected error occurred during diagnosis evaluation."
 }
 ```
 *Note: Exception details, stack traces, file system paths, and submitted user data are sanitized and never exposed in the response.*

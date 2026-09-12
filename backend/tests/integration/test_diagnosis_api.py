@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,27 @@ from app.schemas.diagnosis import (
 from app.services.diagnosis.engine import DiagnosticEngine
 
 client = TestClient(app)
+
+
+def _normalize_diagnosis_result(result_dict: dict) -> dict:
+    """Normalize a DiagnosisResult dict by stripping only nondeterministic generated IDs and timestamps."""
+    normalized = copy.deepcopy(result_dict)
+    normalized.pop("case_id", None)
+
+    if normalized.get("analysis_revision"):
+        normalized["analysis_revision"].pop("timestamp", None)
+
+    def clean_evidence(causes: list[dict]) -> None:
+        for cause in causes:
+            for rel_type in ("supporting_evidence", "contradicting_evidence", "neutral_evidence"):
+                for ev in cause.get(rel_type, []):
+                    ev.pop("observation_id", None)
+
+    clean_evidence(normalized.get("ranked_causes", []))
+    if normalized.get("analysis_revision"):
+        clean_evidence(normalized["analysis_revision"].get("ranked_causes", []))
+
+    return normalized
 
 
 def test_diagnosis_endpoint_in_openapi():
@@ -50,8 +72,11 @@ def test_valid_initial_diagnosis_supported_scenario():
 
 
 def test_scores_and_evidence_match_direct_engine_call():
-    description = "The dispensing dots become smaller after the machine has been running for around 20 minutes."
-    payload = {"description": description}
+    payload = {
+        "description": "The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+        "material": "epoxy",
+        "method": "time_pressure",
+    }
 
     # API call
     response = client.post("/api/v1/diagnoses", json=payload)
@@ -60,19 +85,34 @@ def test_scores_and_evidence_match_direct_engine_call():
 
     # Direct engine call with same initial request
     engine = DiagnosticEngine()
-    direct_result = engine.diagnose(DiagnosisRequest(description=description))
+    direct_req = DiagnosisRequest(
+        description=payload["description"],
+        material=payload["material"],
+        method=payload["method"],
+    )
+    direct_result = engine.diagnose(direct_req)
+    direct_data = direct_result.model_dump(mode="json")
 
-    # Compare domain outputs (excluding auto-generated UUIDs and timestamps)
+    # Complete semantic parity check after excluding only nondeterministic generated IDs/timestamps
+    norm_api = _normalize_diagnosis_result(api_data)
+    norm_direct = _normalize_diagnosis_result(direct_data)
+    assert norm_api == norm_direct
+
+    # Detailed semantic checks on preserved domain content and evidence
     assert api_data["defect"] == direct_result.defect
     assert api_data["defect_name"] == direct_result.defect_name
-    assert len(api_data["ranked_causes"]) == len(direct_result.ranked_causes)
-
-    for api_cause, direct_cause in zip(api_data["ranked_causes"], direct_result.ranked_causes):
-        assert api_cause["cause_id"] == direct_cause.cause_id
-        assert api_cause["cause_name"] == direct_cause.cause_name
-        assert abs(api_cause["score"] - direct_cause.score) < 1e-5
-        assert api_cause["conclusion"] == direct_cause.conclusion.value
-        assert len(api_cause["supporting_evidence"]) == len(direct_cause.supporting_evidence)
+    assert len(api_data["ranked_causes"]) > 0
+    top_cause = api_data["ranked_causes"][0]
+    assert top_cause["supporting_evidence"]
+    first_ev = top_cause["supporting_evidence"][0]
+    assert first_ev["relation"] == "SUPPORTS"
+    assert first_ev["strength"] in ("STRONG", "MODERATE", "WEAK")
+    assert first_ev["source"] == "USER"
+    assert first_ev["explanation"]
+    assert "positive_evidence" in top_cause["score_breakdown"]
+    assert api_data["analysis_revision"]["revision_number"] == 1
+    assert api_data["next_question"] is not None
+    assert api_data["next_check"] is not None
 
 
 def test_independent_submissions_generate_unique_case_ids_and_do_not_leak_state():
@@ -94,6 +134,32 @@ def test_independent_submissions_generate_unique_case_ids_and_do_not_leak_state(
     # Revisions start at 1 independently
     assert data1["analysis_revision"]["revision_number"] == 1
     assert data2["analysis_revision"]["revision_number"] == 1
+
+    # Extract all generated evidence observation IDs from both responses
+    def extract_evidence_obs_ids(data: dict) -> set[str]:
+        obs_ids = set()
+        for cause in data.get("ranked_causes", []):
+            for rel_type in ("supporting_evidence", "contradicting_evidence", "neutral_evidence"):
+                for item in cause.get(rel_type, []):
+                    oid = item.get("observation_id")
+                    if oid:
+                        obs_ids.add(oid)
+        if data.get("analysis_revision"):
+            for cause in data["analysis_revision"].get("ranked_causes", []):
+                for rel_type in ("supporting_evidence", "contradicting_evidence", "neutral_evidence"):
+                    for item in cause.get(rel_type, []):
+                        oid = item.get("observation_id")
+                        if oid:
+                            obs_ids.add(oid)
+        return obs_ids
+
+    obs_ids_1 = extract_evidence_obs_ids(data1)
+    obs_ids_2 = extract_evidence_obs_ids(data2)
+
+    assert len(obs_ids_1) > 0
+    assert len(obs_ids_2) > 0
+    # Assert generated evidence/observation identities do not leak across runs
+    assert obs_ids_1.isdisjoint(obs_ids_2)
 
 
 def test_unidentifiable_problem_returns_200_with_warning():
@@ -131,25 +197,30 @@ def test_observations_without_description_accepted():
     assert data["defect"] == "D01_TOO_LITTLE"
 
 
-
 def test_validation_empty_or_whitespace_description_without_observations():
     # Empty payload
     r1 = client.post("/api/v1/diagnoses", json={})
     assert r1.status_code == 422
+    errors1 = r1.json().get("detail", [])
+    assert any("Insufficient evidence input" in err.get("msg", "") for err in errors1)
 
     # Whitespace only
     r2 = client.post("/api/v1/diagnoses", json={"description": "   "})
     assert r2.status_code == 422
+    errors2 = r2.json().get("detail", [])
+    assert any("Insufficient evidence input" in err.get("msg", "") for err in errors2)
 
 
 def test_defect_code_alone_is_insufficient_evidence():
     payload = {
-        "defect_code": "D01_BRIDGING",
+        "defect_code": "D01_TOO_LITTLE",
         "description": "",
         "observations": [],
     }
     response = client.post("/api/v1/diagnoses", json=payload)
     assert response.status_code == 422
+    errors = response.json().get("detail", [])
+    assert any("Insufficient evidence input" in err.get("msg", "") for err in errors)
 
 
 def test_unknown_defect_code_returns_422():
@@ -159,6 +230,8 @@ def test_unknown_defect_code_returns_422():
     }
     response = client.post("/api/v1/diagnoses", json=payload)
     assert response.status_code == 422
+    errors = response.json().get("detail", [])
+    assert any("Unknown defect code" in err.get("msg", "") for err in errors)
 
 
 def test_extra_forbidden_fields_return_422():
