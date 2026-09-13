@@ -23,15 +23,15 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(o
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     EvidenceSource,
     Observation,
     ObservationType,
     QuestionAnswer,
     StructuredCase,
 )
-from backend.app.services.diagnosis.engine import DiagnosticEngine
-from backend.app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
+from app.services.diagnosis.engine import DiagnosticEngine
+from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
 
 
 class TestQuestionAnswerDiagnosisRevision(unittest.TestCase):

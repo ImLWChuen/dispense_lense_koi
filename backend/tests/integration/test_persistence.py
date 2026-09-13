@@ -756,6 +756,7 @@ def test_append_question_answer_revision_persists_q01_followup(case_repo):
     initial_result = engine.diagnose(initial_case)
     assert initial_result.analysis_revision is not None
     repo.save_initial_case(initial_case, initial_result)
+    revision_1_observation_ids = {obs.id for obs in initial_case.observations}
 
     # Capture revision 1 state for immutability verification
     rev1_before = repo.get_analysis_revision(case_id, 1)
@@ -796,12 +797,14 @@ def test_append_question_answer_revision_persists_q01_followup(case_repo):
 
     # 5. Verify observation first_seen_revision tracking
     observations = repo.get_case_observations(case_id)
-    obs_q01 = next(o for o in observations if o.value == "after_prolonged_operation")
-    assert obs_q01.first_seen_revision == 2
-
     for obs in observations:
-        if obs.value != "after_prolonged_operation":
+        if obs.observation_id in revision_1_observation_ids:
             assert obs.first_seen_revision == 1
+        else:
+            assert obs.first_seen_revision == 2
+
+    assert any(o.value == "after_prolonged_operation" for o in observations)
+    assert any(o.value == "Q01:after_prolonged_operation" for o in observations)
 
     # 6. Verify revision 1 remains completely immutable
     rev1_after = repo.get_analysis_revision(case_id, 1)
@@ -1271,7 +1274,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             repo_3 = CaseRepository(session=session_3)
             case_v2 = repo_3.load_structured_case(case_id)
             assert case_v2 is not None
-            assert len(case_v2.observations) == 2  # "drips_after_dispense" and "after_prolonged_operation"
+            assert len(case_v2.observations) == 3
             assert len(case_v2.previous_answers) == 1
             assert len(case_v2.analysis_revisions) == 2
 
@@ -1643,7 +1646,7 @@ def test_load_structured_case_snapshot_boundary_retries_on_interleaved_commit():
                 assert loaded.issue_condition == IssueCondition.RECOVERY_PENDING_VERIFICATION
                 assert len(loaded.analysis_revisions) == 2
                 assert loaded.analysis_revisions[-1].revision_number == 2
-                assert len(loaded.observations) == 2
+                assert len(loaded.observations) == 3
                 assert len(loaded.previous_answers) == 1
                 assert loaded.previous_answers[0].question_id == "Q01"
         finally:

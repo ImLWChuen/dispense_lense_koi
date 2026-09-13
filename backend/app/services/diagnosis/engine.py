@@ -615,7 +615,7 @@ class CheckResultHandler:
 # Question Answer Handling
 # ===========================================================================
 
-from backend.app.services.diagnosis.question_answer_handler import (
+from app.services.diagnosis.question_answer_handler import (
     QuestionAnswerHandler,
     QuestionAnswerResult,
 )
