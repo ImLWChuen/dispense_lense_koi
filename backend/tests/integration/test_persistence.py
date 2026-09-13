@@ -20,7 +20,7 @@ import uuid
 from typing import Generator
 
 import pytest
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, event, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1567,3 +1567,129 @@ def test_concurrent_injected_sessions_load_and_append_flow_avoids_deadlock_and_r
         with factory() as clean_session:
             clean_session.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
             clean_session.commit()
+
+
+def test_load_structured_case_snapshot_boundary_retries_on_interleaved_commit():
+    """Verify that load_structured_case via the default loading path detects a commit
+    that occurs between reading CaseModel and reading revision history, retries cleanly,
+    and returns metadata and history that belong to the exact same revision."""
+    factory = get_session_factory()
+    engine_db = get_engine()
+    diag_engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+
+    try:
+        # 1. Persist initial case at Revision 1
+        with factory() as s:
+            repo = CaseRepository(session=s)
+            c = diag_engine.prepare_case(
+                StructuredCase(
+                    case_id=case_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size",
+                    description="Dots are shrinking",
+                    observations=[
+                        Observation(
+                            observation_type=ObservationType.NOZZLE_CONDITION,
+                            value="drips_after_dispense",
+                        )
+                    ],
+                )
+            )
+            res = diag_engine.diagnose(c)
+            repo.save_initial_case(c, res)
+            s.commit()
+
+        # 2. Set up deterministic interleave:
+        # An independent session commits revision 2 and evolves CaseModel's issue_condition
+        # between the reader reading CaseModel and reading observations/revisions on attempt 0.
+        interleaved = False
+
+        def interleave_commit_hook(conn, cursor, statement, parameters, context, executemany):
+            nonlocal interleaved
+            # Trigger hook on the reader's first observation query (right after reading CaseModel)
+            if "case_observations" in statement.lower() and not interleaved:
+                interleaved = True
+                with factory() as ws:
+                    w_repo = CaseRepository(session=ws)
+                    w_case = w_repo.load_structured_case(case_id)
+                    assert w_case is not None
+                    ans = QuestionAnswer(
+                        question_id="Q01",
+                        answer_value="after_prolonged_operation",
+                        source=EvidenceSource.USER,
+                    )
+                    up_case, res2 = diag_engine.submit_question_answer(w_case, ans)
+                    res2.issue_condition = IssueCondition.RECOVERY_PENDING_VERIFICATION
+                    w_repo.append_question_answer_revision(
+                        case=up_case,
+                        answer=ans,
+                        result=res2,
+                        expected_revision=1,
+                    )
+                    ws.commit()
+
+        event.listen(engine_db, "before_cursor_execute", interleave_commit_hook)
+
+        try:
+            # 3. Reader exercises the default loading path (for_update=False)
+            with factory() as rs:
+                r_repo = CaseRepository(session=rs)
+                loaded = r_repo.load_structured_case(case_id)
+                assert loaded is not None
+
+                # 4. Verify returned metadata and history belong to the EXACT same revision (Revision 2)
+                assert loaded.issue_condition == IssueCondition.RECOVERY_PENDING_VERIFICATION
+                assert len(loaded.analysis_revisions) == 2
+                assert loaded.analysis_revisions[-1].revision_number == 2
+                assert len(loaded.observations) == 2
+                assert len(loaded.previous_answers) == 1
+                assert loaded.previous_answers[0].question_id == "Q01"
+        finally:
+            event.remove(engine_db, "before_cursor_execute", interleave_commit_hook)
+
+    finally:
+        with factory() as s:
+            s.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
+            s.commit()
+
+
+def test_load_structured_case_exhausted_retries_raises_explicit_runtime_error():
+    """Verify that if continuous concurrent writes prevent a verified snapshot,
+    load_structured_case explicitly fails with RuntimeError rather than returning an unverified attempt."""
+    factory = get_session_factory()
+    diag_engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+
+    try:
+        with factory() as s:
+            repo = CaseRepository(session=s)
+            c = diag_engine.prepare_case(
+                StructuredCase(
+                    case_id=case_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size",
+                    description="Dots are shrinking",
+                )
+            )
+            res = diag_engine.diagnose(c)
+            repo.save_initial_case(c, res)
+            s.commit()
+
+        calls = [0]
+        with factory() as rs:
+            r_repo = CaseRepository(session=rs)
+
+            # Simulate continuous revision churn across all attempts
+            def churning_scalar(stmt, *args, **kwargs):
+                calls[0] += 1
+                return calls[0]
+
+            rs.scalar = churning_scalar
+            with pytest.raises(RuntimeError, match="Could not obtain a verified consistent snapshot"):
+                r_repo.load_structured_case(case_id)
+    finally:
+        with factory() as s:
+            s.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
+            s.commit()

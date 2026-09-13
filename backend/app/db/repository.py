@@ -294,8 +294,18 @@ class CaseRepository:
             rev_models: list[AnalysisRevisionModel] = []
             obs_models: list[ObservationModel] = []
             qa_models: list[QuestionAnswerModel] = []
+            verified_snapshot = False
 
-            for _ in range(3):
+            max_retries = 3
+            for attempt in range(max_retries):
+                # Read revision marker BEFORE reading CaseModel or any case state
+                start_rev = session.scalar(
+                    select(AnalysisRevisionModel.revision_number)
+                    .where(AnalysisRevisionModel.case_id == case_id)
+                    .order_by(AnalysisRevisionModel.revision_number.desc())
+                    .execution_options(populate_existing=True)
+                )
+
                 stmt_case = (
                     select(CaseModel)
                     .where(CaseModel.case_id == case_id)
@@ -305,22 +315,26 @@ class CaseRepository:
                 if case_model is None:
                     return None
 
+                target_revision = start_rev if start_rev is not None else 1
+
                 rev_models = list(
                     session.scalars(
                         select(AnalysisRevisionModel)
-                        .where(AnalysisRevisionModel.case_id == case_id)
+                        .where(
+                            AnalysisRevisionModel.case_id == case_id,
+                            AnalysisRevisionModel.revision_number <= target_revision,
+                        )
                         .order_by(AnalysisRevisionModel.revision_number)
                         .execution_options(populate_existing=True)
                     ).all()
                 )
-                latest_revision = rev_models[-1].revision_number if rev_models else 1
 
                 obs_models = list(
                     session.scalars(
                         select(ObservationModel)
                         .where(
                             ObservationModel.case_id == case_id,
-                            ObservationModel.first_seen_revision <= latest_revision,
+                            ObservationModel.first_seen_revision <= target_revision,
                         )
                         .order_by(ObservationModel.id)
                         .execution_options(populate_existing=True)
@@ -332,7 +346,7 @@ class CaseRepository:
                         select(QuestionAnswerModel)
                         .where(
                             QuestionAnswerModel.case_id == case_id,
-                            QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                            QuestionAnswerModel.resulting_revision_number <= target_revision,
                         )
                         .order_by(
                             QuestionAnswerModel.resulting_revision_number,
@@ -342,16 +356,26 @@ class CaseRepository:
                     ).all()
                 )
 
-                # Verify that no interleaved write committed a newer revision while reading
-                cur_latest = session.scalar(
+                # Read revision marker AFTER all case state queries to verify snapshot integrity
+                end_rev = session.scalar(
                     select(AnalysisRevisionModel.revision_number)
                     .where(AnalysisRevisionModel.case_id == case_id)
                     .order_by(AnalysisRevisionModel.revision_number.desc())
                     .execution_options(populate_existing=True)
                 )
-                if cur_latest is not None and cur_latest != latest_revision:
+
+                # If an interleaved write committed during reconstruction, retry
+                if end_rev != start_rev:
                     continue
+
+                verified_snapshot = True
                 break
+
+            if not verified_snapshot:
+                raise RuntimeError(
+                    f"Could not obtain a verified consistent snapshot for case '{case_id}' "
+                    f"after {max_retries} attempts due to concurrent modifications."
+                )
 
             if case_model is None:
                 return None
