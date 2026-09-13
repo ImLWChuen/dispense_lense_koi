@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-Adaptive investigation — durable technician answer submission
+Adaptive investigation — durable technician answer submission accepted
 
 ## Accepted prerequisites
 
@@ -11,20 +11,25 @@ Adaptive investigation — durable technician answer submission
   - UNKNOWN / NOT_APPLICABLE semantics available
   - answer-driven diagnosis revision workflow available
 
+- `DLK-M3-010` — durable case API rollback and response-parity closeout — **accepted**
+  - accepted commit: `d94e8ea54837719a444a27af05f2eac71efcb34f`
+  - review: `.agents/handoff/reviews/DLK-M3-010-review.md`
+
 - `DLK-M3-011` — question-answer persistence and immutable analysis revision append — **accepted**
   - accepted commit: `f242cba7bbfd9521f5e7f497894a22477307b6b3`
-  - acceptance was recorded in the ChatGPT review; no separate review file was created under the user's current review preference
+  - review: `.agents/handoff/reviews/DLK-M3-011-review.md`
 
-## Implemented (awaiting review)
+- `DLK-M3-012` — technician question-answer submission API — **accepted**
+  - accepted commit: `17756205b7299037b5c23a6b97209ac5f594f749`
+  - review: `.agents/handoff/reviews/DLK-M3-012-review.md`
 
-- `DLK-M3-012` — Technician question-answer submission API — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-012-question-answer-api.md`
-  - branch: `backend-database`
-  - depends on: `DLK-M3-011`
+## Ready
+
+None. No implementation task is currently released.
 
 ## Not released
 
-Blocked until DLK-M3-012 is implemented and accepted:
+Pending future task planning and relevant teammate contract checks:
 
 - troubleshooting-check result submission
 - troubleshooting outcome → evidence integration
@@ -36,6 +41,6 @@ Blocked until DLK-M3-012 is implemented and accepted:
 - historical-case retrieval
 - frontend adaptive-answer integration
 
-Before releasing troubleshooting-check APIs, planner must re-check Member 2's current check/action outcome mappings.
+Before releasing troubleshooting-check APIs, the planner must re-check Member 2's current check/action outcome mappings and explicit human-confirmation semantics.
 
-Only DLK-M3-012 is authorized for implementation.
+No further implementation is authorized by this queue.
