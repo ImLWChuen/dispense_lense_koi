@@ -77,6 +77,9 @@ Run the test suite using pytest:
 # Run durable case API integration tests (requires PostgreSQL)
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_case_api.py -q
 
+# Run technician question-answer API integration tests (requires PostgreSQL)
+.\.venv\Scripts\python.exe -m pytest tests/integration/test_question_answer_api.py -q
+
 # Run all backend tests
 .\.venv\Scripts\python.exe -m pytest -q
 ```
@@ -133,9 +136,12 @@ It **does not** perform or verify:
 - **Endpoints:**
   - `POST /api/v1/cases` — Submits a diagnostic case, runs the deterministic engine, and atomically persists the case, observations, and initial revision-1 diagnosis to PostgreSQL, returning `201 Created`.
   - `GET /api/v1/cases/{case_id}` — Retrieves the persisted state of a case and its immutable revision-1 diagnosis by case UUID without recalculating diagnosis.
+  - `POST /api/v1/cases/{case_id}/answers` — Submits a technician answer for an active case, executes Member 2's question-answer workflow, evaluates the next immutable analysis revision, and atomically persists the answer, derived observations, and revision N+1 snapshot to PostgreSQL.
 - **Contract & Scope:**
   - Requires active PostgreSQL database connection.
   - Uses `CaseRepository` to guarantee atomic writes and consistent reads.
   - GET endpoint performs zero recalculation and does not mutate case revisions.
+  - Enforces optimistic concurrency via `expected_revision`, returning `409 Conflict` on stale submissions.
+  - Rejects unknown question IDs and invalid answer values via Member 2's `QuestionAnswerHandler` with `422 Unprocessable Entity`.
   - Returns `404 Not Found` for unknown case UUIDs and `422 Unprocessable Entity` for malformed IDs.
 - **Full Specification:** See [API Specification](../docs/api/api-spec.md) for full schemas and execution payloads.

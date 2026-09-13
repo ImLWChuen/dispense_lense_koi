@@ -20,7 +20,9 @@ from app.schemas.diagnosis import (
     IssueCondition,
     Observation,
     ObservationType,
+    Question,
     StatementType,
+    TroubleshootingCheck,
 )
 
 
@@ -114,3 +116,76 @@ class DurableCaseResponse(BaseModel):
     observations: list[CaseObservationResponse] = Field(default_factory=list)
     initial_diagnosis: DiagnosisResult
     diagnosis: DiagnosisResult
+
+
+class SubmitAnswerRequest(BaseModel):
+    """Transport schema for submitting a technician question answer.
+
+    Enforces optimistic concurrency via expected_revision and validates that
+    the required question ID and answer string are non-empty.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str = Field(
+        ...,
+        description="Identifier of the diagnostic question being answered (e.g. 'Q01').",
+    )
+    answer: str = Field(
+        ...,
+        description="The technician answer string or key (e.g. 'after_prolonged_operation', 'UNKNOWN').",
+    )
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    answer_text: str | None = Field(
+        default=None,
+        description="Optional raw technician statement or additional context.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_answer_aliases(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "answer" not in data and "answer_value" in data:
+                data = dict(data)
+                data["answer"] = data.pop("answer_value")
+        return data
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitAnswerRequest:
+        if not self.question_id or not self.question_id.strip():
+            raise ValueError("question_id must be a non-empty string.")
+        if not self.answer or not self.answer.strip():
+            raise ValueError("answer must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        return self
+
+
+class QuestionAnswerRecord(BaseModel):
+    """Persisted record of a technician question answer."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    question_id: str
+    answer_value: str
+    answer_text: str | None = None
+    source: EvidenceSource | str = EvidenceSource.USER
+    answered_at: datetime
+    resulting_revision_number: int
+
+
+class CaseAnswerResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after question answer submission.
+
+    Extends DurableCaseResponse with current revision, the newly submitted answer record,
+    full answer history, and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_answer: QuestionAnswerRecord
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
