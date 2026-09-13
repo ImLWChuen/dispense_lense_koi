@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 def _utc_now() -> datetime:
@@ -54,6 +54,7 @@ class EvidenceSource(str, Enum):
     """Provenance of an evidence item."""
     USER = "USER"
     USER_ANSWER = "USER_ANSWER"
+    USER_CHECK_RESULT = "USER_CHECK_RESULT"
     MEASUREMENT = "MEASUREMENT"
     IMAGE = "IMAGE"
     SYSTEM = "SYSTEM"
@@ -82,6 +83,7 @@ class ObservationType(str, Enum):
     SPREADING_BEHAVIOUR = "spreading_behaviour"
     OTHER = "other"
     QUESTION_ANSWER = "question_answer"
+    CHECK_RESULT = "check_result"
 
     # Aliases for flexible schema compatibility
     OPERATING_TIME_PATTERN = RUNTIME_PATTERN
@@ -159,11 +161,11 @@ class AnswerValue(str, Enum):
 class Observation(BaseModel):
     """A single structured observation extracted from user input."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    observation_type: ObservationType = Field(..., alias="type")
+    observation_type: ObservationType = Field(..., validation_alias=AliasChoices("observation_type", "type"))
     value: str
     original_text: str | None = None
     statement_type: StatementType = StatementType.USER_OBSERVATION
-    source: EvidenceSource = Field(default=EvidenceSource.USER, alias="provenance")
+    source: EvidenceSource = Field(default=EvidenceSource.USER, validation_alias=AliasChoices("source", "provenance"))
     confidence: float | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=_utc_now)
@@ -203,10 +205,11 @@ class Observation(BaseModel):
         o_norm = norm_map.get(o_val, o_val)
         val_match = (s_val == o_val) or (s_norm == o_norm)
 
-        # Provenance: USER and USER_ANSWER are treated as equivalent user origins
+        # Provenance: USER, USER_ANSWER, and USER_CHECK_RESULT are treated as equivalent user origins
         s_src = str(self.source.value if hasattr(self.source, "value") else self.source)
         o_src = str(other.source.value if hasattr(other.source, "value") else other.source)
-        src_match = (s_src == o_src) or (s_src in ("USER", "USER_ANSWER") and o_src in ("USER", "USER_ANSWER"))
+        user_origins = ("USER", "USER_ANSWER", "USER_CHECK_RESULT")
+        src_match = (s_src == o_src) or (s_src in user_origins and o_src in user_origins)
 
         return type_match and val_match and src_match
 
@@ -328,15 +331,25 @@ class Question(BaseModel):
     usefulness_score: float = 0.0
     target_causes: list[str] = []
     already_answered: bool = False
+    options: list[str] = Field(default_factory=list)
 
 
 class QuestionAnswer(BaseModel):
     """An answer to a diagnostic question provided by the user."""
+    model_config = ConfigDict(populate_by_name=True)
+
     question_id: str
-    answer_value: str
+    answer_value: str = Field(
+        validation_alias=AliasChoices("answer_value", "selected_option_id", "value"),
+    )
     answer_text: str | None = None
     source: EvidenceSource = EvidenceSource.USER
     timestamp: datetime = Field(default_factory=_utc_now)
+
+    @property
+    def selected_option_id(self) -> str:
+        """Alias for answer_value to support DLK-M3-012 naming convention."""
+        return self.answer_value
 
 
 class TroubleshootingCheck(BaseModel):
@@ -350,15 +363,25 @@ class TroubleshootingCheck(BaseModel):
     reasoning: str = ""
     required_access: str = ""
     effort_level: str = "medium"
+    possible_outcomes: list[str] = Field(default_factory=list)
 
 
 class CheckResult(BaseModel):
     """Result of a troubleshooting check performed by a technician."""
+    model_config = ConfigDict(populate_by_name=True)
+
     check_id: str
-    execution_status: CheckExecutionStatus
-    finding: CheckFinding
+    execution_status: CheckExecutionStatus = Field(
+        validation_alias=AliasChoices("execution_status", "status"),
+        default=CheckExecutionStatus.COMPLETED,
+    )
+    finding: CheckFinding = Field(
+        validation_alias=AliasChoices("finding", "result"),
+        default=CheckFinding.INCONCLUSIVE,
+    )
     finding_details: str | None = None
-    source: EvidenceSource = EvidenceSource.USER
+    outcome: str | None = None
+    source: EvidenceSource = EvidenceSource.USER_CHECK_RESULT
     timestamp: datetime = Field(default_factory=_utc_now)
 
 

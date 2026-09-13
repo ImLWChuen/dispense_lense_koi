@@ -60,6 +60,7 @@ class TestQuestionAnswerDiagnosisRevision(unittest.TestCase):
         # Step 2: Run initial diagnosis (Revision 1)
         res1 = self.engine.diagnose(case)
         self.assertIsNotNone(res1.analysis_revision)
+        assert res1.analysis_revision is not None
         self.assertEqual(res1.analysis_revision.revision_number, 1)
         self.assertEqual(len(case.analysis_revisions), 1)
 
@@ -72,6 +73,7 @@ class TestQuestionAnswerDiagnosisRevision(unittest.TestCase):
 
         # Step 3: Inspect recommended question
         self.assertIsNotNone(res1.next_question, "Initial diagnosis must recommend a discriminating question")
+        assert res1.next_question is not None
         selected_q = res1.next_question
         q_id = selected_q.question_id
         self.assertIn(q_id, QuestionAnswerHandler.get_supported_questions())
@@ -118,8 +120,8 @@ class TestQuestionAnswerDiagnosisRevision(unittest.TestCase):
         )
         self.assertTrue(scores_changed, "Revision 2 should reflect updated scores from answer evidence")
 
-        # 7b: New top question or question list updated (or stopping condition met)
-        if res2.next_question:
+        # 7b: Recommended question updated (or stopped)
+        if res2.next_question is not None:
             self.assertNotEqual(
                 res2.next_question.question_id,
                 q_id,
@@ -132,6 +134,7 @@ class TestQuestionAnswerDiagnosisRevision(unittest.TestCase):
         for cid, score in rev1_snapshot["scores"].items():
             cause_in_history = next((c for c in rev1_history.ranked_causes if c.cause_id == cid), None)
             self.assertIsNotNone(cause_in_history)
+            assert cause_in_history is not None
             self.assertEqual(
                 cause_in_history.score,
                 score,

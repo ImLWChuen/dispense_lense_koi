@@ -376,8 +376,6 @@ _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]
     "ACT02": {
         "air_bubbles_found": (ObservationType.BUBBLE_PRESENCE, "visible_bubbles"),
         "separation_found": (ObservationType.MATERIAL_STATE, "separated"),
-        "material_depleted": (ObservationType.MATERIAL_STATE, "separated"),
-        "material_normal": (ObservationType.MATERIAL_STATE, "separated"),
     },
     "ACT03": {
         "high_variation": (ObservationType.DEPOSIT_SIZE, "inconsistent"),
@@ -429,7 +427,12 @@ class CheckResultHandler:
             - str: Narrative summary of the check processing.
         """
         check_def = get_action_by_id(check_result.check_id)
-        check_name = check_def.name if check_def else check_result.check_id
+        if check_def is None:
+            raise ValueError(
+                f"Unknown check_id '{check_result.check_id}'. "
+                f"Must be a supported troubleshooting check from actions.json."
+            )
+        check_name = check_def.name
 
         # -------------------------------------------------------------------
         # Rule 1: Non-completed checks (BLOCKED, FAILED, UNKNOWN, etc.)
@@ -479,6 +482,8 @@ class CheckResultHandler:
             check_result.check_id,
             check_result.finding,
             check_result.finding_details,
+            check_result.outcome,
+            check_def,
         )
 
         observations: list[Observation] = []
@@ -488,7 +493,7 @@ class CheckResultHandler:
         if outcome_key:
             observations.append(
                 Observation(
-                    observation_type=ObservationType.OTHER,  # generic carrier
+                    observation_type=ObservationType.CHECK_RESULT,
                     value=f"{check_result.check_id}:{outcome_key}",
                     original_text=details_text,
                     statement_type=StatementType.USER_OBSERVATION,
@@ -521,17 +526,42 @@ class CheckResultHandler:
         check_id: str,
         finding: CheckFinding,
         details: str | None,
+        outcome: str | None = None,
+        check_def: Any = None,
     ) -> str | None:
-        """Resolve the outcome identifier based on check ID, finding, and details."""
-        patterns = _CHECK_OUTCOME_PATTERNS.get(check_id, {})
-        details_lower = (details or "").strip().lower()
+        """Resolve and validate the outcome identifier based on check ID, finding, details, and outcome."""
+        allowed_outcomes: set[str] = set()
+        if check_def and hasattr(check_def, "evidence_mapping"):
+            allowed_outcomes = set(check_def.evidence_mapping.keys())
 
-        # 1. Match against known patterns
+        # 1. Explicit outcome passed on CheckResult
+        if outcome:
+            outcome_norm = outcome.strip().lower()
+            if allowed_outcomes and outcome_norm not in allowed_outcomes:
+                raise ValueError(
+                    f"Invalid outcome '{outcome}' for check '{check_id}'. "
+                    f"Allowed outcomes are: {sorted(allowed_outcomes)}."
+                )
+            return outcome_norm
+
+        patterns = _CHECK_OUTCOME_PATTERNS.get(check_id, {})
+        details_clean = (details or "").strip()
+        details_lower = details_clean.lower()
+
+        # 2. Check if details string is an invalid outcome identifier
+        if details_lower and (" " not in details_clean) and ("_" in details_clean or details_clean.isupper()):
+            if allowed_outcomes and details_lower not in allowed_outcomes:
+                raise ValueError(
+                    f"Invalid outcome '{details}' for check '{check_id}'. "
+                    f"Allowed outcomes are: {sorted(allowed_outcomes)}."
+                )
+
+        # 3. Match against known patterns
         if details_lower:
-            for outcome, phrases in patterns.items():
+            for outcome_cand, phrases in patterns.items():
                 for phrase in phrases:
                     if phrase in details_lower:
-                        return outcome
+                        return outcome_cand
 
         # 2. Fallback to finding defaults per check
         if finding == CheckFinding.CONTRADICTS:
@@ -847,6 +877,13 @@ class DiagnosticEngine:
                 existing_ids.add(obs.id)
 
         result = self.diagnose(case)
+
+        # Update the latest revision summary with the question answer details
+        if case.analysis_revisions:
+            case.analysis_revisions[-1].new_evidence_summary = (
+                f"Question {answer.question_id} answered with '{answer.answer_value}'"
+            )
+
         return case, result
 
     # -----------------------------------------------------------------------
