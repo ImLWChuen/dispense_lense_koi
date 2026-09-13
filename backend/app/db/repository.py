@@ -179,7 +179,11 @@ class CaseRepository:
         """Retrieve a case by ID."""
         session, should_close = self._get_active_session()
         try:
-            stmt = select(CaseModel).where(CaseModel.case_id == case_id)
+            stmt = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case_id)
+                .execution_options(populate_existing=True)
+            )
             return session.scalars(stmt).first()
         finally:
             if should_close:
@@ -193,6 +197,7 @@ class CaseRepository:
                 select(ObservationModel)
                 .where(ObservationModel.case_id == case_id)
                 .order_by(ObservationModel.id)
+                .execution_options(populate_existing=True)
             )
             return list(session.scalars(stmt).all())
         finally:
@@ -207,9 +212,13 @@ class CaseRepository:
         """Retrieve a specific analysis revision for a case."""
         session, should_close = self._get_active_session()
         try:
-            stmt = select(AnalysisRevisionModel).where(
-                AnalysisRevisionModel.case_id == case_id,
-                AnalysisRevisionModel.revision_number == revision_number,
+            stmt = (
+                select(AnalysisRevisionModel)
+                .where(
+                    AnalysisRevisionModel.case_id == case_id,
+                    AnalysisRevisionModel.revision_number == revision_number,
+                )
+                .execution_options(populate_existing=True)
             )
             return session.scalars(stmt).first()
         finally:
@@ -224,6 +233,7 @@ class CaseRepository:
                 select(AnalysisRevisionModel.revision_number)
                 .where(AnalysisRevisionModel.case_id == case_id)
                 .order_by(AnalysisRevisionModel.revision_number)
+                .execution_options(populate_existing=True)
             )
             return list(session.scalars(stmt).all())
         finally:
@@ -241,26 +251,66 @@ class CaseRepository:
                     QuestionAnswerModel.resulting_revision_number,
                     QuestionAnswerModel.id,
                 )
+                .execution_options(populate_existing=True)
             )
             return list(session.scalars(stmt).all())
         finally:
             if should_close:
                 session.close()
 
-    def load_structured_case(self, case_id: str) -> StructuredCase | None:
-        """Reconstruct a complete StructuredCase from persisted state without recalculation."""
+    def load_structured_case(
+        self,
+        case_id: str,
+        for_update: bool = False,
+    ) -> StructuredCase | None:
+        """Reconstruct a complete StructuredCase from persisted state without recalculation.
+
+        Acquires a row lock on the case row (FOR SHARE by default, or FOR UPDATE if for_update=True)
+        to ensure case context, observations, answers, and revisions come from one consistent
+        database state and prevent torn reads during concurrent appends.
+        Refreshes ORM identity map cache via populate_existing=True.
+
+        Args:
+            case_id: The unique identifier of the case.
+            for_update: If True, acquire an exclusive FOR UPDATE lock instead of FOR SHARE.
+
+        Returns:
+            StructuredCase if found, None otherwise.
+        """
         session, should_close = self._get_active_session()
         try:
-            case_model = session.get(CaseModel, case_id)
+            # 1. Lock the case row and refresh identity map
+            stmt_case = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case_id)
+                .with_for_update(read=not for_update)
+                .execution_options(populate_existing=True)
+            )
+            case_model = session.scalars(stmt_case).first()
             if case_model is None:
                 return None
 
-            # 1. Observations
+            # 2. Analysis Revisions (reconstruct from immutable snapshot)
+            rev_models = list(
+                session.scalars(
+                    select(AnalysisRevisionModel)
+                    .where(AnalysisRevisionModel.case_id == case_id)
+                    .order_by(AnalysisRevisionModel.revision_number)
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            latest_revision = rev_models[-1].revision_number if rev_models else 1
+
+            # 3. Observations (consistent with latest_revision)
             obs_models = list(
                 session.scalars(
                     select(ObservationModel)
-                    .where(ObservationModel.case_id == case_id)
+                    .where(
+                        ObservationModel.case_id == case_id,
+                        ObservationModel.first_seen_revision <= latest_revision,
+                    )
                     .order_by(ObservationModel.id)
+                    .execution_options(populate_existing=True)
                 ).all()
             )
             observations: list[Observation] = []
@@ -295,15 +345,19 @@ class CaseRepository:
                 )
                 observations.append(obs)
 
-            # 2. Question Answers
+            # 4. Question Answers (consistent with latest_revision)
             qa_models = list(
                 session.scalars(
                     select(QuestionAnswerModel)
-                    .where(QuestionAnswerModel.case_id == case_id)
+                    .where(
+                        QuestionAnswerModel.case_id == case_id,
+                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                    )
                     .order_by(
                         QuestionAnswerModel.resulting_revision_number,
                         QuestionAnswerModel.id,
                     )
+                    .execution_options(populate_existing=True)
                 ).all()
             )
             previous_answers: list[QuestionAnswer] = []
@@ -322,14 +376,6 @@ class CaseRepository:
                 )
                 previous_answers.append(qa)
 
-            # 3. Analysis Revisions (reconstruct from immutable snapshot)
-            rev_models = list(
-                session.scalars(
-                    select(AnalysisRevisionModel)
-                    .where(AnalysisRevisionModel.case_id == case_id)
-                    .order_by(AnalysisRevisionModel.revision_number)
-                ).all()
-            )
             analysis_revisions: list[AnalysisRevision] = []
             for rm in rev_models:
                 rev_snapshot = rm.result_snapshot.get("analysis_revision")
@@ -343,7 +389,7 @@ class CaseRepository:
                     )
                 analysis_revisions.append(rev)
 
-            # 4. Issue condition
+            # 5. Issue condition
             try:
                 issue_cond = IssueCondition(case_model.issue_condition)
             except ValueError:
@@ -378,7 +424,8 @@ class CaseRepository:
         """Atomically append a question answer, new observations, and the resulting analysis revision.
 
         Enforces optimistic concurrency via expected_revision and locks the case row
-        against concurrent updates.
+        against concurrent updates. Validates that the input case reflects a consistent
+        snapshot of persisted state and rejects torn or stale case state.
 
         Args:
             case: StructuredCase containing updated observations and previous answers.
@@ -390,7 +437,7 @@ class CaseRepository:
             The newly created AnalysisRevisionModel.
 
         Raises:
-            ValueError: On identity mismatch or missing analysis revision.
+            ValueError: On identity mismatch, contract violations, or inconsistent case state.
             StaleRevisionError: If expected_revision does not match the latest persisted revision.
         """
         if case.case_id != result.case_id:
@@ -407,7 +454,12 @@ class CaseRepository:
         session, should_close = self._get_active_session()
         try:
             # 1. Lock the case row in PostgreSQL
-            stmt = select(CaseModel).where(CaseModel.case_id == case.case_id).with_for_update()
+            stmt = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case.case_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             db_case = session.scalars(stmt).first()
             if db_case is None:
                 raise ValueError(f"Case '{case.case_id}' not found.")
@@ -417,6 +469,7 @@ class CaseRepository:
                 select(AnalysisRevisionModel.revision_number)
                 .where(AnalysisRevisionModel.case_id == case.case_id)
                 .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
             )
             latest_revision = session.scalars(stmt_rev).first()
             if latest_revision is None:
@@ -436,6 +489,73 @@ class CaseRepository:
                     f"Contract mismatch: result.analysis_revision.revision_number is "
                     f"{result.analysis_revision.revision_number}, but expected next revision {new_revision_number}."
                 )
+
+            # 3b. Consistency check: ensure case is not built on a torn or stale snapshot
+            # All observations persisted up to latest_revision must be present in case.observations
+            persisted_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id)
+                    .where(
+                        ObservationModel.case_id == case.case_id,
+                        ObservationModel.first_seen_revision <= latest_revision,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            case_obs_ids = {o.id for o in case.observations}
+            missing_obs = persisted_obs_ids - case_obs_ids
+            if missing_obs:
+                raise ValueError(
+                    f"Inconsistent case state: case is missing persisted observations "
+                    f"{sorted(missing_obs)} from revision {latest_revision} or earlier."
+                )
+
+            # All question answers persisted up to latest_revision must be represented in case.previous_answers
+            persisted_qas = list(
+                session.scalars(
+                    select(QuestionAnswerModel)
+                    .where(
+                        QuestionAnswerModel.case_id == case.case_id,
+                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        QuestionAnswerModel.resulting_revision_number,
+                        QuestionAnswerModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_answers) < len(persisted_qas):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_answers has {len(case.previous_answers)} "
+                    f"entries, but {len(persisted_qas)} answers are persisted up to revision {latest_revision}."
+                )
+            case_q_ids = [q.question_id for q in case.previous_answers]
+            for pq in persisted_qas:
+                if pq.question_id not in case_q_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_answers is missing "
+                        f"persisted question '{pq.question_id}' from revision {latest_revision} or earlier."
+                    )
+
+            if case.analysis_revisions:
+                case_rev_nums = {r.revision_number for r in case.analysis_revisions}
+                persisted_rev_nums = set(
+                    session.scalars(
+                        select(AnalysisRevisionModel.revision_number)
+                        .where(
+                            AnalysisRevisionModel.case_id == case.case_id,
+                            AnalysisRevisionModel.revision_number <= latest_revision,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+                missing_revs = persisted_rev_nums - case_rev_nums
+                if missing_revs:
+                    raise ValueError(
+                        f"Inconsistent case state: case analysis_revisions is missing "
+                        f"persisted revisions {sorted(missing_revs)}."
+                    )
 
             # 4. Persist the QuestionAnswer linked to new_revision_number
             qa_source_val = (
@@ -459,7 +579,7 @@ class CaseRepository:
                 session.scalars(
                     select(ObservationModel.observation_id).where(
                         ObservationModel.case_id == case.case_id
-                    )
+                    ).execution_options(populate_existing=True)
                 ).all()
             )
             for obs in case.observations:

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import copy
 import os
+import threading
+import time
 import uuid
 from typing import Generator
 
@@ -1150,4 +1152,291 @@ def test_atomic_rollback_on_append_failure_leaves_no_partial_writes():
     finally:
         with factory() as clean_session:
             clean_session.execute(delete(CaseModel).where(CaseModel.case_id.in_([control_id, test_id])))
+            clean_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# DLK-M3-011 Correction: Case Reconstruction Concurrency & Competing Appends
+# ---------------------------------------------------------------------------
+
+def test_load_structured_case_consistency_under_interleaved_writes():
+    """Verify that case reconstruction in an active session locks the case row,
+    preventing an interleaved session from appending revision 2 until reconstruction finishes.
+    Verify reconstruction cannot combine revision-1 observations with revision-2 answers/history.
+    Verify a later append rejects a diagnosis calculated from an inconsistent/torn mixed state.
+    """
+    factory = get_session_factory()
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+
+    try:
+        # Setup: Persist initial case (Revision 1)
+        with factory() as init_session:
+            repo = CaseRepository(session=init_session)
+            initial_case = engine.prepare_case(
+                StructuredCase(
+                    case_id=case_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size / Line Width",
+                    description="The dispensing dots become smaller after 20 minutes.",
+                    observations=[
+                        Observation(
+                            observation_type=ObservationType.NOZZLE_CONDITION,
+                            value="drips_after_dispense",
+                            statement_type=StatementType.USER_OBSERVATION,
+                            source=EvidenceSource.USER,
+                        )
+                    ],
+                )
+            )
+            res1 = engine.diagnose(initial_case)
+            assert res1.analysis_revision is not None
+            repo.save_initial_case(initial_case, res1)
+            init_session.commit()
+
+        # Step 1: Begin reconstructing revision 1 in Session 1
+        with factory() as session_1:
+            repo_1 = CaseRepository(session=session_1)
+
+            # Session 1 acquires FOR SHARE lock and reconstructs case
+            case_v1 = repo_1.load_structured_case(case_id)
+            assert case_v1 is not None
+            assert len(case_v1.observations) == 1
+            assert len(case_v1.previous_answers) == 0
+            assert len(case_v1.analysis_revisions) == 1
+
+            # Step 2: Interleave another session (Session 2) appending an answer and revision 2
+            ans1 = QuestionAnswer(
+                question_id="Q01",
+                answer_value="after_prolonged_operation",
+                answer_text="Issue happens after 2 hours",
+                source=EvidenceSource.USER,
+            )
+            s2_started = threading.Event()
+            s2_finished = threading.Event()
+            s2_errors: list[Exception] = []
+
+            def session_2_append_worker():
+                with factory() as session_2:
+                    repo_2 = CaseRepository(session=session_2)
+                    c2_copy = copy.deepcopy(case_v1)
+                    c2_updated, res2 = engine.submit_question_answer(c2_copy, ans1)
+                    s2_started.set()
+                    try:
+                        # This should block on SELECT ... FOR UPDATE because Session 1 holds FOR SHARE
+                        repo_2.append_question_answer_revision(
+                            case=c2_updated,
+                            answer=ans1,
+                            result=res2,
+                            expected_revision=1,
+                        )
+                        session_2.commit()
+                    except Exception as e:
+                        s2_errors.append(e)
+                    finally:
+                        s2_finished.set()
+
+            t2 = threading.Thread(target=session_2_append_worker)
+            t2.start()
+
+            # Wait for thread 2 to start and attempt append
+            assert s2_started.wait(timeout=2.0)
+            # Sleep briefly to ensure thread 2 has executed up to the row lock
+            time.sleep(0.3)
+
+            # Verify that Session 2 is blocked and has NOT finished
+            assert not s2_finished.is_set(), "Session 2 should be blocked by Session 1's lock!"
+            assert t2.is_alive()
+
+            # Step 3: Verify reconstruction in Session 1 cannot combine revision-1 observations
+            # with revision-2 answers/history.
+            # While Session 2 is blocked, re-verifying Session 1 state:
+            assert len(case_v1.observations) == 1
+            assert len(case_v1.previous_answers) == 0
+            assert len(case_v1.analysis_revisions) == 1
+            assert case_v1.observations[0].value == "drips_after_dispense"
+
+            # Now release Session 1 lock by committing/closing Session 1
+            session_1.commit()
+
+        # Thread 2 should now unblock and complete successfully
+        t2.join(timeout=5.0)
+        assert not t2.is_alive()
+        assert s2_finished.is_set()
+        assert len(s2_errors) == 0
+
+        # Verify from fresh session that Revision 2 is now cleanly persisted
+        with factory() as session_3:
+            repo_3 = CaseRepository(session=session_3)
+            case_v2 = repo_3.load_structured_case(case_id)
+            assert case_v2 is not None
+            assert len(case_v2.observations) == 2  # "drips_after_dispense" and "after_prolonged_operation"
+            assert len(case_v2.previous_answers) == 1
+            assert len(case_v2.analysis_revisions) == 2
+
+            # Step 4: Verify a later append cannot silently accept a diagnosis
+            # calculated from a mixed state.
+            ans2 = QuestionAnswer(
+                question_id="Q02",
+                answer_value="all_points",
+                answer_text="Every point is affected",
+                source=EvidenceSource.USER,
+            )
+            # Mixed case: only revision 1 observations, but previous answers and revisions from v2
+            mixed_case = copy.deepcopy(case_v2)
+            mixed_case.observations = [copy.deepcopy(case_v1.observations[0])]  # MISSING revision 2 observation!
+
+            # Evaluate diagnosis from this mixed state
+            updated_mixed, res3 = engine.submit_question_answer(mixed_case, ans2)
+            assert res3.analysis_revision is not None
+            assert res3.analysis_revision.revision_number == 3
+
+            # Attempt append with expected_revision=2: must be REJECTED!
+            with pytest.raises(ValueError, match="Inconsistent case state: case is missing persisted observations"):
+                repo_3.append_question_answer_revision(
+                    case=updated_mixed,
+                    answer=ans2,
+                    result=res3,
+                    expected_revision=2,
+                )
+
+            # Also verify rejection if previous_answers is missing persisted answers
+            mixed_case_no_answers = copy.deepcopy(case_v2)
+            mixed_case_no_answers.previous_answers = []  # MISSING revision 2 answer!
+            updated_mixed_2, res3_b = engine.submit_question_answer(mixed_case_no_answers, ans2)
+            res3_b.analysis_revision.revision_number = 3
+
+            with pytest.raises(ValueError, match="Inconsistent case state: case previous_answers"):
+                repo_3.append_question_answer_revision(
+                    case=updated_mixed_2,
+                    answer=ans2,
+                    result=res3_b,
+                    expected_revision=2,
+                )
+
+            # Verify no partial writes occurred and revisions remain strictly [1, 2]
+            assert repo_3.list_case_revisions(case_id) == [1, 2]
+            assert len(repo_3.get_case_question_answers(case_id)) == 1
+
+    finally:
+        with factory() as clean_session:
+            clean_session.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
+            clean_session.commit()
+
+
+def test_concurrent_competing_repository_appends_only_one_succeeds():
+    """Exercise two actual concurrent competing repository appends on the same case
+    at revision 1. Verify exactly one succeeds and the other is rejected with
+    StaleRevisionError or IntegrityError without partial writes."""
+    factory = get_session_factory()
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+
+    try:
+        # Setup: Persist initial case (Revision 1)
+        with factory() as init_session:
+            repo = CaseRepository(session=init_session)
+            initial_case = engine.prepare_case(
+                StructuredCase(
+                    case_id=case_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size / Line Width",
+                    description="The dispensing dots become smaller after 20 minutes.",
+                )
+            )
+            res1 = engine.diagnose(initial_case)
+            assert res1.analysis_revision is not None
+            repo.save_initial_case(initial_case, res1)
+            init_session.commit()
+
+        # Reconstruct base case at revision 1
+        with factory() as read_session:
+            repo = CaseRepository(session=read_session)
+            case_v1 = repo.load_structured_case(case_id)
+            assert case_v1 is not None
+
+        # Prepare two competing answers and diagnoses for revision 2
+        ans_a = QuestionAnswer(
+            question_id="Q01",
+            answer_value="after_prolonged_operation",
+            answer_text="Competitor A",
+            source=EvidenceSource.USER,
+        )
+        case_a, res_a = engine.submit_question_answer(copy.deepcopy(case_v1), ans_a)
+
+        ans_b = QuestionAnswer(
+            question_id="Q02",
+            answer_value="all_points",
+            answer_text="Competitor B",
+            source=EvidenceSource.USER,
+        )
+        case_b, res_b = engine.submit_question_answer(copy.deepcopy(case_v1), ans_b)
+
+        # Synchronize concurrent execution with a threading barrier
+        barrier = threading.Barrier(2)
+        results: dict[str, int] = {}
+        errors: dict[str, Exception] = {}
+
+        def competitor_worker(worker_id: str, comp_case, comp_ans, comp_res):
+            with factory() as session:
+                repo = CaseRepository(session=session)
+                try:
+                    barrier.wait(timeout=5.0)
+                    rev_model = repo.append_question_answer_revision(
+                        case=comp_case,
+                        answer=comp_ans,
+                        result=comp_res,
+                        expected_revision=1,
+                    )
+                    session.commit()
+                    results[worker_id] = rev_model.revision_number
+                except Exception as exc:
+                    session.rollback()
+                    errors[worker_id] = exc
+
+        thread_a = threading.Thread(target=competitor_worker, args=("A", case_a, ans_a, res_a))
+        thread_b = threading.Thread(target=competitor_worker, args=("B", case_b, ans_b, res_b))
+
+        thread_a.start()
+        thread_b.start()
+
+        thread_a.join(timeout=10.0)
+        thread_b.join(timeout=10.0)
+
+        assert not thread_a.is_alive()
+        assert not thread_b.is_alive()
+
+        # Assert exactly one succeeded and one failed
+        assert len(results) == 1, f"Expected exactly 1 success, got {len(results)}: {results}"
+        assert len(errors) == 1, f"Expected exactly 1 failure, got {len(errors)}: {errors}"
+
+        winner_id = list(results.keys())[0]
+        loser_id = list(errors.keys())[0]
+        assert results[winner_id] == 2
+
+        loser_exc = errors[loser_id]
+        # The competing append is rejected due to optimistic concurrency check (StaleRevisionError)
+        # or underlying PostgreSQL unique constraints (IntegrityError)
+        assert isinstance(loser_exc, (StaleRevisionError, IntegrityError))
+        if isinstance(loser_exc, StaleRevisionError):
+            assert loser_exc.expected_revision == 1
+            assert loser_exc.current_revision == 2
+
+        # Verify from fresh independent session that state is clean with no partial writes
+        with factory() as verify_session:
+            verify_repo = CaseRepository(session=verify_session)
+            revisions = verify_repo.list_case_revisions(case_id)
+            assert revisions == [1, 2]
+
+            qa_list = verify_repo.get_case_question_answers(case_id)
+            assert len(qa_list) == 1
+            expected_qid = "Q01" if winner_id == "A" else "Q02"
+            assert qa_list[0].question_id == expected_qid
+            assert qa_list[0].resulting_revision_number == 2
+
+    finally:
+        with factory() as clean_session:
+            clean_session.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
             clean_session.commit()
