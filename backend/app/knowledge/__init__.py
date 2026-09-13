@@ -196,6 +196,59 @@ def load_evidence_rules() -> list[EvidenceRule]:
                             explanation=f"Troubleshooting check '{a.get('name', aid)}' finding '{outcome}' {rel.lower()} {cause_id}.",
                         ))
                         existing_keys.add(key2)
+
+        # Also load question evidence mappings as structured rules
+        questions_data = _load_json("questions.json")
+        for q in questions_data.get("questions", []):
+            qid = q["id"]
+            for ans_opt, causes_map in q.get("evidence_mapping", {}).items():
+                for cause_id, spec in causes_map.items():
+                    rel = spec.get("relation", "NEUTRAL")
+                    stn = spec.get("strength", "MODERATE")
+                    # Question answer format: question_answer -> Q01:after_prolonged_operation
+                    q_key1 = (cause_id, "question_answer", f"{qid}:{ans_opt}")
+                    if q_key1 not in existing_keys:
+                        rules.append(EvidenceRule(
+                            id=f"QR_{qid}_{ans_opt}_{cause_id}",
+                            observation_type="question_answer",
+                            observation_value=f"{qid}:{ans_opt}",
+                            cause_id=cause_id,
+                            relation=EvidenceRelation(rel),
+                            strength=EvidenceStrength(stn),
+                            explanation=f"Diagnostic question {qid} answer '{ans_opt}' {rel.lower()} {cause_id}.",
+                        ))
+                        existing_keys.add(q_key1)
+
+                    # Direct question format: question_Q01 -> after_prolonged_operation
+                    q_key2 = (cause_id, f"question_{qid}", ans_opt)
+                    if q_key2 not in existing_keys:
+                        rules.append(EvidenceRule(
+                            id=f"QR_{qid}_{ans_opt}_{cause_id}_direct",
+                            observation_type=f"question_{qid}",
+                            observation_value=ans_opt,
+                            cause_id=cause_id,
+                            relation=EvidenceRelation(rel),
+                            strength=EvidenceStrength(stn),
+                            explanation=f"Diagnostic question {qid} answer '{ans_opt}' {rel.lower()} {cause_id}.",
+                        ))
+                        existing_keys.add(q_key2)
+
+        # Also mirror location_pattern rules to spatial_pattern aliases (all_points -> systemic, specific_nozzle -> localized)
+        for r in list(rules):
+            if r.observation_type == "location_pattern":
+                val_alias = "systemic" if r.observation_value == "all_points" else ("localized" if r.observation_value == "specific_nozzle" else r.observation_value)
+                sp_key = (r.cause_id, "spatial_pattern", val_alias)
+                if sp_key not in existing_keys:
+                    rules.append(EvidenceRule(
+                        id=f"SP_{r.id}",
+                        observation_type="spatial_pattern",
+                        observation_value=val_alias,
+                        cause_id=r.cause_id,
+                        relation=r.relation,
+                        strength=r.strength,
+                        explanation=r.explanation,
+                    ))
+                    existing_keys.add(sp_key)
     except Exception:
         pass
 

@@ -55,16 +55,17 @@ _SEMANTIC_GROUPS: dict[str, set[str]] = {
     "time_prolonged": {"after_prolonged_operation", "worsens_over_time"},
     "frequency_intermittent": {"intermittent", "sporadic"},
     "frequency_consistent": {"consistent", "constant"},
-    "location_single": {"specific_nozzle", "one_position"},
-    "location_all": {"all_points", "varies_across_points"},
+    "location_single": {"specific_nozzle", "one_position", "localized"},
+    "location_all": {"all_points", "varies_across_points", "systemic"},
 }
 
 
 def _get_semantic_group(obs_type: str, value: str) -> str | None:
     """Return the semantic group key for an observation, if any."""
+    normalized_type = "location_pattern" if obs_type == "spatial_pattern" else obs_type
     for group_key, values in _SEMANTIC_GROUPS.items():
         if value in values:
-            return f"{obs_type}:{group_key}"
+            return f"{normalized_type}:{group_key}"
     return None
 
 
@@ -122,6 +123,16 @@ class EvidenceEngine:
     """
 
     def evaluate(
+        self,
+        observations: list[Observation],
+        defect_code: str,
+    ) -> list[CandidateCause]:
+        """Evaluate all observations against all candidate causes for a defect."""
+        return self._evaluate_internal(observations, defect_code)
+
+    evaluate_all = evaluate
+
+    def _evaluate_internal(
         self,
         observations: list[Observation],
         defect_code: str,
@@ -234,12 +245,15 @@ class EvidenceEngine:
                 else:
                     neutral.append(evidence)
 
-            # 4. Identify missing evidence (symptom observations only, not unexecuted checks)
+            # 4. Identify missing evidence (symptom observations only, not unexecuted checks/questions)
             cause_rules = [
                 r for r in all_rules
                 if r.cause_id == cause_def.id
                 and not r.observation_type.startswith("check_")
                 and r.observation_type != "check_result"
+                and not r.observation_type.startswith("question_")
+                and r.observation_type != "question_answer"
+                and r.observation_type != "spatial_pattern"
             ]
             observed_types = {(o.observation_type, o.value) for o in observations}
             for rule in cause_rules:

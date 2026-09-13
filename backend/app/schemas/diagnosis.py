@@ -53,6 +53,7 @@ class EvidenceStrength(str, Enum):
 class EvidenceSource(str, Enum):
     """Provenance of an evidence item."""
     USER = "USER"
+    USER_ANSWER = "USER_ANSWER"
     MEASUREMENT = "MEASUREMENT"
     IMAGE = "IMAGE"
     SYSTEM = "SYSTEM"
@@ -68,6 +69,7 @@ class ObservationType(str, Enum):
     TIME_PATTERN = "time_pattern"
     RUNTIME_PATTERN = "runtime_pattern"
     LOCATION_PATTERN = "location_pattern"
+    SPATIAL_PATTERN = "spatial_pattern"
     FREQUENCY_PATTERN = "frequency_pattern"
     MATERIAL_STATE = "material_state"
     TEMPERATURE = "temperature"
@@ -79,6 +81,23 @@ class ObservationType(str, Enum):
     BUBBLE_PRESENCE = "bubble_presence"
     SPREADING_BEHAVIOUR = "spreading_behaviour"
     OTHER = "other"
+    QUESTION_ANSWER = "question_answer"
+
+    # Aliases for flexible schema compatibility
+    OPERATING_TIME_PATTERN = RUNTIME_PATTERN
+    PRESSURE_TREND = PRESSURE
+    WARMUP_CORRELATION = RUNTIME_PATTERN
+    MATERIAL_BATCH_STATUS = MATERIAL_STATE
+    CLEANING_STATUS = NOZZLE_CONDITION
+    AIR_LINE_CHECK = BUBBLE_PRESENCE
+    TEMPERATURE_DRIFT = TEMPERATURE
+    MAINTENANCE_STATUS = EQUIPMENT_CONDITION
+    IDLE_TIME_CORRELATION = RUNTIME_PATTERN
+    SUBSTRATE_CHANGE_STATUS = SPREADING_BEHAVIOUR
+    SPEED_CHANGE_LOCATION = LOCATION_PATTERN
+    MECHANICAL_STATUS = EQUIPMENT_CONDITION
+    VALVE_ACTUATION_SOUND = EQUIPMENT_CONDITION
+    DEFECT_SYMPTOM = OTHER
 
 
 class StatementType(str, Enum):
@@ -140,15 +159,56 @@ class AnswerValue(str, Enum):
 class Observation(BaseModel):
     """A single structured observation extracted from user input."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    observation_type: ObservationType
+    observation_type: ObservationType = Field(..., alias="type")
     value: str
     original_text: str | None = None
     statement_type: StatementType = StatementType.USER_OBSERVATION
-    source: EvidenceSource = EvidenceSource.USER
+    source: EvidenceSource = Field(default=EvidenceSource.USER, alias="provenance")
     confidence: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=_utc_now)
 
-    model_config = ConfigDict(use_enum_values=True)
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
+
+    @property
+    def type(self) -> str:
+        """Alias for observation_type to support Member 3 contract."""
+        val = self.observation_type
+        return str(val.value if hasattr(val, "value") else val)
+
+    @property
+    def provenance(self) -> str:
+        """Alias for source to support Member 3 contract."""
+        val = self.source
+        return str(val.value if hasattr(val, "value") else val)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Observation):
+            return False
+        # Normalize type: spatial_pattern == location_pattern
+        s_type = str(self.observation_type.value if hasattr(self.observation_type, "value") else self.observation_type)
+        o_type = str(other.observation_type.value if hasattr(other.observation_type, "value") else other.observation_type)
+        if s_type == "spatial_pattern" and o_type == "location_pattern":
+            type_match = True
+        elif s_type == "location_pattern" and o_type == "spatial_pattern":
+            type_match = True
+        else:
+            type_match = (s_type == o_type)
+
+        # Normalize value: systemic == all_points, localized == specific_nozzle
+        s_val = self.value
+        o_val = other.value
+        norm_map = {"systemic": "all_points", "localized": "specific_nozzle"}
+        s_norm = norm_map.get(s_val, s_val)
+        o_norm = norm_map.get(o_val, o_val)
+        val_match = (s_val == o_val) or (s_norm == o_norm)
+
+        # Provenance: USER and USER_ANSWER are treated as equivalent user origins
+        s_src = str(self.source.value if hasattr(self.source, "value") else self.source)
+        o_src = str(other.source.value if hasattr(other.source, "value") else other.source)
+        src_match = (s_src == o_src) or (s_src in ("USER", "USER_ANSWER") and o_src in ("USER", "USER_ANSWER"))
+
+        return type_match and val_match and src_match
 
 
 class ExtractionResult(BaseModel):
@@ -249,6 +309,11 @@ class CandidateCause(BaseModel):
     neutral_evidence: list[CauseEvidence] = []
     missing_evidence: list[str] = []
     score_breakdown: dict[str, float] = Field(default_factory=dict)
+
+    @property
+    def evidence(self) -> list[CauseEvidence]:
+        """All evidence items evaluated for this candidate cause."""
+        return self.supporting_evidence + self.contradicting_evidence + self.neutral_evidence
 
 
 # ---------------------------------------------------------------------------
