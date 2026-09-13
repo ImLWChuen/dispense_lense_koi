@@ -7,6 +7,7 @@ from backend.app.services.diagnosis.engine import (
     CheckResultHandler,
     DiagnosticEngine,
     QuestionAnswerHandler,
+    QuestionAnswerResult,
     StateManager,
 )
 from backend.app.services.diagnosis.evidence_engine import EvidenceEngine
@@ -22,6 +23,7 @@ __all__ = [
     "DiagnosticEngine",
     "EvidenceEngine",
     "QuestionAnswerHandler",
+    "QuestionAnswerResult",
     "QuestionEngine",
     "QuestionSelectionResult",
     "RankingResult",

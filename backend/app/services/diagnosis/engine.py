@@ -615,62 +615,10 @@ class CheckResultHandler:
 # Question Answer Handling
 # ===========================================================================
 
-# Map standard question answers to domain observations
-_QUESTION_ANSWER_MAPPINGS: dict[str, dict[str, tuple[ObservationType, str]]] = {
-    "Q01": {
-        "after_prolonged_operation": (ObservationType.RUNTIME_PATTERN, "after_prolonged_operation"),
-        "worsens_over_time": (ObservationType.RUNTIME_PATTERN, "worsens_over_time"),
-    },
-    "Q02": {
-        "all_points": (ObservationType.LOCATION_PATTERN, "all_points"),
-        "specific_nozzle": (ObservationType.LOCATION_PATTERN, "specific_nozzle"),
-    },
-    "Q03": {
-        "YES": (ObservationType.NOZZLE_CONDITION, "clean"),
-    },
-    "Q04": {
-        "intermittent": (ObservationType.FREQUENCY_PATTERN, "intermittent"),
-        "consistent": (ObservationType.FREQUENCY_PATTERN, "consistent"),
-    },
-    "Q05": {
-        "YES": (ObservationType.BUBBLE_PRESENCE, "visible_bubbles"),
-    },
-}
-
-
-class QuestionAnswerHandler:
-    """Processes user answers to diagnostic questions."""
-
-    @classmethod
-    def handle(
-        cls,
-        answer: QuestionAnswer,
-    ) -> list[Observation]:
-        """Convert a QuestionAnswer into structured observations if applicable.
-
-        Unknown or non-applicable answers produce no observations (no score penalty).
-        """
-        val = answer.answer_value.strip()
-        if val in (AnswerValue.UNKNOWN.value, AnswerValue.NOT_APPLICABLE.value, "UNKNOWN", "NOT_APPLICABLE"):
-            return []
-
-        qid = answer.question_id
-        mappings = _QUESTION_ANSWER_MAPPINGS.get(qid, {})
-
-        # Direct match or case-insensitive match
-        for key, (obs_type, obs_val) in mappings.items():
-            if val.lower() == key.lower():
-                return [
-                    Observation(
-                        observation_type=obs_type,
-                        value=obs_val,
-                        original_text=answer.answer_text or f"{qid}: {val}",
-                        statement_type=StatementType.USER_OBSERVATION,
-                        source=answer.source,
-                    )
-                ]
-
-        return []
+from backend.app.services.diagnosis.question_answer_handler import (
+    QuestionAnswerHandler,
+    QuestionAnswerResult,
+)
 
 
 # ===========================================================================
