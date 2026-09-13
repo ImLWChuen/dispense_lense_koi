@@ -429,12 +429,6 @@ def submit_case_answer(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(e),
             )
-        except ValueError as e:
-            session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(e),
-            )
         except HTTPException:
             session.rollback()
             raise

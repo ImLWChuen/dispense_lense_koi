@@ -26,7 +26,7 @@ from app.db.repository import CaseRepository
 from app.db.session import get_session_factory
 from app.main import app
 from app.models.case import AnalysisRevisionModel, CaseModel, ObservationModel, QuestionAnswerModel
-from app.schemas.diagnosis import CauseConclusion, EvidenceSource, ObservationType, QuestionAnswer
+from app.schemas.diagnosis import CauseConclusion, DiagnosisResult, EvidenceSource, ObservationType, QuestionAnswer
 from app.services.diagnosis.engine import DiagnosticEngine
 from tests.unit.test_persistence_safety import assert_safe_test_database
 
@@ -805,3 +805,94 @@ def test_concurrent_second_answer_cannot_contaminate_first_response(tracked_case
     assert data["submitted_answer"]["question_id"] == "Q01"
     assert data["submitted_answer"]["question_id"] != "Q02"
     assert not any(ans["question_id"] == "Q02" for ans in data["previous_answers"])
+
+
+def test_internal_value_error_after_append_returns_sanitized_500_and_rolls_back(tracked_cases: list[str]):
+    """Verify that an internal ValueError raised after append has flushed
+    (e.g., during snapshot or response validation) is classified as an internal 500
+    error, raw exception details are not exposed, and database writes are rolled back,
+    while ordinary invalid technician inputs still return 422.
+    """
+    # 1. Create durable case at Revision 1
+    create_payload = {
+        "description": "Dispense dots are shrinking over time during continuous operation",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "solder_paste",
+        "method": "jetting",
+    }
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    with factory() as session:
+        repo = CaseRepository(session)
+        obs_before = len(repo.get_case_observations(case_id))
+        qas_before = len(repo.get_case_question_answers(case_id))
+        revs_before = repo.list_case_revisions(case_id)
+        assert qas_before == 0
+        assert revs_before == [1]
+
+    # 2. Induce an internal response/snapshot validation ValueError after append has flushed
+    error_msg = "Corrupted diagnosis snapshot: invalid confidence value"
+    with patch.object(
+        DiagnosisResult,
+        "model_validate",
+        side_effect=ValueError(error_msg),
+    ):
+        resp = client.post(
+            f"/api/v1/cases/{case_id}/answers",
+            json={
+                "question_id": "Q01",
+                "answer": "after_prolonged_operation",
+                "expected_revision": 1,
+                "answer_text": "Shrinking starts after 30 minutes",
+            },
+        )
+        # 1. Endpoint returns 500
+        assert resp.status_code == 500
+        data = resp.json()
+        # 2. Raw exception message is absent from the response
+        assert error_msg not in resp.text
+        assert "detail" in data
+        assert data["detail"] == "An unexpected error occurred while persisting the question answer revision."
+
+    # 3. The answer, observations, and new revision are rolled back
+    with factory() as session:
+        repo = CaseRepository(session)
+        assert len(repo.get_case_observations(case_id)) == obs_before
+        assert len(repo.get_case_question_answers(case_id)) == qas_before
+        assert repo.list_case_revisions(case_id) == revs_before
+
+    # 4. Ordinary invalid question/answer inputs still return 422
+    # 4a. Invalid answer for supported question returns 422 with validation detail
+    invalid_ans_resp = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "invalid_unsupported_choice",
+            "expected_revision": 1,
+        },
+    )
+    assert invalid_ans_resp.status_code == 422
+    assert "Invalid answer" in invalid_ans_resp.json()["detail"]
+
+    # 4b. Unknown question ID returns 422 with validation detail
+    unknown_q_resp = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q999_NONEXISTENT",
+            "answer": "yes",
+            "expected_revision": 1,
+        },
+    )
+    assert unknown_q_resp.status_code == 422
+    assert "unknown question_id" in unknown_q_resp.json()["detail"].lower()
+
+    # 4c. Verify that database is still clean at Revision 1 after the 422 requests
+    with factory() as session:
+        repo = CaseRepository(session)
+        assert len(repo.get_case_observations(case_id)) == obs_before
+        assert len(repo.get_case_question_answers(case_id)) == 0
+        assert repo.list_case_revisions(case_id) == [1]
