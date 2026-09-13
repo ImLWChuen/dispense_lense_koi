@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, event
 from sqlalchemy.orm import Session
 
 from app.core.config import get_database_url
@@ -26,7 +26,8 @@ from app.db.repository import CaseRepository
 from app.db.session import get_session_factory
 from app.main import app
 from app.models.case import AnalysisRevisionModel, CaseModel, ObservationModel, QuestionAnswerModel
-from app.schemas.diagnosis import CauseConclusion, EvidenceSource, ObservationType
+from app.schemas.diagnosis import CauseConclusion, EvidenceSource, ObservationType, QuestionAnswer
+from app.services.diagnosis.engine import DiagnosticEngine
 from tests.unit.test_persistence_safety import assert_safe_test_database
 
 client = TestClient(app)
@@ -705,3 +706,102 @@ def test_next_question_excludes_already_answered_questions(tracked_cases: list[s
         assert data["diagnosis"]["next_question"]["question_id"] != "Q01"
 
 
+def test_concurrent_second_answer_cannot_contaminate_first_response(tracked_cases: list[str]):
+    """Verify that if a second answer and revision are committed before the first
+    request returns its response, the first response is not contaminated.
+
+    Assert:
+    - current_revision matches diagnosis.analysis_revision.revision_number.
+    - submitted_answer.resulting_revision_number matches current_revision.
+    - Every returned answer and observation belongs to that revision or earlier.
+    - The first response never identifies the second request's answer.
+    """
+    create_payload = {
+        "description": "Dispense dots are shrinking over time during continuous operation",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "solder_paste",
+        "method": "jetting",
+    }
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    diag_engine = DiagnosticEngine()
+
+    interleaved = False
+
+    def on_after_commit(session: Session):
+        nonlocal interleaved
+        if interleaved:
+            return
+
+        interleaved = True
+        with factory() as session2:
+            repo2 = CaseRepository(session=session2)
+            case_revs = repo2.list_case_revisions(case_id)
+            if 2 in case_revs:
+                loaded_case = repo2.load_structured_case(case_id)
+                if loaded_case is not None:
+                    ans2 = QuestionAnswer(
+                        question_id="Q02",
+                        answer_value="all_points",
+                        source=EvidenceSource.USER,
+                    )
+                    updated_case, res2 = diag_engine.submit_question_answer(loaded_case, ans2)
+                    repo2.append_question_answer_revision(
+                        case=updated_case,
+                        answer=ans2,
+                        result=res2,
+                        expected_revision=2,
+                    )
+                    session2.commit()
+
+    try:
+        event.listen(Session, "after_commit", on_after_commit)
+
+        # Submit answer Q01 (Revision 2) via API
+        ans1_payload = {
+            "question_id": "Q01",
+            "answer": "after_prolonged_operation",
+            "expected_revision": 1,
+            "answer_text": "Shrinking starts after continuous dispensing",
+        }
+        ans_resp = client.post(f"/api/v1/cases/{case_id}/answers", json=ans1_payload)
+    finally:
+        event.remove(Session, "after_commit", on_after_commit)
+
+    assert ans_resp.status_code == 200
+    data = ans_resp.json()
+
+    # Verify that Revision 3 was indeed committed in PostgreSQL during the test
+    with factory() as verify_session:
+        verify_repo = CaseRepository(session=verify_session)
+        assert verify_repo.list_case_revisions(case_id) == [1, 2, 3]
+        all_qas = verify_repo.get_case_question_answers(case_id)
+        assert len(all_qas) == 2
+        assert {q.question_id for q in all_qas} == {"Q01", "Q02"}
+
+    # Assertions required by contract:
+    # 1. current_revision matches diagnosis.analysis_revision.revision_number
+    assert data["current_revision"] == 2
+    assert data["diagnosis"]["analysis_revision"]["revision_number"] == 2
+    assert data["current_revision"] == data["diagnosis"]["analysis_revision"]["revision_number"]
+
+    # 2. submitted_answer.resulting_revision_number matches current_revision
+    assert data["submitted_answer"]["resulting_revision_number"] == data["current_revision"]
+    assert data["submitted_answer"]["resulting_revision_number"] == 2
+
+    # 3. Every returned answer and observation belongs to that revision or earlier
+    assert len(data["previous_answers"]) == 1
+    for ans in data["previous_answers"]:
+        assert ans["resulting_revision_number"] <= data["current_revision"]
+
+    for obs in data["observations"]:
+        assert obs["first_seen_revision"] <= data["current_revision"]
+
+    # 4. The first response never identifies the second request's answer
+    assert data["submitted_answer"]["question_id"] == "Q01"
+    assert data["submitted_answer"]["question_id"] != "Q02"
+    assert not any(ans["question_id"] == "Q02" for ans in data["previous_answers"])

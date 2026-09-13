@@ -189,16 +189,19 @@ class CaseRepository:
             if should_close:
                 session.close()
 
-    def get_case_observations(self, case_id: str) -> list[ObservationModel]:
+    def get_case_observations(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[ObservationModel]:
         """Retrieve all observations associated with a case ordered by ID."""
         session, should_close = self._get_active_session()
         try:
             stmt = (
                 select(ObservationModel)
                 .where(ObservationModel.case_id == case_id)
-                .order_by(ObservationModel.id)
-                .execution_options(populate_existing=True)
             )
+            if max_revision is not None:
+                stmt = stmt.where(ObservationModel.first_seen_revision <= max_revision)
+            stmt = stmt.order_by(ObservationModel.id).execution_options(populate_existing=True)
             return list(session.scalars(stmt).all())
         finally:
             if should_close:
@@ -240,19 +243,22 @@ class CaseRepository:
             if should_close:
                 session.close()
 
-    def get_case_question_answers(self, case_id: str) -> list[QuestionAnswerModel]:
+    def get_case_question_answers(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[QuestionAnswerModel]:
         """Retrieve all question answers associated with a case ordered by resulting_revision_number."""
         session, should_close = self._get_active_session()
         try:
             stmt = (
                 select(QuestionAnswerModel)
                 .where(QuestionAnswerModel.case_id == case_id)
-                .order_by(
-                    QuestionAnswerModel.resulting_revision_number,
-                    QuestionAnswerModel.id,
-                )
-                .execution_options(populate_existing=True)
             )
+            if max_revision is not None:
+                stmt = stmt.where(QuestionAnswerModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                QuestionAnswerModel.resulting_revision_number,
+                QuestionAnswerModel.id,
+            ).execution_options(populate_existing=True)
             return list(session.scalars(stmt).all())
         finally:
             if should_close:

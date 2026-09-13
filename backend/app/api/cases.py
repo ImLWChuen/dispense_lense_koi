@@ -317,7 +317,112 @@ def submit_case_answer(
                 result=result,
                 expected_revision=request.expected_revision,
             )
+
+            target_revision = rev_model.revision_number
+
+            case_model = repository.get_case(canonical_id)
+            if case_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Case '{canonical_id}' not found.",
+                )
+
+            obs_models = repository.get_case_observations(canonical_id, max_revision=target_revision)
+            rev1_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+            if rev1_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Initial diagnosis revision for case '{canonical_id}' not found.",
+                )
+
+            initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
+            qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
+
+            observations = [
+                CaseObservationResponse(
+                    id=obs.observation_id,
+                    observation_id=obs.observation_id,
+                    observation_type=(
+                        ObservationType(obs.observation_type)
+                        if obs.observation_type in ObservationType._value2member_map_
+                        else obs.observation_type
+                    ),
+                    value=obs.value,
+                    original_text=obs.original_text,
+                    statement_type=(
+                        StatementType(obs.statement_type)
+                        if obs.statement_type in StatementType._value2member_map_
+                        else obs.statement_type
+                    ),
+                    source=(
+                        EvidenceSource(obs.source)
+                        if obs.source in EvidenceSource._value2member_map_
+                        else obs.source
+                    ),
+                    confidence=obs.confidence,
+                    timestamp=obs.created_at,
+                    created_at=obs.created_at,
+                    first_seen_revision=obs.first_seen_revision,
+                )
+                for obs in obs_models
+                if obs.first_seen_revision <= target_revision
+            ]
+
+            previous_answers = [
+                QuestionAnswerRecord(
+                    question_id=qm.question_id,
+                    answer_value=qm.answer_value,
+                    answer_text=qm.answer_text,
+                    source=(
+                        EvidenceSource(qm.source)
+                        if qm.source in EvidenceSource._value2member_map_
+                        else qm.source
+                    ),
+                    answered_at=qm.answered_at,
+                    resulting_revision_number=qm.resulting_revision_number,
+                )
+                for qm in qa_models
+                if qm.resulting_revision_number <= target_revision
+            ]
+
+            matching_submitted = [
+                a for a in previous_answers if a.resulting_revision_number == target_revision
+            ]
+            if not matching_submitted:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Submitted answer record not found for the resulting revision.",
+                )
+            submitted_answer = matching_submitted[-1]
+
+            issue_cond = (
+                IssueCondition(case_model.issue_condition)
+                if case_model.issue_condition in IssueCondition._value2member_map_
+                else case_model.issue_condition
+            )
+
+            response = CaseAnswerResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=case_model.defect_name,
+                issue_condition=issue_cond,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=result,
+                current_revision=target_revision,
+                submitted_answer=submitted_answer,
+                previous_answers=previous_answers,
+                next_question=result.next_question,
+                next_check=result.next_check,
+            )
+
             session.commit()
+            return response
         except StaleRevisionError as e:
             session.rollback()
             raise HTTPException(
@@ -340,97 +445,6 @@ def submit_case_answer(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="An unexpected error occurred while persisting the question answer revision.",
             )
-
-        case_model = repository.get_case(canonical_id)
-        if case_model is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Case '{canonical_id}' not found.",
-            )
-
-        obs_models = repository.get_case_observations(canonical_id)
-        rev1_model = repository.get_analysis_revision(canonical_id, revision_number=1)
-        if rev1_model is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Initial diagnosis revision for case '{canonical_id}' not found.",
-            )
-
-        initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
-        qa_models = repository.get_case_question_answers(canonical_id)
-
-        observations = [
-            CaseObservationResponse(
-                id=obs.observation_id,
-                observation_id=obs.observation_id,
-                observation_type=(
-                    ObservationType(obs.observation_type)
-                    if obs.observation_type in ObservationType._value2member_map_
-                    else obs.observation_type
-                ),
-                value=obs.value,
-                original_text=obs.original_text,
-                statement_type=(
-                    StatementType(obs.statement_type)
-                    if obs.statement_type in StatementType._value2member_map_
-                    else obs.statement_type
-                ),
-                source=(
-                    EvidenceSource(obs.source)
-                    if obs.source in EvidenceSource._value2member_map_
-                    else obs.source
-                ),
-                confidence=obs.confidence,
-                timestamp=obs.created_at,
-                created_at=obs.created_at,
-                first_seen_revision=obs.first_seen_revision,
-            )
-            for obs in obs_models
-        ]
-
-        previous_answers = [
-            QuestionAnswerRecord(
-                question_id=qm.question_id,
-                answer_value=qm.answer_value,
-                answer_text=qm.answer_text,
-                source=(
-                    EvidenceSource(qm.source)
-                    if qm.source in EvidenceSource._value2member_map_
-                    else qm.source
-                ),
-                answered_at=qm.answered_at,
-                resulting_revision_number=qm.resulting_revision_number,
-            )
-            for qm in qa_models
-        ]
-
-        submitted_answer = previous_answers[-1]
-
-        issue_cond = (
-            IssueCondition(case_model.issue_condition)
-            if case_model.issue_condition in IssueCondition._value2member_map_
-            else case_model.issue_condition
-        )
-
-        return CaseAnswerResponse(
-            case_id=case_model.case_id,
-            description=case_model.description,
-            material=case_model.material,
-            method=case_model.method,
-            machine_context=case_model.machine_context,
-            defect_code=case_model.defect_code,
-            defect_name=case_model.defect_name,
-            issue_condition=issue_cond,
-            created_at=case_model.created_at,
-            observations=observations,
-            initial_diagnosis=initial_diagnosis,
-            diagnosis=result,
-            current_revision=rev_model.revision_number,
-            submitted_answer=submitted_answer,
-            previous_answers=previous_answers,
-            next_question=result.next_question,
-            next_check=result.next_check,
-        )
     except HTTPException:
         raise
     except Exception:
