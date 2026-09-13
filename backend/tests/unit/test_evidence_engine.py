@@ -45,6 +45,7 @@ class TestEvidenceEngine(unittest.TestCase):
 
         air = next((c for c in candidates if c.cause_id == "air_supply_issue"), None)
         self.assertIsNotNone(air)
+        assert air is not None
 
         # Check supporting evidence
         supporting_items = [e for e in air.evidence if e.relation == EvidenceRelation.SUPPORTS]
@@ -65,6 +66,7 @@ class TestEvidenceEngine(unittest.TestCase):
         candidates = self.engine.evaluate([obs_all_points], self.defect_code)
         nozzle = next((c for c in candidates if c.cause_id == "nozzle_restriction"), None)
         self.assertIsNotNone(nozzle)
+        assert nozzle is not None
 
         # all_points contradicts localized cause nozzle_restriction
         contradicting = [e for e in nozzle.evidence if e.relation == EvidenceRelation.CONTRADICTS]

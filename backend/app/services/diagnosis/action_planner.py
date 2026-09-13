@@ -180,6 +180,12 @@ class ActionPlanner:
             if is_attempted:
                 reasoning_parts.append("Already attempted (heavily penalized).")
 
+            possible_outcomes = (
+                list(act_def.evidence_mapping.keys())
+                if hasattr(act_def, "evidence_mapping") and act_def.evidence_mapping
+                else []
+            )
+
             scored_checks.append(TroubleshootingCheck(
                 check_id=act_def.id,
                 name=act_def.name,
@@ -190,6 +196,7 @@ class ActionPlanner:
                 reasoning=" ".join(reasoning_parts),
                 required_access=act_def.required_access,
                 effort_level=act_def.effort_level,
+                possible_outcomes=possible_outcomes,
             ))
 
         # Sort by priority descending

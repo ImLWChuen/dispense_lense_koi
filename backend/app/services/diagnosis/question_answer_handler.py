@@ -429,7 +429,11 @@ class QuestionAnswerHandler:
             src = answer.source
         else:
             qid = str(question_id or kwargs.get("question_id", "")).strip().upper()
-            val_raw = answer_value if answer_value is not None else kwargs.get("answer", "")
+            val_raw = (
+                answer_value
+                if answer_value is not None
+                else kwargs.get("answer", kwargs.get("selected_option_id", kwargs.get("value", "")))
+            )
             val = str(val_raw).strip()
             text = answer_text or kwargs.get("answer_text")
             src = source

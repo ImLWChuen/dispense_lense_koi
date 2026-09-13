@@ -166,6 +166,13 @@ class QuestionEngine:
                 - answered_penalty
             )
 
+            # Determine allowed options dynamically from question definition
+            opts: list[str] = (
+                list(q_def.evidence_mapping.keys())
+                if hasattr(q_def, "evidence_mapping") and q_def.evidence_mapping
+                else []
+            )
+
             scored_questions.append(Question(
                 question_id=q_def.id,
                 text=q_def.text,
@@ -173,6 +180,7 @@ class QuestionEngine:
                 usefulness_score=usefulness,
                 target_causes=q_def.applicable_causes,
                 already_answered=is_answered,
+                options=opts,
             ))
 
         # Sort by usefulness descending
