@@ -20,7 +20,7 @@ project_root = str(Path(__file__).resolve().parents[3])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
@@ -32,8 +32,8 @@ from backend.app.schemas.diagnosis import (
     ObservationType,
     StructuredCase,
 )
-from backend.app.services.diagnosis.engine import DiagnosticEngine, StateManager
-from backend.app.utils.scoring import SCORING_CONFIG
+from app.services.diagnosis.engine import DiagnosticEngine, StateManager
+from app.utils.scoring import SCORING_CONFIG
 
 
 class TestCheckResultDiagnosisRevision(unittest.TestCase):
