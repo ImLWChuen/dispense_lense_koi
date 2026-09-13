@@ -583,6 +583,7 @@ Durable case endpoints persist diagnostic cases and their full assessment histor
 | **Case ID Nature** | Ephemeral UUID identifying a single execution run. Not retrievable. | Canonical persistent UUID. Persisted in database and permanently queryable. |
 | **Retrieval** | Cannot be retrieved (`GET` returns 404). | Queryable via `GET /api/v1/cases/{case_id}`. |
 | **Recalculation on Read** | N/A (no read endpoint). | Guaranteed zero recalculation. Reads persisted state; never invokes `DiagnosticEngine`. |
+| **Inconclusive Diagnosis Handling** | Accepts input and returns `200 OK` with `defect: null` and `analysis_revision: null`. | Rejects with `422 Unprocessable Entity`; no case or revision is persisted. *(Note: Current persistence contract requires Revision 1 for initial case storage; records current behavior, not permanent product approval.)* |
 | **Primary Use Case** | Ad-hoc one-off checks, lightweight validation, automated smoke tests. | Durable diagnostic troubleshooting sessions requiring historical tracking. |
 
 ---
@@ -592,6 +593,10 @@ Durable case endpoints persist diagnostic cases and their full assessment histor
 - **Method / Path:** `POST /api/v1/cases`
 - **Description:** Submits a diagnostic case, runs the deterministic `DiagnosticEngine`, and atomically stores the case record, all observations (with provenance), and the complete immutable revision-1 diagnosis snapshot in PostgreSQL.
 - **Status Code:** `201 Created`
+
+> [!NOTE]
+> **Inconclusive Diagnosis Limitation (HTTP 422):**
+> When valid input does not provide enough evidence for the diagnostic engine to classify a defect, no `analysis_revision` is formed. Because the initial persistence contract strictly requires Revision 1 to store a case, `POST /api/v1/cases` returns `422 Unprocessable Entity` (`"Diagnostic evaluation could not identify a defect category from the provided evidence."`) and commits no rows to the database. By contrast, the stateless `POST /api/v1/diagnoses` endpoint returns `200 OK` with `defect: null` and `analysis_revision: null`. This documents current milestone behavior, not approval of a permanent product restriction.
 
 ##### Request Schema (`CreateCaseRequest`)
 
@@ -607,6 +612,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 | `observations` | `array[Observation]` | No | `[]` | List of structured observations. |
 
 *Note: Extra top-level fields (e.g., caller-supplied `case_id`, `created_at`, `revision_number`) are strictly forbidden (`extra = "forbid"`).*
+
 
 ##### Response Schema (`DurableCaseResponse`)
 
@@ -1719,6 +1725,13 @@ Example: Unknown defect code:
 }
 ```
 
+Example: Inconclusive diagnosis evidence (no defect category identified):
+```json
+{
+  "detail": "Diagnostic evaluation could not identify a defect category from the provided evidence."
+}
+```
+
 Example: Extra forbidden field (such as caller-supplied `case_id` or `analysis_revision`):
 ```json
 {
@@ -1739,10 +1752,24 @@ Example: Extra forbidden field (such as caller-supplied `case_id` or `analysis_r
 ### HTTP 500 Internal Server Error
 Returned when the internal diagnostic engine or database encounters an unhandled exception.
 
-Example response:
+Example response (initial diagnosis evaluation failure):
 ```json
 {
   "detail": "An unexpected error occurred during diagnosis evaluation."
+}
+```
+
+Example response (durable case creation failure):
+```json
+{
+  "detail": "An unexpected error occurred during case creation."
+}
+```
+
+Example response (durable case retrieval failure):
+```json
+{
+  "detail": "An unexpected error occurred while retrieving the case."
 }
 ```
 *Note: Exception details, stack traces, database URLs, credentials, SQL statements, file system paths, and submitted user data are sanitized and never exposed in the response.*

@@ -409,13 +409,14 @@ Implemented durable case endpoints `POST /api/v1/cases` and `GET /api/v1/cases/{
 ### Persistence/transaction decisions
 
 - Reused accepted `CaseRepository.save_initial_case()` to ensure a single atomic transaction across `cases`, `case_observations`, and `case_analysis_revisions`.
-- Enforced session management (`with factory() as session`) with automatic rollback on exception to guarantee no partial case records remain on failure.
+- Session is provided via FastAPI dependency `session: Session = Depends(get_db)`, with explicit `session.commit()` on success and `session.rollback()` in `except HTTPException:` / `except Exception:` handlers to guarantee no partial case records remain on failure.
 - In `GET /api/v1/cases/{case_id}`, repository queries database directly and maps persisted models without invoking `DiagnosticEngine`.
 - Session dependency `get_db` is evaluated lazily only for routes requiring database access, keeping `POST /api/v1/diagnoses` and `/api/v1/health` completely decoupled from database availability.
 
 ### Verification results
 
-1. `alembic upgrade head`: Database schema confirmed at `0002_widen_domain_strings`.
+Note: Historical implementer-reported verification results from the DLK-M3-009 implementation run:
+1. `alembic upgrade head`: Database schema confirmed at `0002_widen_unrestricted_strings`.
 2. `tests/integration/test_case_api.py`: 13 passed in 1.66s.
 3. `tests/integration/test_diagnosis_api.py tests/integration/test_health_api.py`: 13 passed in 1.03s.
 4. `tests/integration/test_persistence.py`: 11 passed in 1.24s.
@@ -432,4 +433,3 @@ Implemented durable case endpoints `POST /api/v1/cases` and `GET /api/v1/cases/{
 ### Proposed commit message
 
 `feat(api): add durable case create and retrieve endpoints`
-

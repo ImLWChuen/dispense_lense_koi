@@ -127,25 +127,46 @@ def test_create_and_retrieve_durable_case_happy_path(tracked_cases):
     assert get_res.status_code == 200
     get_data = get_res.json()
 
-    # 3. Assert exact parity between POST response and GET response
-    assert get_data["case_id"] == case_id
-    assert get_data["description"] == post_data["description"]
-    assert get_data["material"] == post_data["material"]
-    assert get_data["method"] == post_data["method"]
-    assert get_data["machine_context"] == post_data["machine_context"]
-    assert get_data["defect_code"] == post_data["defect_code"]
-    assert get_data["defect_name"] == post_data["defect_name"]
-    assert get_data["issue_condition"] == post_data["issue_condition"]
-    assert len(get_data["observations"]) == len(post_data["observations"])
+    # 3. Assert complete exact parity between POST response and GET response
+    assert get_data == post_data
 
-    # Verify initial diagnosis snapshot matches
-    assert get_data["initial_diagnosis"]["defect"] == init_diag["defect"]
-    assert get_data["initial_diagnosis"]["ranked_causes"] == init_diag["ranked_causes"]
-    assert get_data["initial_diagnosis"]["explanation"] == init_diag["explanation"]
-    assert (
-        get_data["initial_diagnosis"]["analysis_revision"]["revision_number"]
-        == init_diag["analysis_revision"]["revision_number"]
-    )
+    # 4. Verify persisted relational records and stored snapshot in PostgreSQL directly
+    factory = get_session_factory()
+    with factory() as db_session:
+        db_case = db_session.get(CaseModel, case_id)
+        assert db_case is not None
+        assert db_case.case_id == case_id
+        assert db_case.description == payload["description"]
+        assert db_case.material == payload["material"]
+        assert db_case.method == payload["method"]
+        assert db_case.machine_context == payload["machine_context"]
+        assert db_case.defect_code == post_data["defect_code"]
+        assert db_case.defect_name == post_data["defect_name"]
+        assert db_case.issue_condition == post_data["issue_condition"]
+
+        db_obs = db_session.scalars(
+            select(ObservationModel).where(ObservationModel.case_id == case_id)
+        ).all()
+        assert len(db_obs) == len(post_data["observations"])
+        post_obs_map = {o["id"]: o for o in post_data["observations"]}
+        for o_model in db_obs:
+            assert o_model.observation_id in post_obs_map
+            o_resp = post_obs_map[o_model.observation_id]
+            assert o_model.observation_type == o_resp["observation_type"]
+            assert o_model.value == o_resp["value"]
+            assert o_model.statement_type == o_resp["statement_type"]
+            assert o_model.source == o_resp["source"]
+            assert o_model.first_seen_revision == o_resp["first_seen_revision"]
+            assert o_resp["first_seen_revision"] == 1
+
+        db_rev = db_session.scalars(
+            select(AnalysisRevisionModel).where(AnalysisRevisionModel.case_id == case_id)
+        ).one()
+        assert db_rev.revision_number == 1
+        assert db_rev.defect_code == post_data["defect_code"]
+        assert db_rev.result_snapshot == post_data["initial_diagnosis"]
+        assert db_rev.result_snapshot == get_data["initial_diagnosis"]
+
 
 
 # ===========================================================================
@@ -366,24 +387,159 @@ def test_get_is_idempotent_and_does_not_mutate_revisions(tracked_cases):
 # 8. Scenario 8: Atomic Persistence Failure
 # ===========================================================================
 
-def test_atomic_persistence_failure_leaves_no_partial_case():
-    """An induced persistence failure must roll back cleanly and leave no partial records."""
-    failing_case_id = str(uuid.uuid4())
+def test_rollback_after_real_flushed_writes_leaves_no_partial_case(tracked_cases):
+    """
+    Induce a failure AFTER real repository writes and session.flush() have executed in the request transaction,
+    proving that PostgreSQL transaction rollback cleans up all flushed rows across cases,
+    observations, and analysis revisions without corrupting unrelated control data.
+    """
+    # 1. Establish an unrelated control case in PostgreSQL
+    control_payload = {
+        "description": "Unrelated control case that must remain completely intact after failure rollback.",
+        "defect_code": "D01_TOO_LITTLE",
+        "material": "Epoxy-Control",
+        "method": "time_pressure",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "confidence": 0.9,
+            }
+        ],
+    }
+    control_res = client.post("/api/v1/cases", json=control_payload)
+    assert control_res.status_code == 201
+    control_case_id = control_res.json()["case_id"]
+    tracked_cases.append(control_case_id)
+
+    # Verify control case exists in PostgreSQL
+    factory = get_session_factory()
+    with factory() as init_session:
+        assert init_session.get(CaseModel, control_case_id) is not None
+
+    # 2. Prepare payload for the failing case
+    failing_payload = {
+        "description": "The dispensing dots become smaller after 20 minutes under test.",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "Polymer-Failing",
+        "method": "jetting",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "confidence": 0.92,
+            }
+        ],
+    }
+
+    synthetic_secret = "SYNTHETIC_TEST_SECRET_KEY_99887766_XYZ"
+    captured_failed_id: list[str] = []
+    flushed_verification: list[bool] = []
+
+    real_save_initial_case = CaseRepository.save_initial_case
+
+    def fault_injection_save_initial_case(self: CaseRepository, case, result):
+        # Execute real writes which add CaseModel, ObservationModels, AnalysisRevisionModel and call session.flush()
+        real_save_initial_case(self, case, result)
+
+        captured_failed_id.append(case.case_id)
+
+        # Inspect the active request session to verify rows were actually written and flushed
+        req_session = self._session
+        assert req_session is not None, "Request session must be present"
+        flushed_case = req_session.get(CaseModel, case.case_id)
+        assert flushed_case is not None, "CaseModel must be flushed to the request transaction"
+        assert flushed_case.case_id == case.case_id
+
+        flushed_obs = req_session.scalars(
+            select(ObservationModel).where(ObservationModel.case_id == case.case_id)
+        ).all()
+        assert len(flushed_obs) > 0, "ObservationModels must be flushed to the request transaction"
+
+        flushed_revs = req_session.scalars(
+            select(AnalysisRevisionModel).where(AnalysisRevisionModel.case_id == case.case_id)
+        ).all()
+        assert len(flushed_revs) == 1, "AnalysisRevisionModel must be flushed to the request transaction"
+
+        flushed_verification.append(True)
+
+        # Induce synthetic failure before session.commit()
+        raise RuntimeError(f"Simulated transaction commit failure with sensitive credential: {synthetic_secret}")
+
+    # 3. Execute POST with fault injection seam
+    with patch.object(CaseRepository, "save_initial_case", fault_injection_save_initial_case):
+        res = client.post("/api/v1/cases", json=failing_payload)
+
+    # 4. Verify request failed with sanitized 500
+    assert res.status_code == 500
+    assert len(captured_failed_id) == 1
+    assert flushed_verification == [True], "Flushed writes must be verified in the transaction before exception"
+    failed_case_id = captured_failed_id[0]
+
+    res_json = res.json()
+    assert res_json == {"detail": "An unexpected error occurred during case creation."}
+
+    # Verify sensitive data / synthetic secrets are never leaked
+    res_text = res.text
+    assert synthetic_secret not in res_text
+    assert "password" not in res_text
+    assert "postgresql" not in res_text
+    assert "Traceback" not in res_text
+    assert "RuntimeError" not in res_text
+
+    # 5. Verify from a fresh, independent session that all 3 tables have 0 rows for the failed case ID
+    with factory() as check_session:
+        # Check cases table
+        persisted_cases = check_session.scalars(
+            select(CaseModel).where(CaseModel.case_id == failed_case_id)
+        ).all()
+        assert len(persisted_cases) == 0, f"Expected 0 case records for {failed_case_id}, found {len(persisted_cases)}"
+
+        # Check case_observations table
+        persisted_obs = check_session.scalars(
+            select(ObservationModel).where(ObservationModel.case_id == failed_case_id)
+        ).all()
+        assert len(persisted_obs) == 0, f"Expected 0 observation records for {failed_case_id}, found {len(persisted_obs)}"
+
+        # Check case_analysis_revisions table
+        persisted_revs = check_session.scalars(
+            select(AnalysisRevisionModel).where(AnalysisRevisionModel.case_id == failed_case_id)
+        ).all()
+        assert len(persisted_revs) == 0, f"Expected 0 revision records for {failed_case_id}, found {len(persisted_revs)}"
+
+        # 6. Verify unrelated control case remains completely intact
+        db_control = check_session.get(CaseModel, control_case_id)
+        assert db_control is not None
+        assert db_control.case_id == control_case_id
+        assert db_control.description == control_payload["description"]
+
+        control_obs = check_session.scalars(
+            select(ObservationModel).where(ObservationModel.case_id == control_case_id)
+        ).all()
+        assert len(control_obs) > 0
+
+        control_revs = check_session.scalars(
+            select(AnalysisRevisionModel).where(AnalysisRevisionModel.case_id == control_case_id)
+        ).all()
+        assert len(control_revs) == 1
+
+
+def test_immediate_repository_failure_handles_error_safely():
+    """An immediate exception raised before repository writes must return sanitized 500 without lingering rows."""
     payload = {
         "description": "Dispense needle drips fluid after dispensing stops",
         "defect_code": "D01_TOO_LITTLE",
     }
 
-    # Patch repository.save_initial_case to simulate database/transaction error
+    # Patch repository.save_initial_case to simulate immediate initialization error
     with patch.object(
         CaseRepository,
         "save_initial_case",
-        side_effect=RuntimeError("Simulated database constraint or disk error"),
+        side_effect=RuntimeError("Simulated immediate database initialization error"),
     ):
         res = client.post("/api/v1/cases", json=payload)
         assert res.status_code == 500
         assert "An unexpected error occurred" in res.json()["detail"]
-        # Error must never expose raw database URLs, credentials, or traces
         err_text = res.text
         assert "password" not in err_text
         assert "postgresql" not in err_text
@@ -395,6 +551,7 @@ def test_atomic_persistence_failure_leaves_no_partial_case():
             select(CaseModel).where(CaseModel.description == payload["description"])
         ).all()
         assert len(cases) == 0
+
 
 
 # ===========================================================================
@@ -480,3 +637,44 @@ def test_stateless_diagnosis_endpoint_remains_stateless():
     # That case_id must NOT exist in the database
     get_res = client.get(f"/api/v1/cases/{stateless_case_id}")
     assert get_res.status_code == 404
+
+
+# ===========================================================================
+# 12. Scenario 12: Inconclusive Diagnosis Limitation (Stateless vs Durable)
+# ===========================================================================
+
+def test_inconclusive_diagnosis_behavior_difference():
+    """
+    Test the documented contract difference when input yields no identified defect:
+    - Stateless endpoint (POST /api/v1/diagnoses) returns 200 OK with defect=None and analysis_revision=None.
+    - Durable endpoint (POST /api/v1/cases) rejects the request with 422 because the persistence
+      contract requires Revision 1 for initial case storage, producing zero database records.
+    """
+    inconclusive_payload = {
+        "description": "Cleaned and calibrated the machine as part of standard shift startup.",
+    }
+
+    # 1. Stateless endpoint accepts input and returns inconclusive 200 OK
+    stateless_res = client.post("/api/v1/diagnoses", json=inconclusive_payload)
+    assert stateless_res.status_code == 200
+    stateless_data = stateless_res.json()
+    assert stateless_data["defect"] is None
+    assert stateless_data["analysis_revision"] is None
+    stateless_case_id = stateless_data["case_id"]
+
+    # Ephemeral case_id must not exist in database
+    factory = get_session_factory()
+    with factory() as session:
+        assert session.get(CaseModel, stateless_case_id) is None
+
+    # 2. Durable endpoint rejects inconclusive input with 422 Unprocessable Entity
+    durable_res = client.post("/api/v1/cases", json=inconclusive_payload)
+    assert durable_res.status_code == 422
+    assert "could not identify a defect category" in durable_res.json()["detail"]
+
+    # 3. Verify zero database records were created for this description
+    with factory() as session:
+        cases = session.scalars(
+            select(CaseModel).where(CaseModel.description == inconclusive_payload["description"])
+        ).all()
+        assert len(cases) == 0
