@@ -24,16 +24,23 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_database_url
 from app.db.database import get_engine, reset_engine
-from app.db.repository import CaseRepository
+from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_session_factory
-from app.models.case import AnalysisRevisionModel, CaseModel, ObservationModel
+from app.models.case import (
+    AnalysisRevisionModel,
+    CaseModel,
+    ObservationModel,
+    QuestionAnswerModel,
+)
 from app.schemas.diagnosis import (
     AnalysisRevision,
+    AnswerValue,
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
     Observation,
     ObservationType,
+    QuestionAnswer,
     StatementType,
     StructuredCase,
 )
@@ -91,6 +98,7 @@ def test_alembic_schema_structure_and_constraints():
     assert "cases" in tables
     assert "case_observations" in tables
     assert "analysis_revisions" in tables
+    assert "case_question_answers" in tables
     assert "alembic_version" in tables
 
     # Check 'cases' columns
@@ -136,6 +144,38 @@ def test_alembic_schema_structure_and_constraints():
     rev_uqs = inspector.get_unique_constraints("analysis_revisions")
     assert any(
         set(uq["column_names"]) == {"case_id", "revision_number"} for uq in rev_uqs
+    )
+
+    # Check 'case_question_answers' columns and constraints
+    qa_cols = {c["name"]: c for c in inspector.get_columns("case_question_answers")}
+    assert "id" in qa_cols
+    assert "case_id" in qa_cols
+    assert not qa_cols["case_id"]["nullable"]
+    assert "question_id" in qa_cols
+    assert "TEXT" in str(qa_cols["question_id"]["type"]).upper()
+    assert not qa_cols["question_id"]["nullable"]
+    assert "answer_value" in qa_cols
+    assert "TEXT" in str(qa_cols["answer_value"]["type"]).upper()
+    assert not qa_cols["answer_value"]["nullable"]
+    assert "answer_text" in qa_cols
+    assert "TEXT" in str(qa_cols["answer_text"]["type"]).upper()
+    assert qa_cols["answer_text"]["nullable"]
+    assert "source" in qa_cols
+    assert "VARCHAR" in str(qa_cols["source"]["type"]).upper()
+    assert "answered_at" in qa_cols
+    assert not qa_cols["answered_at"]["nullable"]
+    assert "resulting_revision_number" in qa_cols
+    assert not qa_cols["resulting_revision_number"]["nullable"]
+
+    qa_fks = inspector.get_foreign_keys("case_question_answers")
+    assert any(fk["referred_table"] == "cases" for fk in qa_fks)
+    qa_uqs = inspector.get_unique_constraints("case_question_answers")
+    assert any(
+        set(uq["column_names"]) == {"case_id", "resulting_revision_number"} for uq in qa_uqs
+    )
+    # Ensure no unique constraint on (case_id, question_id)
+    assert not any(
+        set(uq["column_names"]) == {"case_id", "question_id"} for uq in qa_uqs
     )
 
 
@@ -535,3 +575,579 @@ def test_configuration_requires_database_url_when_called(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "")
     with pytest.raises(RuntimeError, match="DATABASE_URL environment variable is not set"):
         get_database_url()
+
+
+# ===========================================================================
+# DLK-M3-011: Question-Answer Persistence & Analysis Revision Appends
+# ===========================================================================
+
+def test_unrestricted_question_answer_strings_round_trip(case_repo, db_session):
+    """Verify that question_id > 64 chars, answer_value > 255 chars, and answer_text > 500 chars
+    round-trip through PostgreSQL with exact fidelity."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # Initial case
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                )
+            ],
+        )
+    )
+    result = engine.diagnose(case)
+    assert result.analysis_revision is not None
+    repo.save_initial_case(case, result)
+
+    # Long unrestricted domain strings
+    long_qid = "Q_unrestricted_domain_identifier_with_length_greater_than_sixty_four_chars_test"
+    assert len(long_qid) > 64
+    long_val = "AnswerValue_" + "extended_token_payload_" * 15
+    assert len(long_val) > 255
+    long_text = "Technician notes with unicode 🔍 and extended description: " + "verbose_log_details_" * 25
+    assert len(long_text) > 500
+
+    qa = QuestionAnswer(
+        question_id=long_qid,
+        answer_value=long_val,
+        answer_text=long_text,
+        source=EvidenceSource.USER,
+    )
+
+    # Build revision 2 result
+    reconstructed = repo.load_structured_case(case_id)
+    assert reconstructed is not None
+    reconstructed.previous_answers.append(qa)
+    result2 = engine.diagnose(reconstructed)
+    assert result2.analysis_revision is not None
+    assert result2.analysis_revision.revision_number == 2
+
+    repo.append_question_answer_revision(
+        case=reconstructed,
+        answer=qa,
+        result=result2,
+        expected_revision=1,
+    )
+
+    # Verify direct model query round-trip
+    qa_models = repo.get_case_question_answers(case_id)
+    assert len(qa_models) == 1
+    assert qa_models[0].question_id == long_qid
+    assert qa_models[0].answer_value == long_val
+    assert qa_models[0].answer_text == long_text
+    assert qa_models[0].resulting_revision_number == 2
+
+    # Verify reconstruction round-trip
+    reloaded = repo.load_structured_case(case_id)
+    assert reloaded is not None
+    assert len(reloaded.previous_answers) == 1
+    assert reloaded.previous_answers[0].question_id == long_qid
+    assert reloaded.previous_answers[0].answer_value == long_val
+    assert reloaded.previous_answers[0].answer_text == long_text
+
+
+def test_load_structured_case_reconstructs_complete_state(case_repo):
+    """Verify load_structured_case reconstructs full case context, observations,
+    analysis revisions, timestamps, and empty previous_check_results without diagnostic recalculation."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+            material="UV_Curable_Adhesive_Epoxy",
+            method="time_pressure",
+            machine_context={"pressure_kpa": 120, "temperature_c": 24.5},
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    original_text="Needle dripping fluid",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                    confidence=0.95,
+                )
+            ],
+        )
+    )
+    result = engine.diagnose(case)
+    assert result.analysis_revision is not None
+    repo.save_initial_case(case, result)
+
+    reconstructed = repo.load_structured_case(case_id)
+    assert reconstructed is not None
+    assert reconstructed.case_id == case_id
+    assert reconstructed.description == "The dispensing dots become smaller after the machine has been running for around 20 minutes."
+    assert reconstructed.material == "UV_Curable_Adhesive_Epoxy"
+    assert reconstructed.method == "time_pressure"
+    assert reconstructed.machine_context == {"pressure_kpa": 120, "temperature_c": 24.5}
+    assert reconstructed.defect_code == result.defect
+    assert reconstructed.issue_condition == IssueCondition.UNRESOLVED
+    assert reconstructed.created_at == case.created_at
+
+    # Observations check
+    obs_dict = {o.id: o for o in reconstructed.observations}
+    for orig_obs in case.observations:
+        assert orig_obs.id in obs_dict
+        obs = obs_dict[orig_obs.id]
+        assert obs.observation_type == orig_obs.observation_type
+        assert obs.value == orig_obs.value
+        assert obs.statement_type == orig_obs.statement_type
+        assert obs.source == orig_obs.source
+
+    # Answers, checks, and revisions
+    assert reconstructed.previous_answers == []
+    assert reconstructed.previous_check_results == []
+    assert len(reconstructed.analysis_revisions) == 1
+    assert reconstructed.analysis_revisions[0].revision_number == 1
+    assert reconstructed.analysis_revisions[0].defect_code == result.defect
+    assert len(reconstructed.analysis_revisions[0].ranked_causes) == len(result.ranked_causes)
+
+    # Non-existent case returns None
+    assert repo.load_structured_case(str(uuid.uuid4())) is None
+
+
+def test_append_question_answer_revision_persists_q01_followup(case_repo):
+    """Verify real Q01 answer with submit_question_answer persists as revision 2,
+    with new observation first_seen_revision == 2 and revision 1 immutable."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # 1. Initial Case & Revision 1
+    initial_case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                )
+            ],
+        )
+    )
+    initial_result = engine.diagnose(initial_case)
+    assert initial_result.analysis_revision is not None
+    repo.save_initial_case(initial_case, initial_result)
+
+    # Capture revision 1 state for immutability verification
+    rev1_before = repo.get_analysis_revision(case_id, 1)
+    assert rev1_before is not None
+    rev1_snapshot_before = copy.deepcopy(rev1_before.result_snapshot)
+    rev1_analyzed_at_before = rev1_before.analyzed_at
+
+    # 2. Reconstruct case and submit Q01 follow-up answer
+    reconstructed = repo.load_structured_case(case_id)
+    assert reconstructed is not None
+
+    answer = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        answer_text="Issue starts after 2 hours of continuous running",
+        source=EvidenceSource.USER,
+    )
+    updated_case, result2 = engine.submit_question_answer(reconstructed, answer)
+    assert result2.analysis_revision is not None
+    assert result2.analysis_revision.revision_number == 2
+
+    # 3. Append revision 2 via repository
+    rev2_model = repo.append_question_answer_revision(
+        case=updated_case,
+        answer=answer,
+        result=result2,
+        expected_revision=1,
+    )
+    assert rev2_model.revision_number == 2
+
+    # 4. Verify question answer persistence
+    qa_list = repo.get_case_question_answers(case_id)
+    assert len(qa_list) == 1
+    assert qa_list[0].question_id == "Q01"
+    assert qa_list[0].answer_value == "after_prolonged_operation"
+    assert qa_list[0].answer_text == "Issue starts after 2 hours of continuous running"
+    assert qa_list[0].resulting_revision_number == 2
+
+    # 5. Verify observation first_seen_revision tracking
+    observations = repo.get_case_observations(case_id)
+    obs_q01 = next(o for o in observations if o.value == "after_prolonged_operation")
+    assert obs_q01.first_seen_revision == 2
+
+    for obs in observations:
+        if obs.value != "after_prolonged_operation":
+            assert obs.first_seen_revision == 1
+
+    # 6. Verify revision 1 remains completely immutable
+    rev1_after = repo.get_analysis_revision(case_id, 1)
+    assert rev1_after is not None
+    assert rev1_after.analyzed_at == rev1_analyzed_at_before
+    assert rev1_after.result_snapshot == rev1_snapshot_before
+
+    # 7. Verify revision 2 snapshot parity
+    rev2_after = repo.get_analysis_revision(case_id, 2)
+    assert rev2_after is not None
+    assert rev2_after.revision_number == 2
+    assert rev2_after.result_snapshot == result2.model_dump(mode="json")
+
+    # 8. Verify list_case_revisions
+    rev_numbers = repo.list_case_revisions(case_id)
+    assert rev_numbers == [1, 2]
+
+    # 9. Verify load_structured_case includes all 2 revisions and 1 answer
+    final_case = repo.load_structured_case(case_id)
+    assert final_case is not None
+    assert len(final_case.analysis_revisions) == 2
+    assert final_case.analysis_revisions[0].revision_number == 1
+    assert final_case.analysis_revisions[1].revision_number == 2
+    assert len(final_case.previous_answers) == 1
+    assert final_case.previous_answers[0].question_id == "Q01"
+
+
+def test_append_question_answer_revision_unknown_answer_no_observation(case_repo):
+    """Verify UNKNOWN answer produces no new observation but persists answer and advances revision."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    initial_case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                )
+            ],
+        )
+    )
+    initial_result = engine.diagnose(initial_case)
+    assert initial_result.analysis_revision is not None
+    repo.save_initial_case(initial_case, initial_result)
+
+    # Reconstruct and submit UNKNOWN answer
+    reconstructed = repo.load_structured_case(case_id)
+    assert reconstructed is not None
+    initial_obs_count = len(reconstructed.observations)
+
+    unknown_answer = QuestionAnswer(
+        question_id="Q01",
+        answer_value=AnswerValue.UNKNOWN.value,
+        answer_text="Technician could not confirm timing",
+        source=EvidenceSource.USER,
+    )
+    updated_case, result2 = engine.submit_question_answer(reconstructed, unknown_answer)
+    assert result2.analysis_revision is not None
+    assert result2.analysis_revision.revision_number == 2
+
+    # Append revision 2
+    repo.append_question_answer_revision(
+        case=updated_case,
+        answer=unknown_answer,
+        result=result2,
+        expected_revision=1,
+    )
+
+    # Verify no new observation was created in database
+    db_obs = repo.get_case_observations(case_id)
+    assert len(db_obs) == initial_obs_count
+
+    # Verify answer was persisted
+    qa_list = repo.get_case_question_answers(case_id)
+    assert len(qa_list) == 1
+    assert qa_list[0].question_id == "Q01"
+    assert qa_list[0].answer_value == AnswerValue.UNKNOWN.value
+    assert qa_list[0].resulting_revision_number == 2
+
+    # Verify reconstruction includes UNKNOWN answer
+    reloaded = repo.load_structured_case(case_id)
+    assert reloaded is not None
+    assert len(reloaded.previous_answers) == 1
+    assert reloaded.previous_answers[0].answer_value == AnswerValue.UNKNOWN.value
+    assert len(reloaded.analysis_revisions) == 2
+
+
+def test_stale_expected_revision_rejected_with_no_writes(case_repo, db_session):
+    """Verify that expected_revision < latest_revision raises StaleRevisionError
+    and creates zero new rows."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # 1. Revision 1
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                )
+            ],
+        )
+    )
+    res1 = engine.diagnose(case)
+    assert res1.analysis_revision is not None
+    repo.save_initial_case(case, res1)
+    db_session.commit()
+
+    # 2. Append Revision 2
+    case_v1 = repo.load_structured_case(case_id)
+    ans1 = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation")
+    case_v2, res2 = engine.submit_question_answer(case_v1, ans1)
+    repo.append_question_answer_revision(case_v2, ans1, res2, expected_revision=1)
+    db_session.commit()
+
+    # Snapshot database state after revision 2
+    revs_before = repo.list_case_revisions(case_id)
+    obs_before = repo.get_case_observations(case_id)
+    qa_before = repo.get_case_question_answers(case_id)
+    assert revs_before == [1, 2]
+
+    # 3. Attempt append with stale expected_revision=1 (latest is 2)
+    ans2 = QuestionAnswer(question_id="Q03", answer_value="YES")
+    # Simulate someone acting on old revision 1 state
+    fake_case, res3 = engine.submit_question_answer(case_v2, ans2)
+
+    with pytest.raises(StaleRevisionError) as exc_info:
+        repo.append_question_answer_revision(
+            case=fake_case,
+            answer=ans2,
+            result=res3,
+            expected_revision=1,  # STALE: current is 2
+        )
+
+    assert exc_info.value.case_id == case_id
+    assert exc_info.value.expected_revision == 1
+    assert exc_info.value.current_revision == 2
+
+    # 4. Verify zero new rows were created
+    assert repo.list_case_revisions(case_id) == revs_before
+    assert len(repo.get_case_observations(case_id)) == len(obs_before)
+    assert len(repo.get_case_question_answers(case_id)) == len(qa_before)
+
+
+def test_contract_mismatch_revision_number_rejected(case_repo, db_session):
+    """Verify that if result.analysis_revision.revision_number != latest + 1,
+    the operation is rejected as a contract mismatch with no writes."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+        )
+    )
+    res = engine.diagnose(case)
+    assert res.analysis_revision is not None
+    repo.save_initial_case(case, res)
+    db_session.commit()
+
+    reconstructed = repo.load_structured_case(case_id)
+    ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation")
+
+    # Mismatched revision number (e.g. 5 instead of 2)
+    bad_result = DiagnosisResult(
+        case_id=case_id,
+        analysis_revision=AnalysisRevision(revision_number=5),
+    )
+
+    with pytest.raises(ValueError, match="Contract mismatch"):
+        repo.append_question_answer_revision(
+            case=reconstructed,
+            answer=ans,
+            result=bad_result,
+            expected_revision=1,
+        )
+
+    assert repo.list_case_revisions(case_id) == [1]
+    assert repo.get_case_question_answers(case_id) == []
+
+
+def test_duplicate_competing_revision_rejected_by_constraints(case_repo, db_session):
+    """Verify that database unique constraints prevent duplicate (case_id, resulting_revision_number)
+    for question answers and analysis revisions."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+        )
+    )
+    res = engine.diagnose(case)
+    assert res.analysis_revision is not None
+    repo.save_initial_case(case, res)
+
+    # Append revision 2 successfully
+    case_v1 = repo.load_structured_case(case_id)
+    ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation")
+    case_v2, res2 = engine.submit_question_answer(case_v1, ans)
+    repo.append_question_answer_revision(case_v2, ans, res2, expected_revision=1)
+
+    # Competing write trying to insert another revision 2 directly
+    duplicate_qa = QuestionAnswerModel(
+        case_id=case_id,
+        question_id="Q02",
+        answer_value="all_points",
+        source="USER",
+        answered_at=case.created_at,
+        resulting_revision_number=2,  # Already claimed by revision 2!
+    )
+    db_session.add(duplicate_qa)
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+    duplicate_rev = AnalysisRevisionModel(
+        case_id=case_id,
+        revision_number=2,  # Already claimed!
+        analyzed_at=case.created_at,
+        issue_condition="UNRESOLVED",
+        result_snapshot={"analysis_revision": {"revision_number": 2}},
+    )
+    db_session.add(duplicate_rev)
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+
+def test_atomic_rollback_on_append_failure_leaves_no_partial_writes():
+    """Verify that if an error occurs after flushing answer and new observations,
+    all changes roll back completely and unrelated data survives intact."""
+    factory = get_session_factory()
+    engine = DiagnosticEngine()
+
+    control_id = str(uuid.uuid4())
+    test_id = str(uuid.uuid4())
+
+    try:
+        # 1. Control case (persisted completely)
+        with factory() as session:
+            repo = CaseRepository(session=session)
+            control_case = engine.prepare_case(
+                StructuredCase(
+                    case_id=control_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size / Line Width",
+                    description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+                )
+            )
+            control_res = engine.diagnose(control_case)
+            assert control_res.analysis_revision is not None
+            repo.save_initial_case(control_case, control_res)
+            session.commit()
+
+        # 2. Test case (persisted initially as Revision 1)
+        with factory() as session:
+            repo = CaseRepository(session=session)
+            test_case = engine.prepare_case(
+                StructuredCase(
+                    case_id=test_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size / Line Width",
+                    description="The dispensing dots become smaller after the machine has been running for around 20 minutes.",
+                    observations=[
+                        Observation(
+                            observation_type=ObservationType.NOZZLE_CONDITION,
+                            value="drips_after_dispense",
+                            statement_type=StatementType.USER_OBSERVATION,
+                            source=EvidenceSource.USER,
+                        )
+                    ],
+                )
+            )
+            test_res = engine.diagnose(test_case)
+            assert test_res.analysis_revision is not None
+            repo.save_initial_case(test_case, test_res)
+            session.commit()
+
+        # 3. Attempt append with failure induced after flush
+        with factory() as session:
+            repo = CaseRepository(session=session)
+            reconstructed = repo.load_structured_case(test_id)
+            ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation")
+            updated_case, result2 = engine.submit_question_answer(reconstructed, ans)
+
+            # Fault injection: let append execute its internal logic, but inject error
+            with pytest.raises(RuntimeError, match="Simulated crash before commit"):
+                # We start a transaction, call append, verify rows flushed, then raise
+                repo.append_question_answer_revision(
+                    case=updated_case,
+                    answer=ans,
+                    result=result2,
+                    expected_revision=1,
+                )
+                # Verify rows were indeed staged in this active session
+                staged_qa = session.scalars(
+                    select(QuestionAnswerModel).where(QuestionAnswerModel.case_id == test_id)
+                ).all()
+                assert len(staged_qa) == 1
+                raise RuntimeError("Simulated crash before commit")
+
+        # 4. Verify from fresh independent session
+        with factory() as fresh_session:
+            fresh_repo = CaseRepository(session=fresh_session)
+
+            # Test case: revision 2 does NOT exist, no QA row exists, no new observation exists
+            assert fresh_repo.list_case_revisions(test_id) == [1]
+            assert fresh_repo.get_case_question_answers(test_id) == []
+            assert len(fresh_repo.get_case_observations(test_id)) == 1
+
+            # Control case: survives completely intact
+            assert fresh_repo.list_case_revisions(control_id) == [1]
+            assert fresh_repo.get_case(control_id) is not None
+
+    finally:
+        with factory() as clean_session:
+            clean_session.execute(delete(CaseModel).where(CaseModel.case_id.in_([control_id, test_id])))
+            clean_session.commit()

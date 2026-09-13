@@ -2,43 +2,38 @@
 
 ## Current milestone
 
-Backend/database integration — durable diagnosed-case API
+Backend/database integration — adaptive investigation persistence foundation
 
 ## Accepted prerequisite
 
-- `DLK-M3-008` — Effective test-destination safety closeout — **accepted**
-  - accepted commit: `2ff7a8be5a93fc88dac5954b306ed1436c73ceda`
-  - closes the DLK-M3-006 / 007 / 008 persistence-review chain
-
-## Changes requested
-
-- `DLK-M3-009` — Durable diagnosed-case create/retrieve API — **changes_requested**
-  - task: `.agents/handoff/tasks/DLK-M3-009-durable-case-api.md`
-  - branch: `backend-database`
-  - depends on: `DLK-M3-008`
-
-  - review: `.agents/handoff/reviews/DLK-M3-009-review.md`
-  - reviewed commit: `468ee3d311db7bcea114f580e28539602a91967b`
+- `DLK-M3-010` — Durable case verification closeout — **accepted**
+  - accepted commit: `d94e8ea54837719a444a27af05f2eac71efcb34f`
+  - acceptance was recorded in the ChatGPT review; no review file was created under the user's current review preference
+  - closes the durable initial-case create/retrieve verification chain
 
 ## Implemented (awaiting review)
 
-- `DLK-M3-010` — Durable case verification closeout — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-010-durable-case-verification-closeout.md`
+- `DLK-M3-011` — Persist follow-up question answers and append immutable analysis revisions — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-011-question-answer-persistence.md`
   - branch: `backend-database`
-  - corrects DLK-M3-009; no new application features are released.
+  - depends on: `DLK-M3-010`
+
+## Explicit ownership gate
+
+Member 2 owns question meaning and answer-to-evidence mappings. Current inspection shows the repository's `QuestionAnswerHandler` mapping is not aligned with every question in `knowledge/questions.json`. DLK-M3-011 therefore establishes persistence/reconstruction and revision append behavior only; it must not expose a technician-facing arbitrary-answer endpoint or modify Member 2 logic.
 
 ## Not released
 
-Blocked until DLK-M3-009 is implemented and accepted:
+Blocked until DLK-M3-011 is accepted and Member 2 answer semantics are aligned/approved:
 
-- follow-up answer submission and later analysis revisions
-- troubleshooting-check outcome submission
-- cause confirmation
-- issue recovery verification
+- public question-answer submission API;
+- troubleshooting-check result persistence/API;
+- explicit cause confirmation;
+- recovery verification;
 - reports
 - image/CV
 - LLM integration
 - historical-case retrieval
-- frontend durable-case integration
+- frontend follow-up workflow integration.
 
-Only DLK-M3-010 is authorized for implementation. Remote Git operations remain prohibited without explicit user instruction.
+Only DLK-M3-011 is authorized for implementation. Remote Git operations remain prohibited without explicit user instruction.

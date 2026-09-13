@@ -5,10 +5,11 @@
 DispenseIQ uses PostgreSQL with SQLAlchemy 2.x and Alembic migrations for relational persistence.
 Schema evolution is strictly governed by Alembic (`backend/alembic/versions/`).
 
-The initial persistence foundation (DLK-M3-006) establishes minimal relational storage for:
+The persistence foundation establishes relational storage for:
 1. **Diagnostic cases** (`cases`);
 2. **Structured observations with provenance** (`case_observations`);
-3. **Append-only immutable analysis revisions** (`analysis_revisions`).
+3. **Append-only immutable analysis revisions** (`analysis_revisions`);
+4. **Technician question-answer history** (`case_question_answers`, added in DLK-M3-011).
 
 ---
 
@@ -18,6 +19,7 @@ The initial persistence foundation (DLK-M3-006) establishes minimal relational s
 erDiagram
     CASES ||--o{ CASE_OBSERVATIONS : "has"
     CASES ||--o{ ANALYSIS_REVISIONS : "has"
+    CASES ||--o{ CASE_QUESTION_ANSWERS : "has"
 
     CASES {
         uuid case_id PK "UUID-compatible identifier"
@@ -53,6 +55,17 @@ erDiagram
         varchar defect_code "Defect code at revision"
         varchar issue_condition "Issue condition at revision"
         jsonb result_snapshot "Complete immutable DiagnosisResult snapshot"
+    }
+
+    CASE_QUESTION_ANSWERS {
+        serial id PK "Surrogate primary key"
+        uuid case_id FK "Owning case reference"
+        text question_id "Diagnostic question identifier"
+        text answer_value "Normalized answer value"
+        text answer_text "Technician clarifying text"
+        varchar source "Provenance source"
+        timestamptz answered_at "Timezone-aware timestamp"
+        int resulting_revision_number "Analysis revision created from answer"
     }
 ```
 
@@ -128,6 +141,29 @@ Stores append-only, immutable diagnostic evaluation snapshots.
 
 ---
 
+### 4. `case_question_answers`
+Stores technician responses to diagnostic questions associated with diagnostic revisions.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `SERIAL` | No | Surrogate integer primary key. |
+| `case_id` | `UUID` | No | Foreign key referencing `cases.case_id`. |
+| `question_id` | `TEXT` | No | Diagnostic question identifier (unrestricted domain text). |
+| `answer_value` | `TEXT` | No | Normalized answer value (unrestricted domain text, e.g. `after_prolonged_operation`, `YES`, `UNKNOWN`). |
+| `answer_text` | `TEXT` | Yes | Technician clarifying comments or verbatim notes. |
+| `source` | `VARCHAR(64)` | No | Provenance source (e.g. `USER`). |
+| `answered_at` | `TIMESTAMPTZ` | No | Timezone-aware timestamp of the answer submission. |
+| `resulting_revision_number` | `INTEGER` | No | Analysis revision number produced by this answer event (> 1). |
+
+**Constraints:**
+- Primary Key: `pk_case_question_answers` (`id`)
+- Foreign Key: `fk_case_question_answers_case_id_cases` (`case_id` -> `cases.case_id` `ON DELETE CASCADE`)
+- Unique Constraint: `uq_case_question_answers_case_id_rev` (`case_id`, `resulting_revision_number`)
+- Check Constraint: `ck_case_question_answers_rev_gt_1` (`resulting_revision_number > 1`)
+- Index: `ix_case_question_answers_case_id` (`case_id`)
+
+---
+
 ## Architectural Guarantees
 
 ### 1. JSONB Snapshot Rationale
@@ -151,3 +187,10 @@ In accordance with DispenseIQ diagnostic principles:
 - Confirming a root cause does NOT automatically mean the dispensing defect is resolved.
 - Resolving an issue requires independent recovery verification.
 - Root cause confirmation and recovery verification remain separate deferred entities in later tasks and are intentionally not coupled into a boolean flag on the case.
+
+### 4. Question-Answer History and Reconstruction Rationale
+Technician question answers are stored in `case_question_answers` independently of whether an answer generates an observation:
+- Answers mapping to domain observations generate structured rows in `case_observations` with `first_seen_revision = N`.
+- Answers such as `UNKNOWN` or `NOT_APPLICABLE` deliberately produce no observations, but their historical record in `case_question_answers` is required so that case reconstruction via `load_structured_case` populates `previous_answers` and prevents the question selection engine from repeatedly re-asking already answered questions.
+- In this milestone, exactly one answer produces one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
+- No unique constraint is placed on `(case_id, question_id)`, leaving future capability open for re-answering or corrective workflows.

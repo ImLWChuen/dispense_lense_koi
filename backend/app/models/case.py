@@ -93,6 +93,13 @@ class CaseModel(Base):
         order_by="AnalysisRevisionModel.revision_number",
     )
 
+    question_answers: Mapped[list[QuestionAnswerModel]] = relationship(
+        "QuestionAnswerModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="QuestionAnswerModel.resulting_revision_number",
+    )
+
 
 class ObservationModel(Base):
     """Structured observation extracted from user text or entered directly."""
@@ -230,4 +237,68 @@ class AnalysisRevisionModel(Base):
     case: Mapped[CaseModel] = relationship(
         "CaseModel",
         back_populates="analysis_revisions",
+    )
+
+
+class QuestionAnswerModel(Base):
+    """Technician question answer event associated with a diagnostic case revision."""
+
+    __tablename__ = "case_question_answers"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_question_answers_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_question_answers_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Diagnostic question identifier (unrestricted domain text)",
+    )
+    answer_value: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Answer value (unrestricted domain text, e.g. YES, NO, after_prolonged_operation)",
+    )
+    answer_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional technician verbatim or clarifying text",
+    )
+    source: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Provenance source (USER, SYSTEM, etc.)",
+    )
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware answer timestamp",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this answer (> 1)",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="question_answers",
     )
