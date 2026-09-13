@@ -16,6 +16,13 @@
 
 ChatGPT may inspect the repository, create task and review artifacts, and review local commits. Gemini performs implementation, command execution, testing, and local commits.
 
+## Review record policy
+
+- Every Gemini implementation review must produce or update a permanent review record at `.agents/handoff/reviews/<task-id>-review.md`, including when the detailed review is also summarized in chat.
+- An accepted review records the exact accepted commit and supporting verification evidence.
+- A review with corrections records each actionable finding, its affected file or behavior, and its consequence. The planner must carry those correction requirements into the next bounded task packet before releasing further dependent work.
+- Chat remains the convenient copy-paste channel for feedback; it does not replace the repository review record.
+
 ## Git policy
 
 - Local commits by implementer: `allowed after required checks pass`

@@ -1660,6 +1660,219 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 4. Technician Question-Answer Submission
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/answers`
+- **Description:** Submits a technician answer for an active durable case, executes Member 2's `QuestionAnswerHandler` and diagnostic engine answer workflow, evaluates the next immutable analysis revision, and atomically persists the answer history, any newly derived observations, and the revision snapshot in PostgreSQL.
+
+#### Lifecycle & Concurrency Contract
+
+- **Atomic Revision Advance:** Each accepted answer atomically appends one `QuestionAnswer` history record, any newly generated observations (with `first_seen_revision = N + 1` and `source = USER`), and one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** The client must provide `expected_revision`. The update succeeds only if `expected_revision` matches the case's current persisted revision at transaction execution time.
+- **Stale Revisions (409 Conflict):** If `expected_revision` does not match the latest persisted revision (e.g. concurrent answer submissions or replays), the transaction is rejected with `409 Conflict` and no partial rows are committed.
+- **Member 2 Diagnostic Authority:** Question and answer semantics are validated by Member 2's `QuestionAnswerHandler`:
+  - Questions are restricted to supported registry IDs (`Q01`–`Q15`). Unknown IDs return `422 Unprocessable Entity`.
+  - Allowed options for each question are validated against registry rules. Invalid answers return `422 Unprocessable Entity`.
+  - **`UNKNOWN`:** Recorded in answer history and advances the revision, but generates zero observations (no fabricated evidence).
+  - **`NOT_APPLICABLE`:** Recorded in answer history and advances the revision, but generates zero observations (no false contradictions).
+  - **Hypotheses:** User hypotheses are stored as observations but are never converted to confirmed causes by technician submission.
+- **Idempotency & Replay:** Re-submitting the same payload with an outdated `expected_revision` safely fails with `409 Conflict`.
+
+#### Request Schema (`SubmitAnswerRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `question_id` | `string` | **Yes** | — | Identifier of the diagnostic question being answered (e.g. `"Q01"`). Must match a supported question. |
+| `answer` | `string` | **Yes** | — | Technician answer value or key (e.g. `"after_prolonged_operation"`, `"UNKNOWN"`, `"NOT_APPLICABLE"`). Alias `"answer_value"` is accepted. |
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `answer_text` | `string` \| `null` | No | `null` | Optional technician description or supplemental statement. |
+
+#### Input Validation Rules (HTTP 422)
+
+1. **Unknown Question:** Supplying an unsupported question ID returns `422 Unprocessable Entity` (`"Unknown question_id: 'Q99'..."`).
+2. **Invalid Answer Value:** Supplying an answer string outside the allowed options for that question returns `422 Unprocessable Entity` (`"Invalid answer '...' for question Q01..."`).
+3. **Empty Fields:** Submitting an empty or whitespace-only `question_id` or `answer` returns `422 Unprocessable Entity`.
+4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity`.
+5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+
+#### Status and Error Codes
+
+- `200 OK` — Answer accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist in the database.
+- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` — Invalid input schema, unsupported question ID, or invalid answer value.
+- `500 Internal Server Error` — Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+
+#### Representative Execution Example
+
+> [!NOTE]
+> The following request and response demonstrate real execution against PostgreSQL 16 using the implemented API.
+
+##### Request Payload (`POST /api/v1/cases/{case_id}/answers`)
+```json
+{
+  "question_id": "Q01",
+  "answer": "after_prolonged_operation",
+  "expected_revision": 1,
+  "answer_text": "Dots decrease in volume after 20 minutes of continuous operation"
+}
+```
+
+##### Response Payload (`200 OK`)
+```json
+{
+  "case_id": "e1b68f9a-1175-4189-aedf-24a6cd637f97",
+  "description": "Dispensing dots become smaller after running for 20 minutes",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "issue_condition": "UNRESOLVED",
+  "created_at": "2026-09-13T07:48:20.123456Z",
+  "observations": [
+    {
+      "id": "885b26eb-9f61-4ec7-a49b-a6e101876861",
+      "observation_id": "885b26eb-9f61-4ec7-a49b-a6e101876861",
+      "observation_type": "deposit_size",
+      "value": "undersized",
+      "original_text": "Dots become smaller",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER",
+      "confidence": null,
+      "timestamp": "2026-09-13T07:48:20.123456Z",
+      "created_at": "2026-09-13T07:48:20.123456Z",
+      "first_seen_revision": 1
+    },
+    {
+      "id": "3c7ccb4e-c8ac-4ccf-a821-e695fa84016c",
+      "observation_id": "3c7ccb4e-c8ac-4ccf-a821-e695fa84016c",
+      "observation_type": "runtime_pattern",
+      "value": "after_prolonged_operation",
+      "original_text": "Q01: after_prolonged_operation",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER",
+      "confidence": null,
+      "timestamp": "2026-09-13T07:48:20.447108Z",
+      "created_at": "2026-09-13T07:48:20.447108Z",
+      "first_seen_revision": 2
+    },
+    {
+      "id": "f98959fb-7ba5-4c0f-8514-e832822d5824",
+      "observation_id": "f98959fb-7ba5-4c0f-8514-e832822d5824",
+      "observation_type": "question_answer",
+      "value": "Q01:after_prolonged_operation",
+      "original_text": "Q01: after_prolonged_operation",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER",
+      "confidence": null,
+      "timestamp": "2026-09-13T07:48:20.447108Z",
+      "created_at": "2026-09-13T07:48:20.447108Z",
+      "first_seen_revision": 2
+    }
+  ],
+  "initial_diagnosis": {
+    "case_id": "e1b68f9a-1175-4189-aedf-24a6cd637f97",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "analysis_revision": {
+      "revision_number": 1,
+      "timestamp": "2026-09-13T07:48:20.123456Z",
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Initial diagnostic assessment.",
+      "changes_from_previous": []
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "diagnosis": {
+    "case_id": "e1b68f9a-1175-4189-aedf-24a6cd637f97",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "ranked_causes": [
+      {
+        "cause_id": "air_supply_issue",
+        "cause_name": "Air / Supply Issue",
+        "score": 70.0,
+        "conclusion": "SUSPECTED",
+        "supporting_evidence": [
+          {
+            "observation_id": "3c7ccb4e-c8ac-4ccf-a821-e695fa84016c",
+            "cause_id": "air_supply_issue",
+            "relation": "SUPPORTS",
+            "strength": "STRONG",
+            "source": "USER",
+            "explanation": "Air supply depletion or compressor duty cycle issues manifest after prolonged operation.",
+            "is_duplicate": false,
+            "duplicate_of": null,
+            "score_contribution": 20.0
+          }
+        ],
+        "contradicting_evidence": [],
+        "neutral_evidence": []
+      }
+    ],
+    "analysis_revision": {
+      "revision_number": 2,
+      "timestamp": "2026-09-13T07:48:20.447108Z",
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Updated with 4 observations and 0 check results.",
+      "changes_from_previous": [
+        "Air / Supply Issue increased from 50 to 70 (+20 pts).",
+        "Pressure Instability increased from 34 to 46 (+12 pts).",
+        "Material Condition increased from 32 to 44 (+12 pts)."
+      ]
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "current_revision": 2,
+  "submitted_answer": {
+    "question_id": "Q01",
+    "answer_value": "after_prolonged_operation",
+    "answer_text": "Dots decrease in volume after 20 minutes of continuous operation",
+    "source": "USER",
+    "answered_at": "2026-09-13T07:48:20.447108Z",
+    "resulting_revision_number": 2
+  },
+  "previous_answers": [
+    {
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "answer_text": "Dots decrease in volume after 20 minutes of continuous operation",
+      "source": "USER",
+      "answered_at": "2026-09-13T07:48:20.447108Z",
+      "resulting_revision_number": 2
+    }
+  ],
+  "next_question": {
+    "question_id": "Q02",
+    "text": "Does the defect occur across all dispensing points or only at specific nozzles/locations?",
+    "purpose": "Distinguishes system-wide causes (pressure, material) from localized causes (nozzle blockage, valve).",
+    "usefulness_score": 18.5,
+    "target_causes": [
+      "nozzle_restriction",
+      "air_supply_issue",
+      "pressure_instability"
+    ],
+    "already_answered": false
+  },
+  "next_check": {
+    "check_id": "ACT05",
+    "name": "Perform Purge Cycle",
+    "description": "Execute a material purge to clear trapped air and evaluate whether it improves dispensing.",
+    "priority_score": 13.58,
+    "target_causes": [
+      "air_supply_issue",
+      "nozzle_restriction"
+    ],
+    "effort_level": "low"
+  }
+}
+```
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found
@@ -1671,6 +1884,17 @@ Example (`GET /api/v1/cases/00000000-0000-0000-0000-000000000000`):
   "detail": "Case '00000000-0000-0000-0000-000000000000' not found."
 }
 ```
+
+### HTTP 409 Conflict
+Returned when submitting a question answer with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
+
+Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with stale `expected_revision: 1` when case is at revision 2):
+```json
+{
+  "detail": "Stale revision for case 'e1b68f9a-1175-4189-aedf-24a6cd637f97': expected revision 1, but current revision is 2."
+}
+```
+*Note: No partial writes, answer records, observation rows, or revision snapshots are committed on a 409 Conflict.*
 
 ### HTTP 422 Unprocessable Entity
 Returned when request input fails validation rules. Validation errors are returned as a structured array or error detail.

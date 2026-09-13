@@ -2,38 +2,45 @@
 
 ## Current milestone
 
-Backend/database integration — adaptive investigation persistence foundation
+Adaptive investigation — durable technician answer submission accepted
 
-## Accepted prerequisite
+## Accepted prerequisites
 
-- `DLK-M3-010` — Durable case verification closeout — **accepted**
+- Member 2 question-answer contract — merged to synchronized `main`
+  - Q01-Q15 answer semantics aligned with knowledge definitions
+  - UNKNOWN / NOT_APPLICABLE semantics available
+  - answer-driven diagnosis revision workflow available
+
+- `DLK-M3-010` — durable case API rollback and response-parity closeout — **accepted**
   - accepted commit: `d94e8ea54837719a444a27af05f2eac71efcb34f`
-  - acceptance was recorded in the ChatGPT review; no review file was created under the user's current review preference
-  - closes the durable initial-case create/retrieve verification chain
+  - review: `.agents/handoff/reviews/DLK-M3-010-review.md`
 
-## Implemented (awaiting review)
+- `DLK-M3-011` — question-answer persistence and immutable analysis revision append — **accepted**
+  - accepted commit: `f242cba7bbfd9521f5e7f497894a22477307b6b3`
+  - review: `.agents/handoff/reviews/DLK-M3-011-review.md`
 
-- `DLK-M3-011` — Persist follow-up question answers and append immutable analysis revisions — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-011-question-answer-persistence.md`
-  - branch: `backend-database`
-  - depends on: `DLK-M3-010`
+- `DLK-M3-012` — technician question-answer submission API — **accepted**
+  - accepted commit: `17756205b7299037b5c23a6b97209ac5f594f749`
+  - review: `.agents/handoff/reviews/DLK-M3-012-review.md`
 
-## Explicit ownership gate
+## Ready
 
-Member 2 owns question meaning and answer-to-evidence mappings. Current inspection shows the repository's `QuestionAnswerHandler` mapping is not aligned with every question in `knowledge/questions.json`. DLK-M3-011 therefore establishes persistence/reconstruction and revision append behavior only; it must not expose a technician-facing arbitrary-answer endpoint or modify Member 2 logic.
+None. No implementation task is currently released.
 
 ## Not released
 
-Blocked until DLK-M3-011 is accepted and Member 2 answer semantics are aligned/approved:
+Pending future task planning and relevant teammate contract checks:
 
-- public question-answer submission API;
-- troubleshooting-check result persistence/API;
-- explicit cause confirmation;
-- recovery verification;
-- reports
-- image/CV
+- troubleshooting-check result submission
+- troubleshooting outcome → evidence integration
+- cause confirmation workflow
+- issue recovery verification
+- report generation
+- image/CV integration
 - LLM integration
 - historical-case retrieval
-- frontend follow-up workflow integration.
+- frontend adaptive-answer integration
 
-Only DLK-M3-011 is authorized for implementation. Remote Git operations remain prohibited without explicit user instruction.
+Before releasing troubleshooting-check APIs, the planner must re-check Member 2's current check/action outcome mappings and explicit human-confirmation semantics.
+
+No further implementation is authorized by this queue.

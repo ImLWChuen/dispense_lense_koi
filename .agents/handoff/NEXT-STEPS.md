@@ -7,10 +7,11 @@ Planner snapshot: 2026-09-12, baseline `b953ebf`. Only DLK-M3-004 is executable.
 | 1: DLK-M3-004, implemented | Initial diagnosis HTTP API plus import compatibility | Member 2 merge gate satisfied. Implementation complete, ready for review. |
 | 2: DLK-M3-006, implemented | PostgreSQL persistence contract and minimal case + immutable initial-analysis storage | Implementation complete, ready for review. Real PostgreSQL verified via Docker Compose, Alembic migrations, and integration tests. |
 | 3: DLK-M3-009, implemented | Create and retrieve a durable diagnosed case through API | Implementation complete, ready for review. Atomic POST /api/v1/cases and read-only GET /api/v1/cases/{case_id} verified against real PostgreSQL with zero engine recalculation on read. |
-| 4: DLK-M3-011, implemented | Persist follow-up question answers and append immutable analysis revisions | Implementation complete, ready for review. Real PostgreSQL verified via Alembic 0003, QuestionAnswerModel, load_structured_case reconstruction, stale-safe append_question_answer_revision, and integration tests. |
-| 5: planned | Record check execution/finding and subsequent ranking | Answer flow accepted; Member 2 must resolve any reproduced check-mapping problems before this becomes a technician-facing workflow. |
-| 6: planned | Explicit cause confirmation and separate recovery verification | Agree human-confirmation semantics with Member 2; no automatic coupling between a high score, confirmed cause, and issue resolved. |
-| 7: planned | One frontend-to-backend walkthrough, then broader coverage | Member 1 has a working diagnosis screen and agreed contract; fix existing frontend build blockers before end-to-end acceptance. |
+| 4: DLK-M3-011, accepted | Persist follow-up question answers and append immutable analysis revisions | Accepted in review. Real PostgreSQL verified via Alembic 0003, QuestionAnswerModel, load_structured_case reconstruction, stale-safe append_question_answer_revision, and integration tests. |
+| 5: DLK-M3-012, accepted | Technician question-answer submission API | Accepted at `17756205b7299037b5c23a6b97209ac5f594f749`. Atomic POST /api/v1/cases/{case_id}/answers is verified against real PostgreSQL with optimistic concurrency, transaction-snapshot response consistency, sanitized internal failures, and Member 2 question-answer integration. |
+| 6: planned | Record check execution/finding and subsequent ranking | Answer flow accepted; Member 2 must resolve any reproduced check-mapping problems before this becomes a technician-facing workflow. |
+| 7: planned | Explicit cause confirmation and separate recovery verification | Agree human-confirmation semantics with Member 2; no automatic coupling between a high score, confirmed cause, and issue resolved. |
+| 8: planned | One frontend-to-backend walkthrough, then broader coverage | Member 1 has a working diagnosis screen and agreed contract; fix existing frontend build blockers before end-to-end acceptance. |
 
 ## Integration gates
 
