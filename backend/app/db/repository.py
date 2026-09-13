@@ -265,54 +265,97 @@ class CaseRepository:
     ) -> StructuredCase | None:
         """Reconstruct a complete StructuredCase from persisted state without recalculation.
 
-        Acquires a row lock on the case row (FOR SHARE by default, or FOR UPDATE if for_update=True)
-        to ensure case context, observations, answers, and revisions come from one consistent
-        database state and prevent torn reads during concurrent appends.
+        Ensures case context, observations, answers, and revisions come from one consistent
+        database state without taking shared locks that cause upgrade deadlocks.
         Refreshes ORM identity map cache via populate_existing=True.
 
         Args:
             case_id: The unique identifier of the case.
-            for_update: If True, acquire an exclusive FOR UPDATE lock instead of FOR SHARE.
+            for_update: If True, acquire an exclusive FOR UPDATE lock. Default is False.
 
         Returns:
             StructuredCase if found, None otherwise.
         """
         session, should_close = self._get_active_session()
         try:
-            # 1. Lock the case row and refresh identity map
-            stmt_case = (
-                select(CaseModel)
-                .where(CaseModel.case_id == case_id)
-                .with_for_update(read=not for_update)
-                .execution_options(populate_existing=True)
-            )
-            case_model = session.scalars(stmt_case).first()
+            # 1. Acquire exclusive FOR UPDATE lock only if caller explicitly requested it
+            if for_update:
+                stmt_lock = (
+                    select(CaseModel)
+                    .where(CaseModel.case_id == case_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if session.scalars(stmt_lock).first() is None:
+                    return None
+
+            # 2. Consistent snapshot reconstruction loop (without holding FOR SHARE)
+            case_model: CaseModel | None = None
+            rev_models: list[AnalysisRevisionModel] = []
+            obs_models: list[ObservationModel] = []
+            qa_models: list[QuestionAnswerModel] = []
+
+            for _ in range(3):
+                stmt_case = (
+                    select(CaseModel)
+                    .where(CaseModel.case_id == case_id)
+                    .execution_options(populate_existing=True)
+                )
+                case_model = session.scalars(stmt_case).first()
+                if case_model is None:
+                    return None
+
+                rev_models = list(
+                    session.scalars(
+                        select(AnalysisRevisionModel)
+                        .where(AnalysisRevisionModel.case_id == case_id)
+                        .order_by(AnalysisRevisionModel.revision_number)
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+                latest_revision = rev_models[-1].revision_number if rev_models else 1
+
+                obs_models = list(
+                    session.scalars(
+                        select(ObservationModel)
+                        .where(
+                            ObservationModel.case_id == case_id,
+                            ObservationModel.first_seen_revision <= latest_revision,
+                        )
+                        .order_by(ObservationModel.id)
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+
+                qa_models = list(
+                    session.scalars(
+                        select(QuestionAnswerModel)
+                        .where(
+                            QuestionAnswerModel.case_id == case_id,
+                            QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                        )
+                        .order_by(
+                            QuestionAnswerModel.resulting_revision_number,
+                            QuestionAnswerModel.id,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+
+                # Verify that no interleaved write committed a newer revision while reading
+                cur_latest = session.scalar(
+                    select(AnalysisRevisionModel.revision_number)
+                    .where(AnalysisRevisionModel.case_id == case_id)
+                    .order_by(AnalysisRevisionModel.revision_number.desc())
+                    .execution_options(populate_existing=True)
+                )
+                if cur_latest is not None and cur_latest != latest_revision:
+                    continue
+                break
+
             if case_model is None:
                 return None
 
-            # 2. Analysis Revisions (reconstruct from immutable snapshot)
-            rev_models = list(
-                session.scalars(
-                    select(AnalysisRevisionModel)
-                    .where(AnalysisRevisionModel.case_id == case_id)
-                    .order_by(AnalysisRevisionModel.revision_number)
-                    .execution_options(populate_existing=True)
-                ).all()
-            )
-            latest_revision = rev_models[-1].revision_number if rev_models else 1
-
-            # 3. Observations (consistent with latest_revision)
-            obs_models = list(
-                session.scalars(
-                    select(ObservationModel)
-                    .where(
-                        ObservationModel.case_id == case_id,
-                        ObservationModel.first_seen_revision <= latest_revision,
-                    )
-                    .order_by(ObservationModel.id)
-                    .execution_options(populate_existing=True)
-                ).all()
-            )
             observations: list[Observation] = []
             for om in obs_models:
                 try:
@@ -345,21 +388,6 @@ class CaseRepository:
                 )
                 observations.append(obs)
 
-            # 4. Question Answers (consistent with latest_revision)
-            qa_models = list(
-                session.scalars(
-                    select(QuestionAnswerModel)
-                    .where(
-                        QuestionAnswerModel.case_id == case_id,
-                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
-                    )
-                    .order_by(
-                        QuestionAnswerModel.resulting_revision_number,
-                        QuestionAnswerModel.id,
-                    )
-                    .execution_options(populate_existing=True)
-                ).all()
-            )
             previous_answers: list[QuestionAnswer] = []
             for qm in qa_models:
                 try:

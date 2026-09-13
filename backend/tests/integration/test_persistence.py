@@ -1199,8 +1199,8 @@ def test_load_structured_case_consistency_under_interleaved_writes():
         with factory() as session_1:
             repo_1 = CaseRepository(session=session_1)
 
-            # Session 1 acquires FOR SHARE lock and reconstructs case
-            case_v1 = repo_1.load_structured_case(case_id)
+            # Session 1 acquires row lock via for_update=True and reconstructs case
+            case_v1 = repo_1.load_structured_case(case_id, for_update=True)
             assert case_v1 is not None
             assert len(case_v1.observations) == 1
             assert len(case_v1.previous_answers) == 0
@@ -1433,6 +1433,133 @@ def test_concurrent_competing_repository_appends_only_one_succeeds():
             qa_list = verify_repo.get_case_question_answers(case_id)
             assert len(qa_list) == 1
             expected_qid = "Q01" if winner_id == "A" else "Q02"
+            assert qa_list[0].question_id == expected_qid
+            assert qa_list[0].resulting_revision_number == 2
+
+    finally:
+        with factory() as clean_session:
+            clean_session.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
+            clean_session.commit()
+
+
+def test_concurrent_injected_sessions_load_and_append_flow_avoids_deadlock_and_rejects_stale():
+    """Verify that two independent injected sessions performing the complete default
+    load -> diagnose -> append workflow avoid shared-lock upgrade deadlocks by design.
+    Verify exactly one succeeds and the other receives StaleRevisionError with no partial writes.
+    Explicitly assert that neither DeadlockDetected nor generic IntegrityError is returned.
+    """
+    factory = get_session_factory()
+    engine = DiagnosticEngine()
+
+    case_id = str(uuid.uuid4())
+
+    try:
+        # Setup: Persist initial case at Revision 1
+        with factory() as init_session:
+            repo = CaseRepository(session=init_session)
+            initial_case = engine.prepare_case(
+                StructuredCase(
+                    case_id=case_id,
+                    defect_code="D03_INCONSISTENT_SIZE",
+                    defect_name="Inconsistent Dot Size / Line Width",
+                    description="The dispensing dots become smaller after 20 minutes.",
+                )
+            )
+            res1 = engine.diagnose(initial_case)
+            assert res1.analysis_revision is not None
+            repo.save_initial_case(initial_case, res1)
+            init_session.commit()
+
+        # Two concurrent workers using injected sessions performing the complete default flow:
+        # load_structured_case() -> diagnose/submit_question_answer -> append_question_answer_revision() -> commit
+        barrier = threading.Barrier(2)
+        results: dict[str, int] = {}
+        errors: dict[str, Exception] = {}
+
+        def complete_workflow_worker(worker_id: str, qid: str, qval: str):
+            with factory() as session:
+                repo = CaseRepository(session=session)
+                try:
+                    # 1. Load case using the default workflow (no explicit for_update flag)
+                    loaded_case = repo.load_structured_case(case_id)
+                    assert loaded_case is not None
+
+                    # 2. Process follow-up question answer
+                    ans = QuestionAnswer(
+                        question_id=qid,
+                        answer_value=qval,
+                        source=EvidenceSource.USER,
+                    )
+                    updated_case, diag_res = engine.submit_question_answer(loaded_case, ans)
+
+                    # Synchronize before competing append
+                    barrier.wait(timeout=5.0)
+
+                    # 3. Append revision within the same injected transaction
+                    rev_model = repo.append_question_answer_revision(
+                        case=updated_case,
+                        answer=ans,
+                        result=diag_res,
+                        expected_revision=1,
+                    )
+                    session.commit()
+                    results[worker_id] = rev_model.revision_number
+                except Exception as exc:
+                    session.rollback()
+                    errors[worker_id] = exc
+
+        thread_1 = threading.Thread(
+            target=complete_workflow_worker,
+            args=("Worker-1", "Q01", "after_prolonged_operation"),
+        )
+        thread_2 = threading.Thread(
+            target=complete_workflow_worker,
+            args=("Worker-2", "Q02", "all_points"),
+        )
+
+        thread_1.start()
+        thread_2.start()
+
+        thread_1.join(timeout=10.0)
+        thread_2.join(timeout=10.0)
+
+        assert not thread_1.is_alive()
+        assert not thread_2.is_alive()
+
+        # Exactly one worker succeeded and one failed
+        assert len(results) == 1, f"Expected exactly 1 success, got {len(results)}: {results}"
+        assert len(errors) == 1, f"Expected exactly 1 error, got {len(errors)}: {errors}"
+
+        winner_id = list(results.keys())[0]
+        loser_id = list(errors.keys())[0]
+        assert results[winner_id] == 2
+
+        loser_exc = errors[loser_id]
+
+        # Explicitly verify that deadlock was avoided by design
+        assert "deadlock" not in str(loser_exc).lower(), f"Deadlock occurred: {loser_exc}"
+
+        # Explicitly verify that the error is NOT a generic IntegrityError
+        assert not isinstance(loser_exc, IntegrityError), (
+            f"Expected StaleRevisionError, but got generic IntegrityError: {loser_exc}"
+        )
+
+        # Explicitly verify the expected error is StaleRevisionError with accurate revision context
+        assert isinstance(loser_exc, StaleRevisionError), (
+            f"Expected StaleRevisionError, got: {type(loser_exc).__name__}: {loser_exc}"
+        )
+        assert loser_exc.expected_revision == 1
+        assert loser_exc.current_revision == 2
+
+        # Verify from fresh independent session that state is clean with no partial writes
+        with factory() as verify_session:
+            verify_repo = CaseRepository(session=verify_session)
+            revisions = verify_repo.list_case_revisions(case_id)
+            assert revisions == [1, 2]
+
+            qa_list = verify_repo.get_case_question_answers(case_id)
+            assert len(qa_list) == 1
+            expected_qid = "Q01" if winner_id == "Worker-1" else "Q02"
             assert qa_list[0].question_id == expected_qid
             assert qa_list[0].resulting_revision_number == 2
 
