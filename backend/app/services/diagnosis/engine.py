@@ -162,14 +162,17 @@ class StateManager:
         candidate: CandidateCause,
         check_results: list[CheckResult] | None = None,
     ) -> CauseConclusion:
-        """Evaluate whether a cause should be SUSPECTED, CONFIRMED, or UNRESOLVED.
+        """Evaluate whether a cause should be SUSPECTED or UNRESOLVED.
 
         Rules:
         - A cause remains SUSPECTED during active investigation.
-        - A cause can only be CONFIRMED if:
-            1. Evidence score exceeds confirmation threshold (>= 75).
-            2. At least one completed check with SUPPORTS finding directly targeted this cause.
-        - Otherwise, it remains SUSPECTED (or UNRESOLVED if heavily contradicted).
+        - A cause becomes UNRESOLVED only if heavily contradicted.
+        - A cause is NEVER automatically promoted to CONFIRMED by evidence
+          or check results alone. Confirmation requires explicit technician
+          action via DiagnosticEngine.confirm_cause().
+
+        DLK-M3-013 semantic rule:
+            Check completed ≠ Check supports cause ≠ Cause confirmed
         """
         if check_results is None:
             check_results = []
@@ -178,23 +181,8 @@ class StateManager:
         if candidate.score <= 15.0 and len(candidate.contradicting_evidence) > 0:
             return CauseConclusion.UNRESOLVED
 
-        # Check for confirmation criteria
-        has_high_score = candidate.score >= SCORING_CONFIG.high_confidence_threshold
-        has_direct_confirmatory_check = False
-
-        for r in check_results:
-            if (
-                r.execution_status == CheckExecutionStatus.COMPLETED
-                and r.finding == CheckFinding.SUPPORTS
-            ):
-                check_def = get_action_by_id(r.check_id)
-                if check_def and candidate.cause_id in check_def.applicable_causes:
-                    has_direct_confirmatory_check = True
-                    break
-
-        if has_high_score and has_direct_confirmatory_check:
-            return CauseConclusion.CONFIRMED
-
+        # Causes always remain SUSPECTED during investigation.
+        # Confirmation is a separate explicit action by the technician/engineer.
         return CauseConclusion.SUSPECTED
 
     @classmethod
@@ -370,7 +358,7 @@ _CHECK_OUTCOME_PATTERNS: dict[str, dict[str, list[str]]] = {
 _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]] = {
     "ACT01": {
         "no_blockage": (ObservationType.NOZZLE_CONDITION, "clean"),
-        "blockage_found": (ObservationType.NOZZLE_CONDITION, "damaged"),
+        "blockage_found": (ObservationType.NOZZLE_CONDITION, "blocked"),   # DLK-M3-013: "blocked" not "damaged" — blockage ≠ damage
         "damage_found": (ObservationType.NOZZLE_CONDITION, "damaged"),
     },
     "ACT02": {
@@ -383,19 +371,15 @@ _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]
     },
     "ACT04": {
         "pressure_unstable": (ObservationType.PRESSURE, "fluctuating"),
-        "pressure_low": (ObservationType.PRESSURE, "fluctuating"),
+        "pressure_low": (ObservationType.PRESSURE, "low"),               # DLK-M3-013: "low" not "fluctuating" — low ≠ fluctuating
         "pressure_stable": (ObservationType.PRESSURE, "stable"),
-    },
-    "ACT05": {
-        "improvement_temporary": (ObservationType.RUNTIME_PATTERN, "after_prolonged_operation"),
-        "improvement_sustained": (ObservationType.RUNTIME_PATTERN, "after_prolonged_operation"),
     },
     "ACT08": {
         "temperature_high": (ObservationType.TEMPERATURE, "elevated"),
         "temperature_normal": (ObservationType.TEMPERATURE, "normal"),
     },
     "ACT10": {
-        "calibration_drift": (ObservationType.EQUIPMENT_CONDITION, "worn"),
+        "calibration_drift": (ObservationType.EQUIPMENT_CONDITION, "calibration_drift"),  # DLK-M3-013: "calibration_drift" not "worn" — drift ≠ wear
     },
 }
 
@@ -618,26 +602,6 @@ class CheckResultHandler:
                     source=source,
                 )
 
-        # Fallback for nozzle check contradict -> clean
-        if check_id == "ACT01" and finding == CheckFinding.CONTRADICTS:
-            return Observation(
-                observation_type=ObservationType.NOZZLE_CONDITION,
-                value="clean",
-                original_text=details_text,
-                statement_type=StatementType.USER_OBSERVATION,
-                source=source,
-            )
-
-        # Fallback for pressure check contradict -> stable
-        if check_id == "ACT04" and finding == CheckFinding.CONTRADICTS:
-            return Observation(
-                observation_type=ObservationType.PRESSURE,
-                value="stable",
-                original_text=details_text,
-                statement_type=StatementType.USER_OBSERVATION,
-                source=source,
-            )
-
         return None
 
 
@@ -744,10 +708,20 @@ class DiagnosticEngine:
         ranking = self.ranker.rank(case.observations, defect_code)
 
         # 5. Phase 11: Evaluate cause conclusions independently of issue condition
+        confirmed_ids = set(getattr(case, "confirmed_causes", []))
+        if case.analysis_revisions:
+            for c in case.analysis_revisions[-1].ranked_causes:
+                if c.conclusion == CauseConclusion.CONFIRMED:
+                    confirmed_ids.add(c.cause_id)
+
         for cause in ranking.ranked_causes:
-            cause.conclusion = StateManager.evaluate_cause_conclusion(
-                cause, case.previous_check_results
-            )
+            if cause.cause_id in confirmed_ids:
+                cause.conclusion = CauseConclusion.CONFIRMED
+            else:
+                cause.conclusion = StateManager.evaluate_cause_conclusion(
+                    cause, case.previous_check_results
+                )
+
 
         # 6. Phase 10: Revision management (preserve history, generate new revision)
         previous_revision = (
@@ -855,6 +829,71 @@ class DiagnosticEngine:
             case.analysis_revisions[-1].new_evidence_summary = summary
 
         return case, result
+
+    # -----------------------------------------------------------------------
+    # Explicit Cause Confirmation (DLK-M3-013)
+    # -----------------------------------------------------------------------
+
+    def confirm_cause(
+        self,
+        case: StructuredCase,
+        cause_id: str,
+        confirmed_by: str = "technician",
+        confirmation_details: str = "",
+    ) -> tuple[StructuredCase, DiagnosisResult]:
+        """Explicitly confirm a cause as the root cause.
+
+        This is a SEPARATE operation from check-result handling.
+        A supporting check result increases evidence but does NOT
+        automatically confirm a cause. Only this method transitions
+        a cause to CONFIRMED.
+
+        DLK-M3-013 semantic rule:
+            Check completed ≠ Check supports cause ≠ Cause confirmed
+
+        Args:
+            case: The structured case.
+            cause_id: The cause_id to confirm.
+            confirmed_by: Who confirmed (e.g. "technician", "engineer").
+            confirmation_details: Supporting notes for the confirmation.
+
+        Returns:
+            Updated (case, DiagnosisResult) with the cause set to CONFIRMED.
+
+        Raises:
+            ValueError: If the cause_id is not found in the current ranking.
+        """
+        # Re-diagnose to get current state
+        result = self.diagnose(case)
+
+        # Find and confirm the specified cause
+        found = False
+        for cause in result.ranked_causes:
+            if cause.cause_id == cause_id:
+                cause.conclusion = CauseConclusion.CONFIRMED
+                found = True
+                break
+
+        if not found:
+            raise ValueError(
+                f"Cannot confirm cause '{cause_id}': not found in current ranked causes. "
+                f"Available causes: {[c.cause_id for c in result.ranked_causes]}"
+            )
+
+        # Also update the cause in the latest revision
+        if case.analysis_revisions:
+            for cause in case.analysis_revisions[-1].ranked_causes:
+                if cause.cause_id == cause_id:
+                    cause.conclusion = CauseConclusion.CONFIRMED
+                    break
+
+        # Track confirmed cause on case for persistent state
+        if hasattr(case, "confirmed_causes") and cause_id not in case.confirmed_causes:
+            case.confirmed_causes.append(cause_id)
+
+        return case, result
+
+
 
     # -----------------------------------------------------------------------
     # Question Answer Handling (Phase 10 Integration)

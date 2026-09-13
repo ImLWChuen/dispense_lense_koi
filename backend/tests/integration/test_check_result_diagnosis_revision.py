@@ -171,9 +171,21 @@ class TestCheckResultDiagnosisRevision(unittest.TestCase):
 
         nozzle = next(c for c in res.ranked_causes if c.cause_id == "nozzle_restriction")
         self.assertGreaterEqual(nozzle.score, SCORING_CONFIG.high_confidence_threshold)
-        self.assertEqual(nozzle.conclusion, CauseConclusion.CONFIRMED, "Direct supporting check + high score confirms cause")
+        # DLK-M3-013: Direct supporting check + high score raises score, but does NOT auto-confirm
+        self.assertEqual(nozzle.conclusion, CauseConclusion.SUSPECTED, "Supporting check does not auto-confirm cause")
+
+        # Explicit technician confirmation confirms cause
+        case, res = self.engine.confirm_cause(
+            case,
+            cause_id="nozzle_restriction",
+            confirmed_by="technician",
+            confirmation_details="Direct visual bore inspection confirmed severe blockage.",
+        )
+        nozzle = next(c for c in res.ranked_causes if c.cause_id == "nozzle_restriction")
+        self.assertEqual(nozzle.conclusion, CauseConclusion.CONFIRMED, "Explicit technician confirmation confirms cause")
         # Issue condition MUST STILL be UNRESOLVED!
         self.assertEqual(res.issue_condition, IssueCondition.UNRESOLVED, "Cause confirmed != issue resolved")
+
 
     def test_case_c_check_completed_inconclusive_cause_unconfirmed_issue_resolved(self):
         """Case C: Check completed, finding inconclusive, cause unconfirmed, issue RESOLVED with verification."""
@@ -228,8 +240,15 @@ class TestCheckResultDiagnosisRevision(unittest.TestCase):
             finding_details="Blocked nozzle verified.",
         )
         self.engine.submit_check_result(case, check)
+        self.engine.confirm_cause(
+            case,
+            cause_id="nozzle_restriction",
+            confirmed_by="technician",
+            confirmation_details="Direct bore inspection verified solid blockage.",
+        )
 
         # Transition issue to RESOLVED with post-repair verification
+
         case.issue_condition = IssueCondition.RECOVERY_PENDING_VERIFICATION
         cond, _ = StateManager.transition_issue_condition(
             current_condition=case.issue_condition,

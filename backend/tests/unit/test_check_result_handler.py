@@ -17,18 +17,23 @@ import sys
 import unittest
 from pathlib import Path
 
+backend_dir = str(Path(__file__).resolve().parents[2])
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 project_root = str(Path(__file__).resolve().parents[3])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CheckExecutionStatus,
     CheckFinding,
     CheckResult,
     EvidenceSource,
     ObservationType,
 )
-from backend.app.services.diagnosis.engine import CheckResultHandler
+from app.services.diagnosis.engine import CheckResultHandler
+
+
 
 
 class TestCheckResultHandler(unittest.TestCase):
@@ -119,7 +124,7 @@ class TestCheckResultHandler(unittest.TestCase):
         domain_obs = next((o for o in obs if o.observation_type == ObservationType.NOZZLE_CONDITION), None)
         self.assertIsNotNone(domain_obs)
         assert domain_obs is not None
-        self.assertEqual(domain_obs.value, "damaged")
+        self.assertEqual(domain_obs.value, "blocked")  # DLK-M3-013: blockage ≠ damage
 
         self.assertIn("COMPLETED", summary)
         self.assertIn("SUPPORTS", summary)
