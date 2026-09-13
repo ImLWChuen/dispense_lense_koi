@@ -302,13 +302,7 @@ def submit_case_answer(
             timestamp=datetime.now(timezone.utc),
         )
 
-        try:
-            updated_case, result = engine.submit_question_answer(case, domain_answer)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(e),
-            )
+        updated_case, result = engine.submit_question_answer(case, domain_answer)
 
         try:
             rev_model = repository.append_question_answer_revision(

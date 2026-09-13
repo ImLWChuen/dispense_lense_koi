@@ -13,13 +13,14 @@ import copy
 import os
 import uuid
 from typing import Generator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event
 from sqlalchemy.orm import Session
 
+from app.api.cases import get_diagnosis_engine
 from app.core.config import get_database_url
 from app.db.database import get_engine, reset_engine
 from app.db.repository import CaseRepository
@@ -896,3 +897,77 @@ def test_internal_value_error_after_append_returns_sanitized_500_and_rolls_back(
         assert len(repo.get_case_observations(case_id)) == obs_before
         assert len(repo.get_case_question_answers(case_id)) == 0
         assert repo.list_case_revisions(case_id) == [1]
+
+
+def test_engine_internal_value_error_returns_sanitized_500_and_does_not_mutate(tracked_cases: list[str]):
+    """Verify that an internal ValueError raised by the diagnosis engine during
+    submit_question_answer returns a sanitized 500 without leaking raw details,
+    and no state is mutated in the database.
+    """
+    # 1. Create a valid durable case
+    create_payload = {
+        "description": "Dispense dots are shrinking over time during continuous operation",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "solder_paste",
+        "method": "jetting",
+    }
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    with factory() as session:
+        repo = CaseRepository(session)
+        obs_before = len(repo.get_case_observations(case_id))
+        qas_before = len(repo.get_case_question_answers(case_id))
+        revs_before = repo.list_case_revisions(case_id)
+        assert qas_before == 0
+        assert revs_before == [1]
+
+    # 2 & 3. Supply a valid Q01 answer that passes QuestionAnswerHandler validation,
+    # and make the injected engine raise ValueError containing sensitive-looking internal text
+    sensitive_error_text = "internal engine detail C:/private/model/path"
+    mock_engine = MagicMock(spec=DiagnosticEngine)
+    mock_engine.submit_question_answer.side_effect = ValueError(sensitive_error_text)
+
+    app.dependency_overrides[get_diagnosis_engine] = lambda: mock_engine
+    try:
+        resp = client.post(
+            f"/api/v1/cases/{case_id}/answers",
+            json={
+                "question_id": "Q01",
+                "answer": "after_prolonged_operation",
+                "expected_revision": 1,
+                "answer_text": "Shrinking starts after 30 minutes",
+            },
+        )
+        # 4. Assert HTTP 500
+        assert resp.status_code == 500
+        # 5. Assert the raw message is absent
+        assert sensitive_error_text not in resp.text
+        assert "C:/private/model/path" not in resp.text
+        assert "internal engine detail" not in resp.text
+        data = resp.json()
+        assert data["detail"] == "An unexpected error occurred while submitting the question answer."
+    finally:
+        app.dependency_overrides.pop(get_diagnosis_engine, None)
+
+    # 6. Assert no answer, observation, or revision was appended
+    with factory() as session:
+        repo = CaseRepository(session)
+        assert len(repo.get_case_observations(case_id)) == obs_before
+        assert len(repo.get_case_question_answers(case_id)) == qas_before
+        assert repo.list_case_revisions(case_id) == revs_before
+
+    # 7. Retain tests proving invalid question and answer inputs return 422
+    invalid_ans_resp = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "invalid_unsupported_choice",
+            "expected_revision": 1,
+        },
+    )
+    assert invalid_ans_resp.status_code == 422
+    assert "Invalid answer" in invalid_ans_resp.json()["detail"]
