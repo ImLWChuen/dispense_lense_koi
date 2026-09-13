@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     AnalysisRevision,
     CandidateCause,
     CauseConclusion,
@@ -29,8 +29,8 @@ from backend.app.schemas.diagnosis import (
     QuestionAnswer,
     CheckResult,
 )
-from backend.app.services.diagnosis.evidence_engine import EvidenceEngine
-from backend.app.utils.scoring import SCORING_CONFIG
+from app.services.diagnosis.evidence_engine import EvidenceEngine
+from app.utils.scoring import SCORING_CONFIG
 
 
 # ---------------------------------------------------------------------------

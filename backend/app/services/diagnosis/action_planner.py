@@ -17,16 +17,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.knowledge import (
+from app.knowledge import (
     get_actions_for_causes,
     load_actions,
 )
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CandidateCause,
     CheckResult,
     TroubleshootingCheck,
 )
-from backend.app.utils.scoring import SCORING_CONFIG, effort_penalty
+from app.utils.scoring import SCORING_CONFIG, effort_penalty
 
 
 # ---------------------------------------------------------------------------

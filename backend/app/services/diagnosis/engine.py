@@ -21,13 +21,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from backend.app.knowledge import (
+from app.knowledge import (
     get_action_by_id,
     get_causes_for_defect,
     load_actions,
     load_questions,
 )
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     AnalysisRevision,
     AnswerValue,
     CandidateCause,
@@ -49,13 +49,13 @@ from backend.app.schemas.diagnosis import (
     StructuredCase,
     TroubleshootingCheck,
 )
-from backend.app.services.diagnosis.action_planner import ActionPlanner
-from backend.app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
-from backend.app.services.diagnosis.defect_identifier import identify_defect
-from backend.app.services.diagnosis.evidence_engine import EvidenceEngine
-from backend.app.services.diagnosis.question_engine import QuestionEngine
-from backend.app.services.diagnosis.symptom_extractor import SymptomExtractor
-from backend.app.utils.scoring import SCORING_CONFIG
+from app.services.diagnosis.action_planner import ActionPlanner
+from app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
+from app.services.diagnosis.defect_identifier import identify_defect
+from app.services.diagnosis.evidence_engine import EvidenceEngine
+from app.services.diagnosis.question_engine import QuestionEngine
+from app.services.diagnosis.symptom_extractor import SymptomExtractor
+from app.utils.scoring import SCORING_CONFIG
 
 
 def _utc_now() -> datetime:
@@ -965,3 +965,7 @@ class DiagnosticEngine:
             )
 
         return "\n".join(lines)
+
+
+# Alias for backwards-compatibility with task verification contracts
+DiagnosisEngine = DiagnosticEngine
