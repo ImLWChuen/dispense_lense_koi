@@ -17,18 +17,18 @@ project_root = str(Path(__file__).resolve().parents[3])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     DefectCode,
     EvidenceSource,
     QuestionAnswer,
 )
-from backend.app.services.diagnosis.question_engine import (
+from app.services.diagnosis.question_engine import (
     QuestionEngine,
     QuestionSelectionResult,
 )
-from backend.app.utils.scoring import SCORING_CONFIG
+from app.utils.scoring import SCORING_CONFIG
 
 
 class TestQuestionEngine(unittest.TestCase):

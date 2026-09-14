@@ -8,8 +8,8 @@ Verifies:
   4. Full pipeline integration from description → action
 """
 
-import sys
 import os
+import sys
 
 # Ensure UTF-8 output on Windows terminals
 if sys.platform == "win32":
@@ -158,7 +158,7 @@ def test_cause_ranker() -> None:
 # Test 2: Cause Ranker Re-ranking
 # ===================================================================
 
-def test_reranking(
+def _verify_reranking(
     ranker: CauseRanker,
     observations: list[Observation],
     defect_code: str,
@@ -187,7 +187,7 @@ def test_reranking(
 # Test 3: Question Engine
 # ===================================================================
 
-def test_question_engine(ranking: RankingResult) -> Question:
+def _verify_question_engine(ranking: RankingResult) -> Question:
     separator("PHASE 7: Question Engine")
 
     engine = QuestionEngine()
@@ -221,7 +221,7 @@ def test_question_engine(ranking: RankingResult) -> Question:
 # Test 4: Question Engine — Already Answered Penalty
 # ===================================================================
 
-def test_question_already_answered(
+def _verify_question_already_answered(
     ranking: RankingResult,
     first_question: Question,
 ) -> None:
@@ -256,13 +256,13 @@ def test_question_already_answered(
 # Test 5: Question Engine — Stopping Condition
 # ===================================================================
 
-def test_question_stopping() -> None:
+def _verify_question_stopping() -> None:
     separator("PHASE 7c: Stopping Condition")
 
     engine = QuestionEngine()
 
     # Create a mock high-confidence cause
-    from backend.app.schemas.diagnosis import CandidateCause, CauseConclusion
+    from app.schemas.diagnosis import CandidateCause, CauseConclusion
     high_cause = CandidateCause(
         cause_id="air_supply_issue",
         cause_name="Air / Supply Issue",
@@ -285,7 +285,7 @@ def test_question_stopping() -> None:
 # Test 6: Action Planner
 # ===================================================================
 
-def test_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
+def _verify_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
     separator("PHASE 8: Action Planner")
 
     planner = ActionPlanner()
@@ -316,7 +316,7 @@ def test_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
 # Test 7: Action Planner — Already Attempted
 # ===================================================================
 
-def test_action_already_attempted(
+def _verify_action_already_attempted(
     ranking: RankingResult,
     first_check: TroubleshootingCheck,
 ) -> None:
@@ -353,7 +353,7 @@ def test_action_already_attempted(
 # Test 8: Full Pipeline Integration
 # ===================================================================
 
-def test_full_pipeline() -> None:
+def _verify_full_pipeline() -> None:
     separator("FULL PIPELINE INTEGRATION")
 
     description = "The dispensing dots become smaller after the machine has been running for around 20 minutes."
@@ -399,7 +399,7 @@ def test_full_pipeline() -> None:
 
 
 # ===================================================================
-# Run all tests
+# Pytest entry point and script runner
 # ===================================================================
 
 if __name__ == "__main__":
@@ -429,7 +429,11 @@ if __name__ == "__main__":
     first_c = a_res.selected_check
     test_action_already_attempted(ranking, first_c)
 
-    test_full_pipeline()
+    _verify_full_pipeline()
+
+
+if __name__ == "__main__":
+    test_phases_6_through_8()
 
     separator("ALL PHASES 6–8 TESTS PASSED")
     print("Cause ranker, question engine, and action planner are working correctly.\n")

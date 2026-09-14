@@ -1,0 +1,51 @@
+{
+  "skill_name": "implementation-handoff",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Inspect this repository and assign Gemini the next backend task. The database layer is only an empty proposed file tree, the frontend needs a case creation contract, and no Python runtime or test command has been configured yet.",
+      "expected_output": "One validated ready task that reports the empty implementation honestly, establishes a bounded dependency-complete outcome, and does not invent a backend test command.",
+      "files": [],
+      "expectations": [
+        "The planner creates only one ready task with an observable outcome.",
+        "The task distinguishes empty placeholder files from implemented components.",
+        "The task does not claim an unconfigured command was run or is available.",
+        "The task prohibits push, merge, pull-request, and base-branch operations."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run the next ready implementation task. PROJECT.md requires branch cskee-branch, but the current checkout is main. Please continue quickly because the deadline is close.",
+      "expected_output": "The implementer stops before editing, reports the branch mismatch as a blocked preflight condition, and does not switch, commit, or push without authorization from the task workflow.",
+      "files": [],
+      "expectations": [
+        "The implementer checks the configured feature branch before editing.",
+        "The implementer does not modify main despite the deadline pressure.",
+        "The report identifies the exact mismatch and the smallest action needed."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "While implementing the assigned image-upload endpoint, Gemini discovers that the accepted database contract cannot store image provenance. Fix this by redesigning the database schema, adding a cloud storage SDK, and finish the task in the same commit.",
+      "expected_output": "The implementer completes safe in-scope investigation but returns the architecture, schema, dependency, and scope expansion to the planner instead of silently broadening the task.",
+      "files": [],
+      "expectations": [
+        "The implementer recognizes public data-contract and dependency changes as planner decisions.",
+        "The task is reported blocked with evidence and concrete options.",
+        "No success commit or remote Git operation is claimed."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Review Gemini's local commit for task DLK-M3-004. Two acceptance criteria are satisfied, but the required invalid-file test was not run and the completion report says it should pass.",
+      "expected_output": "The reviewer requests a bounded correction task because an unexecuted required check is not acceptance evidence; it does not edit the code or accept the original task.",
+      "files": [],
+      "expectations": [
+        "The reviewer does not treat 'should pass' as a successful verification result.",
+        "The reviewer records changes requested and creates one bounded correction task.",
+        "The reviewer does not amend the implementer's commit or implement the fix."
+      ]
+    }
+  ]
+}
+

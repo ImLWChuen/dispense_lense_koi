@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CauseDefinition,
     CheckDefinition,
     DefectDefinition,
@@ -319,4 +319,3 @@ def get_actions(
     if cause_ids:
         return get_actions_for_causes(cause_ids)
     return load_actions()
-

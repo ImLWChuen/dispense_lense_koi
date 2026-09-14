@@ -36,11 +36,7 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
@@ -52,7 +48,7 @@ from backend.app.schemas.diagnosis import (
     QuestionAnswer,
     StructuredCase,
 )
-from backend.app.services.diagnosis.engine import (
+from app.services.diagnosis.engine import (
     CheckResultHandler,
     DiagnosticEngine,
     QuestionAnswerHandler,

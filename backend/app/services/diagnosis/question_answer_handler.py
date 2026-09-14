@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     AnswerValue,
     EvidenceSource,
     Observation,

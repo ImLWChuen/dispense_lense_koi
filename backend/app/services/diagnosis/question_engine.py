@@ -17,16 +17,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.knowledge import (
+from app.knowledge import (
     get_questions_for_causes,
     load_questions,
 )
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CandidateCause,
     Question,
     QuestionAnswer,
 )
-from backend.app.utils.scoring import SCORING_CONFIG
+from app.utils.scoring import SCORING_CONFIG
 
 
 # ---------------------------------------------------------------------------

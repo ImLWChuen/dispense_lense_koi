@@ -15,8 +15,8 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(o
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from backend.app.services.diagnosis.evidence_engine import EvidenceEngine
-from backend.app.schemas.diagnosis import (
+from app.services.diagnosis.evidence_engine import EvidenceEngine
+from app.schemas.diagnosis import (
     EvidenceRelation,
     EvidenceSource,
     Observation,
