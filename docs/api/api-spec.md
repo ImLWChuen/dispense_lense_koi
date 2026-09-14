@@ -1886,6 +1886,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 - **Member 2 Diagnostic Authority & Semantic Boundaries:**
   - Check ID is validated against `actions.json`. Unknown IDs return `422 Unprocessable Entity`.
   - Specific outcomes are validated against action definitions. Invalid outcomes return `422 Unprocessable Entity`.
+  - **Unfinished Statuses Rejected (422):** Execution statuses `PENDING` and `IN_PROGRESS` are strictly rejected with `422 Unprocessable Entity` before evidence evaluation or persistence, as this is a result submission endpoint.
   - **Non-Executing Statuses:** `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, and `SKIPPED` checks are recorded in history and advance the revision, but their finding is strictly normalized to `UNKNOWN` and they generate zero diagnostic observations.
   - **Inconclusive Findings:** Completed checks with `INCONCLUSIVE`, `UNKNOWN`, or `NOT_APPLICABLE` findings are recorded in history and advance the revision, but generate zero diagnostic observations.
   - **Non-Directional Semantic Fix (ACT03):** Completed `ACT03` with outcome `consistent_but_wrong_size` generates the structured `CHECK_RESULT` observation but generates no directional `deposit_size` observation (neither `undersized` nor `oversized`).
@@ -1897,7 +1898,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `check_id` | `string` | **Yes** | — | Identifier of the troubleshooting check (e.g. `"ACT01"`, `"ACT02"`). Must match a supported action in `actions.json`. |
-| `execution_status` | `string` | **Yes** | — | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. |
+| `execution_status` | `string` | **Yes** | — | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. Note: `PENDING` and `IN_PROGRESS` are rejected with `422`. |
 | `finding` | `string` | **Yes** | — | Finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
 | `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
 | `outcome` | `string` \| `null` | No | `null` | Optional action outcome key (e.g. `"no_blockage"`, `"air_bubbles_found"`). Validated against action evidence mapping. |
@@ -1910,6 +1911,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 3. **Empty Fields:** Submitting an empty or whitespace-only `check_id` returns `422 Unprocessable Entity`.
 4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity`.
 5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+6. **Unfinished Execution Status:** Submitting `execution_status` as `PENDING` or `IN_PROGRESS` returns `422 Unprocessable Entity` without altering case state or evaluating evidence.
 
 #### Status and Error Codes
 

@@ -535,6 +535,19 @@ def submit_case_check_result(
                 ),
             )
 
+        # Reject unfinished execution statuses before domain execution or persistence
+        if request.execution_status in (
+            CheckExecutionStatus.PENDING,
+            CheckExecutionStatus.IN_PROGRESS,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Cannot submit check result with unfinished execution status: '{request.execution_status.value}'. "
+                    "Check must be completed, blocked, failed, skipped, unknown, or not applicable."
+                ),
+            )
+
         # Validate check_id and outcome using existing domain CheckResultHandler
         domain_check = CheckResult(
             check_id=request.check_id,

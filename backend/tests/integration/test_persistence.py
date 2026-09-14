@@ -1906,51 +1906,128 @@ def test_append_check_result_revision_stale_expected_revision(case_repo, db_sess
 
 
 def test_append_check_result_revision_rollback_on_failure(case_repo, db_session):
-    """Verify that any failure during append_check_result_revision rolls back all mutations atomically."""
+    """Verify that a failure after rows are flushed during append_check_result_revision
+    causes the repository's transaction boundary to roll back naturally without manual rollback.
+    Asserts:
+    1. Control case remains completely unaffected.
+    2. Target case pending flushed check-result, observations, and revision exist before failure.
+    3. Failure raised before commit causes repository to roll back.
+    4. Fresh independent session sees 0 check results and revision remains at 1.
+    """
     repo, tracked_ids = case_repo
     engine = DiagnosticEngine()
-    case_id = str(uuid.uuid4())
-    tracked_ids.append(case_id)
 
-    case = engine.prepare_case(
+    # 1. Create control case
+    control_id = str(uuid.uuid4())
+    tracked_ids.append(control_id)
+    control_case = engine.prepare_case(
         StructuredCase(
-            case_id=case_id,
+            case_id=control_id,
             defect_code="D03_INCONSISTENT_SIZE",
             defect_name="Inconsistent Dot Size",
-            description="Dots shrinking over time",
+            description="Control case for rollback isolation",
         )
     )
-    result = engine.diagnose(case)
-    repo.save_initial_case(case, result)
+    control_res = engine.diagnose(control_case)
+    repo.save_initial_case(control_case, control_res)
+
+    # 2. Create target case
+    target_id = str(uuid.uuid4())
+    tracked_ids.append(target_id)
+    target_case = engine.prepare_case(
+        StructuredCase(
+            case_id=target_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Target case for repository post-flush rollback",
+        )
+    )
+    target_res = engine.diagnose(target_case)
+    repo.save_initial_case(target_case, target_res)
     db_session.commit()
 
+    initial_obs_count = len(repo.get_case_observations(target_id))
+
+    # 3. Create evidence-producing check result
     check = CheckResult(
         check_id="ACT01",
         execution_status=CheckExecutionStatus.COMPLETED,
-        finding=CheckFinding.CONTRADICTS,
-        outcome="no_blockage",
+        finding=CheckFinding.SUPPORTS,
+        outcome="blockage_found",
         source=EvidenceSource.USER_CHECK_RESULT,
     )
-    loaded = repo.load_structured_case(case_id)
-    assert loaded is not None
-    up_case, res2 = engine.submit_check_result(loaded, check)
+    loaded_target = repo.load_structured_case(target_id)
+    assert loaded_target is not None
+    up_case, res2 = engine.submit_check_result(loaded_target, check)
 
-    # Induce an error by corrupting the diagnosis result snapshot
-    bad_result = copy.deepcopy(res2)
-    bad_result.analysis_revision = None  # append_check_result_revision requires analysis_revision
+    # 4. Use self-managed repository (session=None) to exercise repository's own rollback handler
+    self_managed_repo = CaseRepository()
 
-    with pytest.raises((ValueError, AttributeError)):
-        repo.append_check_result_revision(
-            case=up_case,
-            check_result=check,
-            result=bad_result,
-            expected_revision=1,
-        )
-    db_session.rollback()
+    hook_called = False
 
-    # Verify state rolled back cleanly
-    assert len(repo.get_case_check_results(case_id)) == 0
-    assert repo.list_case_revisions(case_id) == [1]
+    def fail_after_flush_before_commit(session: Session) -> None:
+        nonlocal hook_called
+        target_crs = session.scalars(
+            select(CaseCheckResultModel).where(
+                CaseCheckResultModel.case_id == target_id,
+                CaseCheckResultModel.resulting_revision_number == 2,
+            )
+        ).all()
+        if not target_crs:
+            return
+
+        hook_called = True
+
+        # Assert flushed rows exist inside the pending transaction
+        assert len(target_crs) == 1
+        assert target_crs[0].check_id == "ACT01"
+        assert target_crs[0].outcome == "blockage_found"
+
+        target_rev2_obs = session.scalars(
+            select(ObservationModel).where(
+                ObservationModel.case_id == target_id,
+                ObservationModel.first_seen_revision == 2,
+            )
+        ).all()
+        assert len(target_rev2_obs) >= 1
+
+        target_rev2 = session.scalars(
+            select(AnalysisRevisionModel).where(
+                AnalysisRevisionModel.case_id == target_id,
+                AnalysisRevisionModel.revision_number == 2,
+            )
+        ).all()
+        assert len(target_rev2) == 1
+
+        raise RuntimeError("Simulated repository flush boundary fault")
+
+    event.listen(Session, "before_commit", fail_after_flush_before_commit)
+    try:
+        with pytest.raises(RuntimeError, match="Simulated repository flush boundary fault"):
+            self_managed_repo.append_check_result_revision(
+                case=up_case,
+                check_result=check,
+                result=res2,
+                expected_revision=1,
+            )
+    finally:
+        event.remove(Session, "before_commit", fail_after_flush_before_commit)
+
+    assert hook_called is True
+
+    # 5. Open fresh independent session to verify rollback without manual rollback call
+    factory = get_session_factory()
+    with factory() as independent_session:
+        independent_repo = CaseRepository(independent_session)
+        assert len(independent_repo.get_case_check_results(target_id)) == 0
+        assert independent_repo.list_case_revisions(target_id) == [1]
+        target_obs = independent_repo.get_case_observations(target_id)
+        assert len(target_obs) == initial_obs_count
+        assert not any(obs.first_seen_revision == 2 for obs in target_obs)
+
+        # Verify control case is completely unaffected
+        assert independent_repo.list_case_revisions(control_id) == [1]
+        assert len(independent_repo.get_case_check_results(control_id)) == 0
 
 
 def test_interleaved_mixed_revisions_answer_and_check(case_repo, db_session):

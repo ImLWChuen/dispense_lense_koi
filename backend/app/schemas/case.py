@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.knowledge import get_defect_by_code
 from app.schemas.diagnosis import (
@@ -245,12 +245,27 @@ class SubmitCheckResultRequest(BaseModel):
         description="Expected current revision number of the case for optimistic locking.",
     )
 
+    @field_validator("execution_status")
+    @classmethod
+    def validate_execution_status(cls, v: CheckExecutionStatus) -> CheckExecutionStatus:
+        if v in (CheckExecutionStatus.PENDING, CheckExecutionStatus.IN_PROGRESS):
+            raise ValueError(
+                f"Cannot submit check result with unfinished execution status: '{v.value}'. "
+                "Check must be completed, blocked, failed, skipped, unknown, or not applicable."
+            )
+        return v
+
     @model_validator(mode="after")
     def validate_payload(self) -> SubmitCheckResultRequest:
         if not self.check_id or not self.check_id.strip():
             raise ValueError("check_id must be a non-empty string.")
         if self.expected_revision < 1:
             raise ValueError("expected_revision must be >= 1.")
+        if self.execution_status in (CheckExecutionStatus.PENDING, CheckExecutionStatus.IN_PROGRESS):
+            raise ValueError(
+                f"Cannot submit check result with unfinished execution status: '{self.execution_status.value}'. "
+                "Check must be completed, blocked, failed, skipped, unknown, or not applicable."
+            )
         return self
 
 

@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, event, select
 from sqlalchemy.orm import Session
 
 from app.api.cases import get_diagnosis_engine
@@ -27,7 +27,12 @@ from app.db.database import get_engine, reset_engine
 from app.db.repository import CaseRepository
 from app.db.session import get_session_factory
 from app.main import app
-from app.models.case import CaseCheckResultModel, CaseModel, ObservationModel
+from app.models.case import (
+    AnalysisRevisionModel,
+    CaseCheckResultModel,
+    CaseModel,
+    ObservationModel,
+)
 from app.schemas.diagnosis import (
     CauseConclusion,
     CheckExecutionStatus,
@@ -470,48 +475,143 @@ def test_replay_after_success_with_old_revision_returns_409(tracked_cases: list[
 # ===========================================================================
 
 def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracked_cases: list[str]):
-    """Scenario 10:
-    - An unexpected error inside append_check_result_revision returns sanitized 500;
-    - Raw details / file paths are not leaked;
-    - Transaction rolls back completely; case remains at revision 1.
+    """Scenario 10 (R2 post-write rollback proof):
+    - Create an unrelated control case (Case A) to verify it remains untouched;
+    - Create a target case (Case B);
+    - Submit a valid, evidence-producing check result (ACT01, COMPLETED, SUPPORTS, blockage_found);
+    - Allow the real append path to flush check-result, generated observations, and revision 2;
+    - Intercept at the commit boundary using a test-only SQLAlchemy before_commit event;
+    - Assert inside the transaction that the pending flushed check-result, observation, and revision exist;
+    - Inject an unhandled failure (with sensitive paths) before commit;
+    - Verify that the production transaction boundary rolls back naturally;
+    - Assert the HTTP response is a sanitized 500 without leaking sensitive paths;
+    - In a fresh independent session, verify all new rows are absent, Case B is at revision 1, and Case A is intact.
     """
-    create_payload = {
-        "description": "Dispense dots are shrinking over time",
-        "defect_code": "D03_INCONSISTENT_SIZE",
-    }
-    create_resp = client.post("/api/v1/cases", json=create_payload)
-    assert create_resp.status_code == 201
-    case_id = create_resp.json()["case_id"]
-    tracked_cases.append(case_id)
+    factory = get_session_factory()
 
+    # 1. Create unrelated control case (Case A)
+    control_resp = client.post(
+        "/api/v1/cases",
+        json={
+            "description": "Control case for rollback isolation",
+            "defect_code": "D03_INCONSISTENT_SIZE",
+        },
+    )
+    assert control_resp.status_code == 201
+    control_id = control_resp.json()["case_id"]
+    tracked_cases.append(control_id)
+
+    # 2. Create target case (Case B)
+    target_resp = client.post(
+        "/api/v1/cases",
+        json={
+            "description": "Target case for post-flush rollback test",
+            "defect_code": "D03_INCONSISTENT_SIZE",
+        },
+    )
+    assert target_resp.status_code == 201
+    target_id = target_resp.json()["case_id"]
+    tracked_cases.append(target_id)
+
+    with factory() as session:
+        repo = CaseRepository(session)
+        target_initial_case = repo.load_structured_case(target_id)
+        assert target_initial_case is not None
+        initial_obs_count = len(target_initial_case.observations)
+        control_initial_revs = repo.list_case_revisions(control_id)
+
+    # 3. Prepare evidence-producing check result payload
     check_payload = {
         "check_id": "ACT01",
         "execution_status": "COMPLETED",
-        "finding": "CONTRADICTS",
-        "outcome": "no_blockage",
+        "finding": "SUPPORTS",
+        "outcome": "blockage_found",
+        "finding_details": "Nozzle orifice blocked with particulate",
         "expected_revision": 1,
     }
 
-    # Induce an error inside append_check_result_revision with sensitive path
     sensitive_path = "C:/private/database/secrets/db.sqlite"
-    with patch.object(
-        CaseRepository,
-        "append_check_result_revision",
-        side_effect=RuntimeError(f"Simulated disk write fault at {sensitive_path}"),
-    ):
-        resp = client.post(f"/api/v1/cases/{case_id}/check-results", json=check_payload)
+    hook_called = False
 
+    def fail_after_flush_before_commit(session: Session) -> None:
+        nonlocal hook_called
+        # Only intercept for target_id check-result transaction
+        target_crs = session.scalars(
+            select(CaseCheckResultModel).where(
+                CaseCheckResultModel.case_id == target_id,
+                CaseCheckResultModel.resulting_revision_number == 2,
+            )
+        ).all()
+        if not target_crs:
+            return
+
+        hook_called = True
+
+        # Assert flushed rows exist inside the pending transaction:
+        # 1. Check-result record
+        assert len(target_crs) == 1
+        assert target_crs[0].check_id == "ACT01"
+        assert target_crs[0].outcome == "blockage_found"
+
+        # 2. Generated observations for revision 2 (ACT01:blockage_found and nozzle_condition=blocked)
+        target_rev2_obs = session.scalars(
+            select(ObservationModel).where(
+                ObservationModel.case_id == target_id,
+                ObservationModel.first_seen_revision == 2,
+            )
+        ).all()
+        assert len(target_rev2_obs) >= 1
+
+        # 3. New analysis revision 2
+        target_rev2 = session.scalars(
+            select(AnalysisRevisionModel).where(
+                AnalysisRevisionModel.case_id == target_id,
+                AnalysisRevisionModel.revision_number == 2,
+            )
+        ).all()
+        assert len(target_rev2) == 1
+
+        # Now inject failure after flush but before commit
+        raise RuntimeError(f"Simulated disk write fault at {sensitive_path}")
+
+    event.listen(Session, "before_commit", fail_after_flush_before_commit)
+    try:
+        resp = client.post(f"/api/v1/cases/{target_id}/check-results", json=check_payload)
+    finally:
+        event.remove(Session, "before_commit", fail_after_flush_before_commit)
+
+    assert hook_called is True
+
+    # 4. Assert response is sanitized 500
     assert resp.status_code == 500
     error_detail = resp.json()["detail"]
     assert "An unexpected error occurred while persisting the check result revision." in error_detail
     assert sensitive_path not in error_detail
 
-    # Verify atomic rollback
-    factory = get_session_factory()
+    # 5. Open a fresh independent session and verify full rollback
     with factory() as session:
         repo = CaseRepository(session)
-        assert repo.list_case_revisions(case_id) == [1]
-        assert len(repo.get_case_check_results(case_id)) == 0
+
+        # Verify no check result rows were committed for target_id
+        assert len(repo.get_case_check_results(target_id)) == 0
+
+        # Verify no revision 2 observations were committed for target_id
+        current_obs = repo.get_case_observations(target_id)
+        assert len(current_obs) == initial_obs_count
+        assert not any(obs.first_seen_revision == 2 for obs in current_obs)
+
+        # Verify target case remains at revision 1
+        assert repo.list_case_revisions(target_id) == [1]
+
+        # Verify structured case snapshot is intact
+        loaded_target = repo.load_structured_case(target_id)
+        assert loaded_target is not None
+        assert loaded_target.analysis_revisions[-1].revision_number == 1
+        assert len(loaded_target.previous_check_results) == 0
+
+        # Verify control case (Case A) was completely untouched
+        assert repo.list_case_revisions(control_id) == control_initial_revs
+        assert len(repo.get_case_check_results(control_id)) == 0
 
 
 # ===========================================================================
@@ -757,3 +857,63 @@ def test_invalid_uuid_returns_422():
     resp = client.post("/api/v1/cases/not-a-valid-uuid/check-results", json=check_payload)
     assert resp.status_code == 422
     assert "Invalid case ID format" in resp.json()["detail"]
+
+
+# ===========================================================================
+# 18. R1 Regression: Unfinished Execution Statuses Rejected with 422
+# ===========================================================================
+
+@pytest.mark.parametrize("unfinished_status", ["PENDING", "IN_PROGRESS"])
+def test_unfinished_execution_status_rejected_with_422_and_no_mutation(
+    tracked_cases: list[str],
+    unfinished_status: str,
+):
+    """R1 Requirement:
+    - Submitting PENDING or IN_PROGRESS returns 422 Unprocessable Entity;
+    - Uses an otherwise-valid, evidence-producing payload (ACT01, SUPPORTS, blockage_found);
+    - Proves rejected before evidence generation or persistence;
+    - Asserts no check history, observation, revision, or current_revision mutation occurs;
+    - Prior snapshots remain intact.
+    """
+    create_payload = {
+        "description": "Dispense dots are shrinking over time",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "solder_paste",
+        "method": "jetting",
+    }
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_data = create_resp.json()
+    case_id = case_data["case_id"]
+    tracked_cases.append(case_id)
+    initial_obs_count = len(case_data["observations"])
+
+    # Adversarial payload that WOULD create observations if processed as COMPLETED
+    check_payload = {
+        "check_id": "ACT01",
+        "execution_status": unfinished_status,
+        "finding": "SUPPORTS",
+        "outcome": "blockage_found",
+        "finding_details": f"Check status is {unfinished_status}",
+        "expected_revision": 1,
+    }
+    resp = client.post(f"/api/v1/cases/{case_id}/check-results", json=check_payload)
+    assert resp.status_code == 422
+    error_text = resp.text
+    assert "unfinished execution status" in error_text or unfinished_status in error_text
+
+    # Verify no database mutation
+    factory = get_session_factory()
+    with factory() as session:
+        repo = CaseRepository(session)
+        assert len(repo.get_case_check_results(case_id)) == 0
+        assert repo.list_case_revisions(case_id) == [1]
+
+        obs = repo.get_case_observations(case_id)
+        assert len(obs) == initial_obs_count
+        assert not any(o.first_seen_revision == 2 for o in obs)
+
+        loaded = repo.load_structured_case(case_id)
+        assert loaded is not None
+        assert loaded.analysis_revisions[-1].revision_number == 1
+        assert len(loaded.previous_check_results) == 0

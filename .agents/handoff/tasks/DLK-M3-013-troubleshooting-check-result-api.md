@@ -618,7 +618,7 @@ Phase B established forward-only relational persistence for troubleshooting chec
 
 - `backend/app/services/diagnosis/engine.py`: Removed false directional `DEPOSIT_SIZE:undersized` mapping for `ACT03:consistent_but_wrong_size` in `_ACTION_OUTCOME_TO_OBSERVATION`.
 - `backend/tests/unit/test_semantic_verification.py`: Normalized imports to `app.*` and added ACT03 regression tests.
-- `backend/app/schemas/diagnosis_api.py`: Normalized imports to canonical `app.*`.
+- `backend/app/schemas/diagnosis_api.py`: Normalized imports to canonical `app.*`. (Note: This import fix was reasonable integration maintenance to resolve a Pydantic duplicate class identity collision during test execution; it was outside DLK-M3-013's originally listed paths and is acknowledged as unprescribed maintenance).
 - `backend/alembic/versions/0004_check_result_history.py`: Forward migration creating `case_check_results` table.
 - `backend/app/models/case.py`: Added `CaseCheckResultModel` and `check_results` relationship on `CaseModel`.
 - `backend/app/models/__init__.py`: Exported `CaseCheckResultModel`.
@@ -642,7 +642,7 @@ Phase B established forward-only relational persistence for troubleshooting chec
   - `finding`: String(64), non-nullable
   - `finding_details`: Text, nullable
   - `outcome`: Text, nullable
-  - `source`: String(64), non-nullable (always `"user_check_result"`)
+  - `source`: String(64), non-nullable (always `EvidenceSource.USER_CHECK_RESULT` / `"USER_CHECK_RESULT"`)
   - `checked_at`: DateTime(timezone=True), non-nullable
   - `resulting_revision_number`: Integer, non-nullable (`> 1`)
 - Constraints:
@@ -690,7 +690,8 @@ Phase B established forward-only relational persistence for troubleshooting chec
 - Reused Member 2's `CheckResultHandler.handle()` and `DiagnosticEngine.submit_check_result()`.
 - Separated cause confirmation and issue resolution entirely: check submission only updates diagnostic evidence and revisions.
 
-### Verification results
+### Verification results (implementer execution)
+*(Note: These verification suites were executed locally against real PostgreSQL by the implementer during task implementation; they were not independently replayed by the reviewer during initial review.)*
 
 1. Phase A gating suites:
    - `tests/unit/test_semantic_verification.py`: 36 passed
