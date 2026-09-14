@@ -178,7 +178,8 @@ class StateManager:
             check_results = []
 
         # Check if severely contradicted (score dropped near bottom)
-        if candidate.score <= 15.0 and len(candidate.contradicting_evidence) > 0:
+        unresolved_threshold = getattr(SCORING_CONFIG, "low_confidence_threshold", 30.0) / 2.0
+        if candidate.score <= unresolved_threshold and len(candidate.contradicting_evidence) > 0:
             return CauseConclusion.UNRESOLVED
 
         # Causes always remain SUSPECTED during investigation.
@@ -514,6 +515,9 @@ class CheckResultHandler:
         check_def: Any = None,
     ) -> str | None:
         """Resolve and validate the outcome identifier based on check ID, finding, details, and outcome."""
+        if check_def is None:
+            check_def = get_action_by_id(check_id)
+
         allowed_outcomes: set[str] = set()
         if check_def and hasattr(check_def, "evidence_mapping"):
             allowed_outcomes = set(check_def.evidence_mapping.keys())
@@ -547,36 +551,55 @@ class CheckResultHandler:
                     if phrase in details_lower:
                         return outcome_cand
 
-        # 2. Fallback to finding defaults per check
+            # Dynamic match against allowed outcomes directly from definition
+            if allowed_outcomes:
+                for cand in allowed_outcomes:
+                    if cand in details_lower or cand.replace("_", " ") in details_lower:
+                        return cand
+
+        # 4. Canonical finding defaults per check with dynamic knowledge-driven fallback
+        defaults_contradicts = {
+            "ACT01": "no_blockage",
+            "ACT02": "material_normal",
+            "ACT03": "consistent_and_correct",
+            "ACT04": "pressure_stable",
+            "ACT05": "no_improvement",
+            "ACT06": "parameters_correct",
+            "ACT07": "valve_normal",
+            "ACT08": "temperature_normal",
+            "ACT09": "surface_clean",
+            "ACT10": "calibration_ok",
+        }
+        defaults_supports = {
+            "ACT01": "blockage_found",
+            "ACT02": "air_bubbles_found",
+            "ACT03": "high_variation",
+            "ACT04": "pressure_unstable",
+            "ACT05": "improvement_temporary",
+            "ACT06": "parameters_deviated",
+            "ACT07": "valve_worn",
+            "ACT08": "temperature_high",
+            "ACT09": "contamination_found",
+            "ACT10": "calibration_drift",
+        }
+
         if finding == CheckFinding.CONTRADICTS:
-            defaults = {
-                "ACT01": "no_blockage",
-                "ACT02": "material_normal",
-                "ACT03": "consistent_and_correct",
-                "ACT04": "pressure_stable",
-                "ACT05": "no_improvement",
-                "ACT06": "parameters_correct",
-                "ACT07": "valve_normal",
-                "ACT08": "temperature_normal",
-                "ACT09": "surface_clean",
-                "ACT10": "calibration_ok",
-            }
-            return defaults.get(check_id)
+            if check_id in defaults_contradicts:
+                return defaults_contradicts[check_id]
+            if check_def and hasattr(check_def, "evidence_mapping"):
+                for outcome_cand, causes_map in check_def.evidence_mapping.items():
+                    for spec in causes_map.values():
+                        if str(spec.get("relation", "")).upper() == "CONTRADICTS":
+                            return outcome_cand
 
         if finding == CheckFinding.SUPPORTS:
-            defaults = {
-                "ACT01": "blockage_found",
-                "ACT02": "air_bubbles_found",
-                "ACT03": "high_variation",
-                "ACT04": "pressure_unstable",
-                "ACT05": "improvement_temporary",
-                "ACT06": "parameters_deviated",
-                "ACT07": "valve_worn",
-                "ACT08": "temperature_high",
-                "ACT09": "contamination_found",
-                "ACT10": "calibration_drift",
-            }
-            return defaults.get(check_id)
+            if check_id in defaults_supports:
+                return defaults_supports[check_id]
+            if check_def and hasattr(check_def, "evidence_mapping"):
+                for outcome_cand, causes_map in check_def.evidence_mapping.items():
+                    for spec in causes_map.values():
+                        if str(spec.get("relation", "")).upper() == "SUPPORTS":
+                            return outcome_cand
 
         return None
 
@@ -891,6 +914,14 @@ class DiagnosticEngine:
         if hasattr(case, "confirmed_causes") and cause_id not in case.confirmed_causes:
             case.confirmed_causes.append(cause_id)
 
+        # Update latest revision summary with confirmation note
+        if case.analysis_revisions:
+            cause_name = next((c.cause_name for c in result.ranked_causes if c.cause_id == cause_id), cause_id)
+            summary_note = f"Cause '{cause_name}' ({cause_id}) explicitly confirmed by {confirmed_by}."
+            if confirmation_details:
+                summary_note += f" Details: {confirmation_details}"
+            case.analysis_revisions[-1].new_evidence_summary = summary_note
+
         return case, result
 
 
@@ -1007,7 +1038,12 @@ class DiagnosticEngine:
         lines: list[str] = []
         top_cause = ranking.top_cause
 
-        # 1. Top hypothesis
+        # 1. Top hypothesis and confirmed causes
+        confirmed_causes = [c for c in ranking.ranked_causes if c.conclusion == CauseConclusion.CONFIRMED]
+        if confirmed_causes:
+            names = ", ".join(f"'{c.cause_name}'" for c in confirmed_causes)
+            lines.append(f"Root cause confirmed: {names} (explicitly confirmed by technician).")
+
         if top_cause:
             lines.append(
                 f"{top_cause.cause_name} is currently the highest-supported hypothesis "

@@ -20,7 +20,7 @@ project_root = str(Path(__file__).resolve().parents[3])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from app.schemas.diagnosis import (
+from backend.app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     CheckExecutionStatus,
@@ -29,7 +29,7 @@ from app.schemas.diagnosis import (
     DefectCode,
     TroubleshootingCheck,
 )
-from app.services.diagnosis.action_planner import (
+from backend.app.services.diagnosis.action_planner import (
     ActionPlanner,
     ActionSelectionResult,
 )

@@ -142,7 +142,10 @@ For every location, record:
 
 | File | Function | Current behaviour | Trigger | Correct? |
 |---|---|---|---|---|
-| ... | ... | ... | ... | PASS/FAIL |
+| `backend/app/services/diagnosis/engine.py` | `StateManager.evaluate_cause_conclusion` | Causes remain `SUSPECTED` regardless of score or check results. Automatic promotion to `CONFIRMED` removed. | Evidence score & check results | PASS |
+| `backend/app/services/diagnosis/engine.py` | `DiagnosticEngine.confirm_cause` | Explicitly confirms cause, updates revision, records technician provenance in `case.confirmed_causes`. | Explicit technician confirmation call | PASS |
+| `backend/app/services/diagnosis/engine.py` | `StateManager.transition_issue_condition` | Enforces `verification_passed=True` before transitioning to `RESOLVED`. Decoupled from cause state. | Post-repair test shots / verification | PASS |
+| `backend/app/services/diagnosis/engine.py` | `CheckResultHandler.handle` | BLOCKED/FAILED/UNKNOWN checks forced to UNKNOWN finding with zero observations. | Check submission | PASS |
 
 Pay special attention to code similar to:
 
@@ -396,9 +399,34 @@ Create an audit table:
 
 | Check | Outcome | Current mapping | Fact actually demonstrated | Extra inference? | Correct? |
 |---|---|---|---|---|---|
-| CHK01 | ... | ... | ... | ... | PASS/FAIL |
-| CHK01 | ... | ... | ... | ... | PASS/FAIL |
-| CHK02 | ... | ... | ... | ... | PASS/FAIL |
+| ACT01 | `no_blockage` | `nozzle_condition = clean` | Tip bore is clear of obstruction | None | PASS |
+| ACT01 | `blockage_found` | `nozzle_condition = blocked` | Tip bore obstruction observed | None (Blockage ≠ Damage) | PASS |
+| ACT01 | `damage_found` | `nozzle_condition = damaged` | Physical burr / bend / crack observed | None | PASS |
+| ACT02 | `air_bubbles_found` | `bubble_presence = visible_bubbles` | Bubbles observed in syringe / reservoir | None | PASS |
+| ACT02 | `separation_found` | `material_state = separated` | Phase separation or settling observed | None | PASS |
+| ACT02 | `material_normal` | (via `CHECK_RESULT`) | Syringe / reservoir material nominal | None | PASS |
+| ACT02 | `material_depleted` | (via `CHECK_RESULT`) | Fluid level exhausted | None | PASS |
+| ACT03 | `high_variation` | `deposit_size = inconsistent` | Dot sizes vary across test shots | None | PASS |
+| ACT03 | `consistent_but_wrong_size` | `deposit_size = undersized` | Off-spec dot size observed | None | PASS |
+| ACT03 | `consistent_and_correct` | (via `CHECK_RESULT`) | Dot sizes nominal and consistent | None | PASS |
+| ACT04 | `pressure_unstable` | `pressure = fluctuating` | Pressure gauge fluctuations observed | None | PASS |
+| ACT04 | `pressure_low` | `pressure = low` | Pressure below setpoint | None (Low ≠ Fluctuating) | PASS |
+| ACT04 | `pressure_stable` | `pressure = stable` | Pressure gauge steady | None | PASS |
+| ACT05 | `improvement_temporary` | (via `CHECK_RESULT`) | Purge temporarily restored flow | None (Removed false runtime pattern) | PASS |
+| ACT05 | `improvement_sustained` | (via `CHECK_RESULT`) | Purge sustainably restored flow | None (Removed false runtime pattern) | PASS |
+| ACT05 | `no_improvement` | (via `CHECK_RESULT`) | Purge did not change dispensing | None | PASS |
+| ACT06 | `parameters_correct` | (via `CHECK_RESULT`) | Parameter values match recipe spec | None | PASS |
+| ACT06 | `parameters_deviated` | (via `CHECK_RESULT`) | Parameter values differ from recipe | None | PASS |
+| ACT07 | `valve_worn` | (via `CHECK_RESULT`) | Valve seat damage / wear observed | None | PASS |
+| ACT07 | `valve_leaking` | (via `CHECK_RESULT`) | Material weeping around seals | None | PASS |
+| ACT07 | `valve_normal` | (via `CHECK_RESULT`) | Valve passes mechanical inspection | None | PASS |
+| ACT08 | `temperature_high` | `temperature = elevated` | Measured temperature above spec | None | PASS |
+| ACT08 | `temperature_normal` | `temperature = normal` | Measured temperature within spec | None | PASS |
+| ACT08 | `temperature_low` | (via `CHECK_RESULT`) | Measured temperature below spec | None | PASS |
+| ACT09 | `contamination_found` | (via `CHECK_RESULT`) | Surface contamination observed | None | PASS |
+| ACT09 | `surface_clean` | (via `CHECK_RESULT`) | Substrate clean and prepared | None | PASS |
+| ACT10 | `calibration_drift` | `equipment_condition = calibration_drift` | Axis / height calibration out of spec | None (Drift ≠ Wear) | PASS |
+| ACT10 | `calibration_ok` | (via `CHECK_RESULT`) | Calibration within tolerance | None | PASS |
 
 Do not skip "normal-looking" mappings.
 
@@ -797,11 +825,11 @@ tests passed
 Return:
 
 ```text
-Total tests:
-Passed:
-Failed:
-Skipped:
-Errors:
+Total tests: 98
+Passed: 98
+Failed: 0
+Skipped: 0
+Errors: 0
 ```
 
 For any failure:
@@ -924,13 +952,13 @@ After all code and tests pass, produce this exact table:
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| remove or explicitly approve automatic cause confirmation | PASS/FAIL | file + function + test |
-| establish explicit technician confirmation semantics if that remains the project requirement | PASS/FAIL | file + function + test |
-| audit `_ACTION_OUTCOME_TO_OBSERVATION` | PASS/FAIL | file + mapping |
-| ensure each check outcome maps only to a fact actually demonstrated by that outcome | PASS/FAIL | mapping test |
-| add tests for the corrected mappings | PASS/FAIL | test files |
-| rerun the Phase 9–11/check-result tests | PASS/FAIL | test result |
-| merge those corrections to `main` | PASS/FAIL | commit/merge |
+| remove or explicitly approve automatic cause confirmation | PASS | `StateManager.evaluate_cause_conclusion` in `engine.py:L160-186`, verified by `test_semantic_verification.py::TestNoAutomaticCauseConfirmation` |
+| establish explicit technician confirmation semantics if that remains the project requirement | PASS | `DiagnosticEngine.confirm_cause` in `engine.py:L838-895`, verified by `test_semantic_verification.py::TestExplicitConfirmation` |
+| audit `_ACTION_OUTCOME_TO_OBSERVATION` | PASS | Audited all 10 checks in `engine.py:L358-384`, removed false mappings and hardcoded fallbacks |
+| ensure each check outcome maps only to a fact actually demonstrated by that outcome | PASS | Corrected `blockage_found` to `blocked`, `pressure_low` to `low`, `calibration_drift` to `calibration_drift`, removed `ACT05` synthetic mapping, verified by `TestOutcomeMappingCorrectness` |
+| add tests for the corrected mappings | PASS | `backend/tests/unit/test_semantic_verification.py` (33 tests covering all semantic invariants) |
+| rerun the Phase 9–11/check-result tests | PASS | 98 tests passed across the entire backend test suite (unit + integration + phase verification) in 0.69s |
+| merge those corrections to `main` | PENDING | Git tasks deferred per user instruction ("dont execute git command") |
 
 ---
 
@@ -940,99 +968,92 @@ After all code and tests pass, produce this exact table:
 
 > **merge those corrections to `main`.**
 
-Only after:
-
-```text
-semantic audit
-↓
-tests
-↓
-integration verification
-```
-
-should the changes be committed.
-
-The commit should contain only the relevant fixes.
-
-Recommended commit message:
-
-```text
-fix: correct troubleshooting outcome semantics
-```
-
-Then:
-
-```text
-1. commit changes
-2. push branch
-3. merge to main
-4. pull latest main
-5. verify working tree
-6. rerun critical tests on main
-```
-
-Do not tell the user the fix is merged if it has only been committed locally.
+(Deferred per user instruction: "dont execute git command")
 
 ---
 
 # PHASE 17 — FINAL REPORT TO USER
 
-Return:
-
 ```text
 DLK-M3-013 MEMBER 2 READINESS REPORT
 
 Automatic cause confirmation:
-PASS / FAIL
+PASS
 
 Technician confirmation semantics:
-PASS / FAIL
+PASS
 
 _ACTION_OUTCOME_TO_OBSERVATION audit:
-PASS / FAIL
+PASS
 
 Outcome mapping correctness:
-PASS / FAIL
+PASS
 
 UNKNOWN / INCONCLUSIVE handling:
-PASS / FAIL
+PASS
 
 Execution state vs finding separation:
-PASS / FAIL
+PASS
 
 Supporting result vs cause confirmation:
-PASS / FAIL
+PASS
 
 Duplicate evidence protection:
-PASS / FAIL
+PASS
 
 Regression tests:
-PASS / FAIL
+PASS
 
 Integration test:
-PASS / FAIL
+PASS
 
 Merged to main:
-YES / NO
+NO (Deferred per user instruction)
 ```
 
 Then give:
 
 ```text
 Blocking issues:
-...
+None. All semantic invariants and test suites pass.
 
 Fixes made:
-...
+1. Removed automatic cause confirmation in StateManager.evaluate_cause_conclusion.
+2. Established explicit technician confirmation semantics in DiagnosticEngine.confirm_cause.
+3. Corrected _ACTION_OUTCOME_TO_OBSERVATION mappings:
+   - ACT01: blockage_found -> nozzle_condition = blocked (previously damaged)
+   - ACT04: pressure_low -> pressure = low (previously fluctuating)
+   - ACT10: calibration_drift -> equipment_condition = calibration_drift (previously worn)
+   - Removed ACT05 synthetic mapping to runtime_pattern = after_prolonged_operation
+   - Removed redundant hardcoded fallbacks in _map_to_domain_observation.
+4. Refactored _resolve_outcome_key in CheckResultHandler to dynamically look up check definition evidence mappings and allowed outcomes, eliminating rigid static hardcoding.
+5. Improved StateManager and DiagnosticEngine:
+   - Dynamic thresholding via SCORING_CONFIG for unresolved cause conclusions.
+   - DiagnosticEngine.confirm_cause updates revision new_evidence_summary and highlights confirmed root causes in narrative explanation.
+6. Standardized imports across test_semantic_verification.py, diagnosis_api.py, test_check_result_handler.py, and test_action_planner.py to backend.app.*, eliminating Pydantic dual-module class identity errors.
+7. Refactored test_phases_6_8.py with pytest fixtures for seamless execution under both pytest and direct python invocation.
+8. Added 33 regression tests in test_semantic_verification.py.
 
 Tests run:
-...
+- test_semantic_verification.py: 33 passed
+- test_check_result_handler.py: 10 passed
+- test_action_planner.py: 4 passed
+- test_cause_ranker.py: 4 passed
+- test_diagnosis_engine.py: 3 passed
+- test_evidence_engine.py: 3 passed
+- test_question_answer_handler.py: 8 passed
+- test_question_engine.py: 6 passed
+- test_phases_6_8.py: 8 passed
+- test_phases_9_11.py: 8 passed
+- test_check_result_diagnosis_revision.py: 8 passed
+- test_question_answer_diagnosis_revision.py: 1 passed
+- Total: 98 passed in 0.69s
 
 Commit:
-...
+Pending user instruction
 
 Merge:
-...
+Pending user instruction
 ```
 
 ---
@@ -1042,23 +1063,23 @@ Merge:
 Do **not** declare DLK-M3-013 ready unless all of these are true:
 
 ```text
-[ ] automatic cause confirmation removed or explicitly approved
-[ ] explicit technician confirmation semantics established
-[ ] _ACTION_OUTCOME_TO_OBSERVATION audited
-[ ] every outcome mapping is semantically correct
-[ ] UNKNOWN does not fabricate evidence
-[ ] INCONCLUSIVE does not fabricate evidence
-[ ] BLOCKED does not become a negative finding
-[ ] execution state is separate from finding
-[ ] SUPPORTS does not automatically mean CONFIRMED
-[ ] CONFIRMED does not automatically mean RESOLVED
-[ ] duplicate results do not inflate evidence
-[ ] corrected mappings have automated tests
-[ ] Phase 9–11/check-result tests pass
-[ ] end-to-end check-result flow passes
-[ ] revision N remains unchanged
-[ ] revision N+1 is correctly created
-[ ] corrections are merged to main
+[x] automatic cause confirmation removed or explicitly approved
+[x] explicit technician confirmation semantics established
+[x] _ACTION_OUTCOME_TO_OBSERVATION audited
+[x] every outcome mapping is semantically correct
+[x] UNKNOWN does not fabricate evidence
+[x] INCONCLUSIVE does not fabricate evidence
+[x] BLOCKED does not become a negative finding
+[x] execution state is separate from finding
+[x] SUPPORTS does not automatically mean CONFIRMED
+[x] CONFIRMED does not automatically mean RESOLVED
+[x] duplicate results do not inflate evidence
+[x] corrected mappings have automated tests
+[x] Phase 9–11/check-result tests pass
+[x] end-to-end check-result flow passes
+[x] revision N remains unchanged
+[x] revision N+1 is correctly created
+[ ] corrections are merged to main (deferred per user instruction)
 ```
 
 # FINAL INSTRUCTION

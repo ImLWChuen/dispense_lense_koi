@@ -24,14 +24,14 @@ project_root = str(Path(__file__).resolve().parents[3])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from app.schemas.diagnosis import (
+from backend.app.schemas.diagnosis import (
     CheckExecutionStatus,
     CheckFinding,
     CheckResult,
     EvidenceSource,
     ObservationType,
 )
-from app.services.diagnosis.engine import CheckResultHandler
+from backend.app.services.diagnosis.engine import CheckResultHandler
 
 
 

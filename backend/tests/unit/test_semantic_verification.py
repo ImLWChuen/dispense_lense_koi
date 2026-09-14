@@ -17,6 +17,11 @@ specifically:
 """
 
 import sys
+from pathlib import Path
+
+project_root = str(Path(__file__).resolve().parents[3])
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 if sys.platform == "win32":
     reconfigure_fn = getattr(sys.stdout, "reconfigure", None)
@@ -28,7 +33,7 @@ if sys.platform == "win32":
 
 import pytest
 
-from app.schemas.diagnosis import (
+from backend.app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     CauseEvidence,
@@ -44,7 +49,7 @@ from app.schemas.diagnosis import (
     QuestionAnswer,
     StructuredCase,
 )
-from app.services.diagnosis.engine import (
+from backend.app.services.diagnosis.engine import (
     CheckResultHandler,
     DiagnosticEngine,
     StateManager,
