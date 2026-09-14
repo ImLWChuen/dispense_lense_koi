@@ -35,7 +35,10 @@ Blocked until DLK-M3-015 is accepted and closes the prior review chain:
 
 ## Ready
 
-- `DLK-M3-015` — Check-result verification closeout — **implemented**
+- `DLK-M3-015` — Check-result verification closeout — **changes_requested**
+  - reviewed commit: `9ad094cfa3b56e3042996238ce4acc0752f9f98c`
+  - review: `.agents/handoff/reviews/DLK-M3-015-review.md`
+  - remaining corrections: seed prior check history; preserve exact snapshot values and capture full pending revision JSON
   - task: `.agents/handoff/tasks/DLK-M3-015-check-result-verification-closeout.md`
   - branch: `backend-database`
   - depends on: DLK-M3-014 implementation at `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`; acceptance is not a prerequisite for this correction
