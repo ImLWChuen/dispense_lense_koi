@@ -9,20 +9,21 @@ Troubleshooting-check workflow closeout
 - `DLK-M3-013` — Check-result semantic closeout and durable troubleshooting-check result API — **changes_requested**
   - reviewed commit: `5e7cb8270762f0e0c06a0c994a0fa424f16f9c2a`
   - review: `.agents/handoff/reviews/DLK-M3-013-review.md`
-  - blockers:
-    - reject `PENDING` / `IN_PROGRESS` before evidence/persistence
-    - prove rollback after actual pending/flushed writes
+  - unfinished-state rejection resolved by DLK-M3-014; remaining verification closeout is DLK-M3-015
 
-## Ready
+## Changes requested
 
-- `DLK-M3-014` — Troubleshooting-check result closeout — **implemented**
+- `DLK-M3-014` — Troubleshooting-check result closeout — **changes_requested**
+  - reviewed commit: `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`
+  - review: `.agents/handoff/reviews/DLK-M3-014-review.md`
+  - remaining correction: assert pending-write evidence outside the handled request and compare complete preserved state
   - task: `.agents/handoff/tasks/DLK-M3-014-check-result-closeout.md`
   - branch: `backend-database`
   - depends on: `DLK-M3-013`
 
 ## Not released
 
-Blocked until DLK-M3-014 is accepted:
+Blocked until DLK-M3-015 is accepted and closes the prior review chain:
 
 - explicit cause-confirmation persistence/API
 - issue recovery verification
@@ -32,4 +33,11 @@ Blocked until DLK-M3-014 is accepted:
 - historical-case retrieval
 - frontend check-result integration
 
-Only DLK-M3-014 is authorized for implementation.
+## Ready
+
+- `DLK-M3-015` — Check-result verification closeout — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-015-check-result-verification-closeout.md`
+  - branch: `backend-database`
+  - depends on: DLK-M3-014 implementation at `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`; acceptance is not a prerequisite for this correction
+
+Only DLK-M3-015 is authorized for implementation.

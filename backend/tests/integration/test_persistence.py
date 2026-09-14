@@ -17,12 +17,14 @@ import os
 import threading
 import time
 import uuid
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 from sqlalchemy import delete, event, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from tests.case_snapshot_helper import capture_complete_case_state
 
 from app.core.config import get_database_url
 from app.db.database import get_engine, reset_engine
@@ -1909,15 +1911,18 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     """Verify that a failure after rows are flushed during append_check_result_revision
     causes the repository's transaction boundary to roll back naturally without manual rollback.
     Asserts:
-    1. Control case remains completely unaffected.
-    2. Target case pending flushed check-result, observations, and revision exist before failure.
-    3. Failure raised before commit causes repository to roll back.
-    4. Fresh independent session sees 0 check results and revision remains at 1.
+    1. Both target and control cases have nonempty prior history (advanced to Rev 2).
+    2. Expected revision and attempted revision are derived dynamically from baseline.
+    3. Target case pending flushed check-result, observations, and revision exist before failure.
+    4. Deliberate fault marker and immutable pending evidence are asserted outside the repository call.
+    5. Failure raised before commit causes repository to roll back naturally.
+    6. Fresh independent session confirms complete prior state is preserved identically
+       (target == target_baseline and control == control_baseline).
     """
     repo, tracked_ids = case_repo
     engine = DiagnosticEngine()
 
-    # 1. Create control case
+    # 1. Create control case (Case A) and advance to Rev 2 with a question answer
     control_id = str(uuid.uuid4())
     tracked_ids.append(control_id)
     control_case = engine.prepare_case(
@@ -1931,7 +1936,18 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     control_res = engine.diagnose(control_case)
     repo.save_initial_case(control_case, control_res)
 
-    # 2. Create target case
+    control_loaded = repo.load_structured_case(control_id)
+    assert control_loaded is not None
+    control_ans = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        source=EvidenceSource.USER,
+    )
+    c_ctrl, res_ctrl = engine.submit_question_answer(control_loaded, control_ans)
+    repo.append_question_answer_revision(c_ctrl, control_ans, res_ctrl, expected_revision=1)
+    db_session.commit()
+
+    # 2. Create target case (Case B) and advance to Rev 2 with a question answer
     target_id = str(uuid.uuid4())
     tracked_ids.append(target_id)
     target_case = engine.prepare_case(
@@ -1944,9 +1960,31 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     )
     target_res = engine.diagnose(target_case)
     repo.save_initial_case(target_case, target_res)
+
+    target_loaded = repo.load_structured_case(target_id)
+    assert target_loaded is not None
+    target_ans = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        source=EvidenceSource.USER,
+    )
+    c_tgt, res_tgt = engine.submit_question_answer(target_loaded, target_ans)
+    repo.append_question_answer_revision(c_tgt, target_ans, res_tgt, expected_revision=1)
     db_session.commit()
 
-    initial_obs_count = len(repo.get_case_observations(target_id))
+    # Capture complete baselines from an independent session
+    factory = get_session_factory()
+    with factory() as session:
+        target_baseline = capture_complete_case_state(session, target_id)
+        control_baseline = capture_complete_case_state(session, control_id)
+
+    assert len(target_baseline["analysis_revisions"]) == 2
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(control_baseline["analysis_revisions"]) == 2
+    assert len(control_baseline["question_answers"]) == 1
+
+    baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    attempted_rev = baseline_rev + 1
 
     # 3. Create evidence-producing check result
     check = CheckResult(
@@ -1958,47 +1996,76 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     )
     loaded_target = repo.load_structured_case(target_id)
     assert loaded_target is not None
-    up_case, res2 = engine.submit_check_result(loaded_target, check)
+    up_case, res_check = engine.submit_check_result(loaded_target, check)
 
     # 4. Use self-managed repository (session=None) to exercise repository's own rollback handler
     self_managed_repo = CaseRepository()
 
-    hook_called = False
+    fault_reached = False
+    captured_pending_evidence: dict[str, Any] = {}
 
     def fail_after_flush_before_commit(session: Session) -> None:
-        nonlocal hook_called
+        nonlocal fault_reached, captured_pending_evidence
         target_crs = session.scalars(
             select(CaseCheckResultModel).where(
                 CaseCheckResultModel.case_id == target_id,
-                CaseCheckResultModel.resulting_revision_number == 2,
+                CaseCheckResultModel.resulting_revision_number == attempted_rev,
             )
         ).all()
         if not target_crs:
             return
 
-        hook_called = True
+        cr = target_crs[0]
+        cr_data = {
+            "check_id": str(cr.check_id),
+            "execution_status": str(cr.execution_status),
+            "finding": str(cr.finding),
+            "outcome": str(cr.outcome),
+            "source": str(cr.source),
+            "resulting_revision_number": int(cr.resulting_revision_number),
+        }
 
-        # Assert flushed rows exist inside the pending transaction
-        assert len(target_crs) == 1
-        assert target_crs[0].check_id == "ACT01"
-        assert target_crs[0].outcome == "blockage_found"
-
-        target_rev2_obs = session.scalars(
+        rev_obs = session.scalars(
             select(ObservationModel).where(
                 ObservationModel.case_id == target_id,
-                ObservationModel.first_seen_revision == 2,
+                ObservationModel.first_seen_revision == attempted_rev,
             )
         ).all()
-        assert len(target_rev2_obs) >= 1
+        obs_data = [
+            {
+                "observation_id": str(o.observation_id),
+                "observation_type": str(o.observation_type),
+                "value": str(o.value),
+                "source": str(o.source),
+                "first_seen_revision": int(o.first_seen_revision),
+            }
+            for o in rev_obs
+        ]
 
-        target_rev2 = session.scalars(
+        revs = session.scalars(
             select(AnalysisRevisionModel).where(
                 AnalysisRevisionModel.case_id == target_id,
-                AnalysisRevisionModel.revision_number == 2,
+                AnalysisRevisionModel.revision_number == attempted_rev,
             )
         ).all()
-        assert len(target_rev2) == 1
+        rev_data = (
+            {
+                "revision_number": int(revs[0].revision_number),
+                "defect_code": str(revs[0].defect_code),
+                "issue_condition": str(revs[0].issue_condition),
+                "has_snapshot": revs[0].result_snapshot is not None,
+            }
+            if revs
+            else None
+        )
 
+        captured_pending_evidence = {
+            "check_result": cr_data,
+            "observations": obs_data,
+            "analysis_revision": rev_data,
+        }
+
+        fault_reached = True
         raise RuntimeError("Simulated repository flush boundary fault")
 
     event.listen(Session, "before_commit", fail_after_flush_before_commit)
@@ -2007,27 +2074,48 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
             self_managed_repo.append_check_result_revision(
                 case=up_case,
                 check_result=check,
-                result=res2,
-                expected_revision=1,
+                result=res_check,
+                expected_revision=baseline_rev,
             )
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert hook_called is True
+    # Assert outside repository call that fault was reached and evidence was captured
+    assert fault_reached is True, "The deliberate fault was never reached in the commit boundary hook."
+    assert captured_pending_evidence.get("check_result") is not None
+    assert captured_pending_evidence["check_result"]["check_id"] == "ACT01"
+    assert captured_pending_evidence["check_result"]["outcome"] == "blockage_found"
+    assert captured_pending_evidence["check_result"]["resulting_revision_number"] == attempted_rev
+    assert len(captured_pending_evidence["observations"]) >= 1
+    assert captured_pending_evidence.get("analysis_revision") is not None
+    assert captured_pending_evidence["analysis_revision"]["revision_number"] == attempted_rev
+    assert captured_pending_evidence["analysis_revision"]["has_snapshot"] is True
 
     # 5. Open fresh independent session to verify rollback without manual rollback call
-    factory = get_session_factory()
     with factory() as independent_session:
-        independent_repo = CaseRepository(independent_session)
-        assert len(independent_repo.get_case_check_results(target_id)) == 0
-        assert independent_repo.list_case_revisions(target_id) == [1]
-        target_obs = independent_repo.get_case_observations(target_id)
-        assert len(target_obs) == initial_obs_count
-        assert not any(obs.first_seen_revision == 2 for obs in target_obs)
+        # Check target case attempted revision artifacts do not exist
+        attempted_crs = independent_session.scalars(
+            select(CaseCheckResultModel).where(
+                CaseCheckResultModel.case_id == target_id,
+                CaseCheckResultModel.resulting_revision_number == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_crs) == 0
 
-        # Verify control case is completely unaffected
-        assert independent_repo.list_case_revisions(control_id) == [1]
-        assert len(independent_repo.get_case_check_results(control_id)) == 0
+        attempted_obs = independent_session.scalars(
+            select(ObservationModel).where(
+                ObservationModel.case_id == target_id,
+                ObservationModel.first_seen_revision == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_obs) == 0
+
+        # Verify complete target and control baselines are preserved identically
+        target_after = capture_complete_case_state(independent_session, target_id)
+        assert target_after == target_baseline
+
+        control_after = capture_complete_case_state(independent_session, control_id)
+        assert control_after == control_baseline
 
 
 def test_interleaved_mixed_revisions_answer_and_check(case_repo, db_session):

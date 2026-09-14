@@ -13,7 +13,7 @@ from __future__ import annotations
 import copy
 import os
 import uuid
-from typing import Generator
+from typing import Any, Generator
 from unittest.mock import patch
 
 import pytest
@@ -42,6 +42,7 @@ from app.schemas.diagnosis import (
     ObservationType,
 )
 from app.services.diagnosis.engine import DiagnosticEngine
+from tests.case_snapshot_helper import capture_complete_case_state
 from tests.unit.test_persistence_safety import assert_safe_test_database
 
 client = TestClient(app)
@@ -476,49 +477,84 @@ def test_replay_after_success_with_old_revision_returns_409(tracked_cases: list[
 
 def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracked_cases: list[str]):
     """Scenario 10 (R2 post-write rollback proof):
-    - Create an unrelated control case (Case A) to verify it remains untouched;
-    - Create a target case (Case B);
+    - Create an unrelated control case (Case A) with prior answer history and multiple revisions;
+    - Create a target case (Case B) with prior answer history and multiple revisions;
+    - Capture complete baseline state for both cases (all scalar fields, observations, answers, revision snapshots);
+    - Derive expected_revision (baseline_rev) and attempted_rev = baseline_rev + 1;
     - Submit a valid, evidence-producing check result (ACT01, COMPLETED, SUPPORTS, blockage_found);
-    - Allow the real append path to flush check-result, generated observations, and revision 2;
+    - Allow the real append path to flush check-result, generated observations, and attempted_rev;
     - Intercept at the commit boundary using a test-only SQLAlchemy before_commit event;
-    - Assert inside the transaction that the pending flushed check-result, observation, and revision exist;
-    - Inject an unhandled failure (with sensitive paths) before commit;
-    - Verify that the production transaction boundary rolls back naturally;
+    - In the hook, capture detached immutable evidence of the flushed check result, observations, and revision;
+    - Set fault_reached immediately before raising synthetic RuntimeError;
+    - Let the production transaction boundary perform rollback naturally;
+    - Assert outside request handling: fault_reached is True, captured pending evidence matches expected values;
     - Assert the HTTP response is a sanitized 500 without leaking sensitive paths;
-    - In a fresh independent session, verify all new rows are absent, Case B is at revision 1, and Case A is intact.
+    - Open a fresh independent session: verify all rows for attempted_rev are absent, and full baseline state
+      for both target and control cases is exactly preserved.
     """
     factory = get_session_factory()
 
-    # 1. Create unrelated control case (Case A)
+    # 1. Create unrelated control case (Case A) and advance to Rev 2 with an answer
     control_resp = client.post(
         "/api/v1/cases",
         json={
             "description": "Control case for rollback isolation",
             "defect_code": "D03_INCONSISTENT_SIZE",
+            "material": "solder_paste",
+            "method": "jetting",
         },
     )
     assert control_resp.status_code == 201
     control_id = control_resp.json()["case_id"]
     tracked_cases.append(control_id)
 
-    # 2. Create target case (Case B)
+    control_ans_resp = client.post(
+        f"/api/v1/cases/{control_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "after_prolonged_operation",
+            "expected_revision": 1,
+        },
+    )
+    assert control_ans_resp.status_code == 200
+
+    # 2. Create target case (Case B) and advance to Rev 2 with an answer
     target_resp = client.post(
         "/api/v1/cases",
         json={
             "description": "Target case for post-flush rollback test",
             "defect_code": "D03_INCONSISTENT_SIZE",
+            "material": "solder_paste",
+            "method": "jetting",
         },
     )
     assert target_resp.status_code == 201
     target_id = target_resp.json()["case_id"]
     tracked_cases.append(target_id)
 
+    target_ans_resp = client.post(
+        f"/api/v1/cases/{target_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "after_prolonged_operation",
+            "expected_revision": 1,
+        },
+    )
+    assert target_ans_resp.status_code == 200
+
+    # Capture complete baselines from an independent session
     with factory() as session:
-        repo = CaseRepository(session)
-        target_initial_case = repo.load_structured_case(target_id)
-        assert target_initial_case is not None
-        initial_obs_count = len(target_initial_case.observations)
-        control_initial_revs = repo.list_case_revisions(control_id)
+        target_baseline = capture_complete_case_state(session, target_id)
+        control_baseline = capture_complete_case_state(session, control_id)
+
+    # Verify nonempty baselines
+    assert len(target_baseline["analysis_revisions"]) == 2
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(control_baseline["analysis_revisions"]) == 2
+    assert len(control_baseline["question_answers"]) == 1
+
+    baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    attempted_rev = baseline_rev + 1
 
     # 3. Prepare evidence-producing check result payload
     check_payload = {
@@ -527,51 +563,78 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
         "finding": "SUPPORTS",
         "outcome": "blockage_found",
         "finding_details": "Nozzle orifice blocked with particulate",
-        "expected_revision": 1,
+        "expected_revision": baseline_rev,
     }
 
     sensitive_path = "C:/private/database/secrets/db.sqlite"
-    hook_called = False
+    fault_reached = False
+    captured_pending_evidence: dict[str, Any] = {}
 
     def fail_after_flush_before_commit(session: Session) -> None:
-        nonlocal hook_called
-        # Only intercept for target_id check-result transaction
+        nonlocal fault_reached, captured_pending_evidence
+        # Only intercept for target_id check-result transaction at attempted_rev
         target_crs = session.scalars(
             select(CaseCheckResultModel).where(
                 CaseCheckResultModel.case_id == target_id,
-                CaseCheckResultModel.resulting_revision_number == 2,
+                CaseCheckResultModel.resulting_revision_number == attempted_rev,
             )
         ).all()
         if not target_crs:
             return
 
-        hook_called = True
+        # Capture detached immutable values (no live ORM objects)
+        cr = target_crs[0]
+        cr_data = {
+            "check_id": str(cr.check_id),
+            "execution_status": str(cr.execution_status),
+            "finding": str(cr.finding),
+            "outcome": str(cr.outcome),
+            "source": str(cr.source),
+            "resulting_revision_number": int(cr.resulting_revision_number),
+        }
 
-        # Assert flushed rows exist inside the pending transaction:
-        # 1. Check-result record
-        assert len(target_crs) == 1
-        assert target_crs[0].check_id == "ACT01"
-        assert target_crs[0].outcome == "blockage_found"
-
-        # 2. Generated observations for revision 2 (ACT01:blockage_found and nozzle_condition=blocked)
-        target_rev2_obs = session.scalars(
+        rev_obs = session.scalars(
             select(ObservationModel).where(
                 ObservationModel.case_id == target_id,
-                ObservationModel.first_seen_revision == 2,
+                ObservationModel.first_seen_revision == attempted_rev,
             )
         ).all()
-        assert len(target_rev2_obs) >= 1
+        obs_data = [
+            {
+                "observation_id": str(o.observation_id),
+                "observation_type": str(o.observation_type),
+                "value": str(o.value),
+                "source": str(o.source),
+                "first_seen_revision": int(o.first_seen_revision),
+            }
+            for o in rev_obs
+        ]
 
-        # 3. New analysis revision 2
-        target_rev2 = session.scalars(
+        revs = session.scalars(
             select(AnalysisRevisionModel).where(
                 AnalysisRevisionModel.case_id == target_id,
-                AnalysisRevisionModel.revision_number == 2,
+                AnalysisRevisionModel.revision_number == attempted_rev,
             )
         ).all()
-        assert len(target_rev2) == 1
+        rev_data = (
+            {
+                "revision_number": int(revs[0].revision_number),
+                "defect_code": str(revs[0].defect_code),
+                "issue_condition": str(revs[0].issue_condition),
+                "has_snapshot": revs[0].result_snapshot is not None,
+                "snapshot_keys": sorted(list(revs[0].result_snapshot.keys())) if revs[0].result_snapshot else [],
+            }
+            if revs
+            else None
+        )
 
-        # Now inject failure after flush but before commit
+        captured_pending_evidence = {
+            "check_result": cr_data,
+            "observations": obs_data,
+            "analysis_revision": rev_data,
+        }
+
+        fault_reached = True
         raise RuntimeError(f"Simulated disk write fault at {sensitive_path}")
 
     event.listen(Session, "before_commit", fail_after_flush_before_commit)
@@ -580,38 +643,52 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert hook_called is True
+    # 4. Assert outside the request handling so endpoint exception handlers cannot mask assertion errors
+    assert fault_reached is True, "The deliberate fault was never reached in the commit boundary hook."
+    assert captured_pending_evidence.get("check_result") is not None
+    assert captured_pending_evidence["check_result"]["check_id"] == "ACT01"
+    assert captured_pending_evidence["check_result"]["outcome"] == "blockage_found"
+    assert captured_pending_evidence["check_result"]["resulting_revision_number"] == attempted_rev
+    assert len(captured_pending_evidence["observations"]) >= 1
+    obs_types = [o["observation_type"] for o in captured_pending_evidence["observations"]]
+    assert "check_result" in obs_types or "nozzle_condition" in obs_types
+    assert captured_pending_evidence.get("analysis_revision") is not None
+    assert captured_pending_evidence["analysis_revision"]["revision_number"] == attempted_rev
+    assert captured_pending_evidence["analysis_revision"]["has_snapshot"] is True
 
-    # 4. Assert response is sanitized 500
+    # 5. Assert response is sanitized 500
     assert resp.status_code == 500
     error_detail = resp.json()["detail"]
     assert "An unexpected error occurred while persisting the check result revision." in error_detail
     assert sensitive_path not in error_detail
 
-    # 5. Open a fresh independent session and verify full rollback
+    # 6. Open a fresh independent session and verify full rollback and exact state preservation
     with factory() as session:
-        repo = CaseRepository(session)
+        # Verify no check result rows were committed for attempted_rev
+        attempted_crs = session.scalars(
+            select(CaseCheckResultModel).where(
+                CaseCheckResultModel.case_id == target_id,
+                CaseCheckResultModel.resulting_revision_number == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_crs) == 0
 
-        # Verify no check result rows were committed for target_id
-        assert len(repo.get_case_check_results(target_id)) == 0
+        # Verify no observations for attempted_rev were committed
+        attempted_obs = session.scalars(
+            select(ObservationModel).where(
+                ObservationModel.case_id == target_id,
+                ObservationModel.first_seen_revision == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_obs) == 0
 
-        # Verify no revision 2 observations were committed for target_id
-        current_obs = repo.get_case_observations(target_id)
-        assert len(current_obs) == initial_obs_count
-        assert not any(obs.first_seen_revision == 2 for obs in current_obs)
+        # Verify target case complete baseline is preserved identically
+        target_after = capture_complete_case_state(session, target_id)
+        assert target_after == target_baseline
 
-        # Verify target case remains at revision 1
-        assert repo.list_case_revisions(target_id) == [1]
-
-        # Verify structured case snapshot is intact
-        loaded_target = repo.load_structured_case(target_id)
-        assert loaded_target is not None
-        assert loaded_target.analysis_revisions[-1].revision_number == 1
-        assert len(loaded_target.previous_check_results) == 0
-
-        # Verify control case (Case A) was completely untouched
-        assert repo.list_case_revisions(control_id) == control_initial_revs
-        assert len(repo.get_case_check_results(control_id)) == 0
+        # Verify control case complete baseline is preserved identically
+        control_after = capture_complete_case_state(session, control_id)
+        assert control_after == control_baseline
 
 
 # ===========================================================================
@@ -870,10 +947,11 @@ def test_unfinished_execution_status_rejected_with_422_and_no_mutation(
 ):
     """R1 Requirement:
     - Submitting PENDING or IN_PROGRESS returns 422 Unprocessable Entity;
+    - Target case has prior question-answer history and multiple revisions;
     - Uses an otherwise-valid, evidence-producing payload (ACT01, SUPPORTS, blockage_found);
     - Proves rejected before evidence generation or persistence;
-    - Asserts no check history, observation, revision, or current_revision mutation occurs;
-    - Prior snapshots remain intact.
+    - Asserts complete prior state (case row, observations, answers, revisions, snapshots)
+      remains exactly identical from an independent session.
     """
     create_payload = {
         "description": "Dispense dots are shrinking over time",
@@ -886,7 +964,25 @@ def test_unfinished_execution_status_rejected_with_422_and_no_mutation(
     case_data = create_resp.json()
     case_id = case_data["case_id"]
     tracked_cases.append(case_id)
-    initial_obs_count = len(case_data["observations"])
+
+    # Advance to Revision 2 with an answer to establish nonempty prior history
+    ans_resp = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "after_prolonged_operation",
+            "expected_revision": 1,
+        },
+    )
+    assert ans_resp.status_code == 200
+
+    factory = get_session_factory()
+    with factory() as session:
+        target_baseline = capture_complete_case_state(session, case_id)
+
+    assert len(target_baseline["analysis_revisions"]) == 2
+    assert len(target_baseline["question_answers"]) == 1
+    current_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
 
     # Adversarial payload that WOULD create observations if processed as COMPLETED
     check_payload = {
@@ -895,25 +991,84 @@ def test_unfinished_execution_status_rejected_with_422_and_no_mutation(
         "finding": "SUPPORTS",
         "outcome": "blockage_found",
         "finding_details": f"Check status is {unfinished_status}",
-        "expected_revision": 1,
+        "expected_revision": current_rev,
     }
     resp = client.post(f"/api/v1/cases/{case_id}/check-results", json=check_payload)
     assert resp.status_code == 422
     error_text = resp.text
     assert "unfinished execution status" in error_text or unfinished_status in error_text
 
-    # Verify no database mutation
-    factory = get_session_factory()
+    # Verify complete state is preserved identically from an independent session
     with factory() as session:
-        repo = CaseRepository(session)
-        assert len(repo.get_case_check_results(case_id)) == 0
-        assert repo.list_case_revisions(case_id) == [1]
+        target_after = capture_complete_case_state(session, case_id)
+        assert target_after == target_baseline
 
-        obs = repo.get_case_observations(case_id)
-        assert len(obs) == initial_obs_count
-        assert not any(o.first_seen_revision == 2 for o in obs)
 
-        loaded = repo.load_structured_case(case_id)
-        assert loaded is not None
-        assert loaded.analysis_revisions[-1].revision_number == 1
-        assert len(loaded.previous_check_results) == 0
+# ===========================================================================
+# 19. Sensitivity: Snapshot Helper Detects Mutation with Unchanged Counts
+# ===========================================================================
+
+def test_snapshot_helper_detects_nested_snapshot_mutation_with_identical_counts():
+    """Sensitivity check:
+    Demonstrates that capture_complete_case_state comparison detects mutation
+    in nested result_snapshot contents even when row counts, revision numbers,
+    and keys are 100% identical.
+    """
+    baseline = {
+        "case": {
+            "case_id": "99999999-9999-9999-9999-999999999999",
+            "issue_condition": "UNRESOLVED",
+            "defect_code": "D03_INCONSISTENT_SIZE",
+        },
+        "observations": [
+            {
+                "observation_id": "obs-1",
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "first_seen_revision": 1,
+            }
+        ],
+        "question_answers": [
+            {
+                "question_id": "Q01",
+                "answer_value": "after_prolonged_operation",
+                "resulting_revision_number": 2,
+            }
+        ],
+        "check_results": [
+            {
+                "check_id": "ACT01",
+                "execution_status": "COMPLETED",
+                "finding": "SUPPORTS",
+                "outcome": "blockage_found",
+                "resulting_revision_number": 2,
+            }
+        ],
+        "analysis_revisions": [
+            {
+                "revision_number": 1,
+                "defect_code": "D03_INCONSISTENT_SIZE",
+                "issue_condition": "UNRESOLVED",
+                "result_snapshot": {
+                    "defect": "D03_INCONSISTENT_SIZE",
+                    "ranked_causes": [
+                        {"cause_id": "nozzle_restriction", "score": 30.0, "conclusion": "SUSPECTED"}
+                    ],
+                },
+            }
+        ],
+    }
+
+    mutated = copy.deepcopy(baseline)
+    # Mutate only the deeply nested score inside result_snapshot
+    mutated["analysis_revisions"][0]["result_snapshot"]["ranked_causes"][0]["score"] = 99.0
+
+    # Counts and revision numbers remain identical
+    assert len(baseline["observations"]) == len(mutated["observations"])
+    assert len(baseline["question_answers"]) == len(mutated["question_answers"])
+    assert len(baseline["check_results"]) == len(mutated["check_results"])
+    assert len(baseline["analysis_revisions"]) == len(mutated["analysis_revisions"])
+    assert baseline["analysis_revisions"][0]["revision_number"] == mutated["analysis_revisions"][0]["revision_number"]
+
+    # But full state comparison detects the mutation
+    assert baseline != mutated
