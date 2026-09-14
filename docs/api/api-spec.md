@@ -1873,6 +1873,154 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 5. Technician Troubleshooting Check-Result Submission
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/check-results`
+- **Description:** Submits a technician troubleshooting check execution and finding for an active durable case, executes Member 2's `CheckResultHandler` and diagnostic engine check-result workflow, evaluates the next immutable analysis revision, and atomically persists the check-result history, any newly derived observations, and the revision snapshot in PostgreSQL.
+
+#### Lifecycle & Concurrency Contract
+
+- **Atomic Revision Advance:** Each accepted check result atomically appends one `CaseCheckResult` history record, any newly generated observations (with `first_seen_revision = N + 1` and `source = USER_CHECK_RESULT`), and one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** The client must provide `expected_revision`. The update succeeds only if `expected_revision` matches the case's current persisted revision at transaction execution time.
+- **Stale Revisions (409 Conflict):** If `expected_revision` does not match the latest persisted revision (e.g. concurrent check submissions or replays), the transaction is rejected with `409 Conflict` and no partial rows are committed.
+- **Member 2 Diagnostic Authority & Semantic Boundaries:**
+  - Check ID is validated against `actions.json`. Unknown IDs return `422 Unprocessable Entity`.
+  - Specific outcomes are validated against action definitions. Invalid outcomes return `422 Unprocessable Entity`.
+  - **Non-Executing Statuses:** `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, and `SKIPPED` checks are recorded in history and advance the revision, but their finding is strictly normalized to `UNKNOWN` and they generate zero diagnostic observations.
+  - **Inconclusive Findings:** Completed checks with `INCONCLUSIVE`, `UNKNOWN`, or `NOT_APPLICABLE` findings are recorded in history and advance the revision, but generate zero diagnostic observations.
+  - **Non-Directional Semantic Fix (ACT03):** Completed `ACT03` with outcome `consistent_but_wrong_size` generates the structured `CHECK_RESULT` observation but generates no directional `deposit_size` observation (neither `undersized` nor `oversized`).
+  - **Strict Cause and Issue Independence:** A supporting check result increases evidence scores but **never** automatically confirms a root cause (which requires explicit confirmation) and **never** transitions the issue condition to `RESOLVED` (which requires independent recovery verification).
+- **Idempotency & Replay:** Re-submitting the same payload with an outdated `expected_revision` safely fails with `409 Conflict`.
+
+#### Request Schema (`SubmitCheckResultRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `check_id` | `string` | **Yes** | — | Identifier of the troubleshooting check (e.g. `"ACT01"`, `"ACT02"`). Must match a supported action in `actions.json`. |
+| `execution_status` | `string` | **Yes** | — | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. |
+| `finding` | `string` | **Yes** | — | Finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `outcome` | `string` \| `null` | No | `null` | Optional action outcome key (e.g. `"no_blockage"`, `"air_bubbles_found"`). Validated against action evidence mapping. |
+| `finding_details` | `string` \| `null` | No | `null` | Optional technician description, equipment readings, or inspection notes. |
+
+#### Input Validation Rules (HTTP 422)
+
+1. **Unknown Check:** Supplying an unsupported check ID returns `422 Unprocessable Entity` (`"Unknown check_id: 'ACT99'..."`).
+2. **Invalid Outcome:** Supplying an outcome key not defined in the check's evidence mapping returns `422 Unprocessable Entity` (`"Invalid outcome '...' for check ACT01..."`).
+3. **Empty Fields:** Submitting an empty or whitespace-only `check_id` returns `422 Unprocessable Entity`.
+4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity`.
+5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+
+#### Status and Error Codes
+
+- `200 OK` — Check result accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist in the database.
+- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` — Invalid input schema, unsupported check ID, or invalid outcome key.
+- `500 Internal Server Error` — Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+
+#### Representative Execution Example
+
+##### Request Payload (`POST /api/v1/cases/{case_id}/check-results`)
+```json
+{
+  "check_id": "ACT01",
+  "execution_status": "COMPLETED",
+  "finding": "CONTRADICTS",
+  "outcome": "no_blockage",
+  "finding_details": "No visible blockage under 50x microscope",
+  "expected_revision": 1
+}
+```
+
+##### Response Payload (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "issue_condition": "UNRESOLVED",
+  "created_at": "2026-09-14T14:19:10.123456Z",
+  "observations": [
+    {
+      "id": "obs_1",
+      "observation_id": "obs_1",
+      "observation_type": "deposit_size",
+      "value": "undersized",
+      "original_text": "Dispense dots are shrinking",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER",
+      "confidence": null,
+      "timestamp": "2026-09-14T14:19:10.123456Z",
+      "created_at": "2026-09-14T14:19:10.123456Z",
+      "first_seen_revision": 1
+    },
+    {
+      "id": "obs_2",
+      "observation_id": "obs_2",
+      "observation_type": "check_result",
+      "value": "ACT01:no_blockage",
+      "original_text": "No visible blockage under 50x microscope",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER_CHECK_RESULT",
+      "confidence": null,
+      "timestamp": "2026-09-14T14:19:11.123456Z",
+      "created_at": "2026-09-14T14:19:11.123456Z",
+      "first_seen_revision": 2
+    }
+  ],
+  "initial_diagnosis": { ... },
+  "diagnosis": {
+    "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "ranked_causes": [ ... ],
+    "analysis_revision": {
+      "revision_number": 2,
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Check 'Inspect Nozzle for Physical Blockage' (ACT01) was COMPLETED with finding CONTRADICTS. Outcome: no_blockage.",
+      "changes_from_previous": [
+        "Nozzle Restriction decreased from 40 to 10 (-30 pts)."
+      ]
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "current_revision": 2,
+  "submitted_check_result": {
+    "check_id": "ACT01",
+    "execution_status": "COMPLETED",
+    "finding": "CONTRADICTS",
+    "finding_details": "No visible blockage under 50x microscope",
+    "outcome": "no_blockage",
+    "source": "USER_CHECK_RESULT",
+    "checked_at": "2026-09-14T14:19:11.123456Z",
+    "resulting_revision_number": 2
+  },
+  "previous_check_results": [
+    {
+      "check_id": "ACT01",
+      "execution_status": "COMPLETED",
+      "finding": "CONTRADICTS",
+      "finding_details": "No visible blockage under 50x microscope",
+      "outcome": "no_blockage",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T14:19:11.123456Z",
+      "resulting_revision_number": 2
+    }
+  ],
+  "previous_answers": [],
+  "next_question": { ... },
+  "next_check": { ... }
+}
+```
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found

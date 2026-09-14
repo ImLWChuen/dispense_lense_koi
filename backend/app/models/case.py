@@ -100,6 +100,13 @@ class CaseModel(Base):
         order_by="QuestionAnswerModel.resulting_revision_number",
     )
 
+    check_results: Mapped[list[CaseCheckResultModel]] = relationship(
+        "CaseCheckResultModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseCheckResultModel.resulting_revision_number",
+    )
+
 
 class ObservationModel(Base):
     """Structured observation extracted from user text or entered directly."""
@@ -301,4 +308,78 @@ class QuestionAnswerModel(Base):
     case: Mapped[CaseModel] = relationship(
         "CaseModel",
         back_populates="question_answers",
+    )
+
+
+class CaseCheckResultModel(Base):
+    """Technician troubleshooting check result event associated with a diagnostic case revision."""
+
+    __tablename__ = "case_check_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_check_results_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_check_results_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    check_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Troubleshooting check identifier (e.g. ACT01)",
+    )
+    execution_status: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Normalized check execution status (COMPLETED, BLOCKED, etc.)",
+    )
+    finding: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Normalized check finding (SUPPORTS, CONTRADICTS, INCONCLUSIVE, etc.)",
+    )
+    finding_details: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional technician verbatim notes or findings",
+    )
+    outcome: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Specific outcome key (e.g. blockage_found, consistent_but_wrong_size)",
+    )
+    source: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Provenance source (USER_CHECK_RESULT, etc.)",
+    )
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware check timestamp",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this check (> 1)",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="check_results",
     )

@@ -9,7 +9,8 @@ The persistence foundation establishes relational storage for:
 1. **Diagnostic cases** (`cases`);
 2. **Structured observations with provenance** (`case_observations`);
 3. **Append-only immutable analysis revisions** (`analysis_revisions`);
-4. **Technician question-answer history** (`case_question_answers`, added in DLK-M3-011).
+4. **Technician question-answer history** (`case_question_answers`, added in DLK-M3-011);
+5. **Technician troubleshooting check-result history** (`case_check_results`, added in DLK-M3-013).
 
 ---
 
@@ -20,6 +21,7 @@ erDiagram
     CASES ||--o{ CASE_OBSERVATIONS : "has"
     CASES ||--o{ ANALYSIS_REVISIONS : "has"
     CASES ||--o{ CASE_QUESTION_ANSWERS : "has"
+    CASES ||--o{ CASE_CHECK_RESULTS : "has"
 
     CASES {
         uuid case_id PK "UUID-compatible identifier"
@@ -66,6 +68,19 @@ erDiagram
         varchar source "Provenance source"
         timestamptz answered_at "Timezone-aware timestamp"
         int resulting_revision_number "Analysis revision created from answer"
+    }
+
+    CASE_CHECK_RESULTS {
+        serial id PK "Surrogate primary key"
+        uuid case_id FK "Owning case reference"
+        text check_id "Troubleshooting check identifier"
+        varchar execution_status "Execution state"
+        varchar finding "Finding outcome category"
+        text finding_details "Technician observations/details"
+        text outcome "Action-planner outcome key"
+        varchar source "Provenance source"
+        timestamptz checked_at "Timezone-aware timestamp"
+        int resulting_revision_number "Analysis revision created from check"
     }
 ```
 
@@ -164,6 +179,31 @@ Stores technician responses to diagnostic questions associated with diagnostic r
 
 ---
 
+### 5. `case_check_results`
+Stores technician troubleshooting check executions and findings associated with diagnostic revisions.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `SERIAL` | No | Surrogate integer primary key. |
+| `case_id` | `UUID` | No | Foreign key referencing `cases.case_id`. |
+| `check_id` | `TEXT` | No | Troubleshooting check identifier (unrestricted domain text, e.g. `ACT01`, `ACT02`). |
+| `execution_status` | `VARCHAR(64)` | No | Execution state: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. |
+| `finding` | `VARCHAR(64)` | No | Normalized finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
+| `finding_details` | `TEXT` | Yes | Technician observation details, notes, or equipment readings (unrestricted domain text). |
+| `outcome` | `TEXT` | Yes | Specific action outcome key (e.g. `no_blockage`, `air_bubbles_found`, `consistent_but_wrong_size`). |
+| `source` | `VARCHAR(64)` | No | Provenance source (always `USER_CHECK_RESULT` for technician submissions). |
+| `checked_at` | `TIMESTAMPTZ` | No | Timezone-aware timestamp of the check submission. |
+| `resulting_revision_number` | `INTEGER` | No | Analysis revision number produced by this check event (> 1). |
+
+**Constraints:**
+- Primary Key: `pk_case_check_results` (`id`)
+- Foreign Key: `fk_case_check_results_case_id_cases` (`case_id` -> `cases.case_id` `ON DELETE CASCADE`)
+- Unique Constraint: `uq_case_check_results_case_id_rev` (`case_id`, `resulting_revision_number`)
+- Check Constraint: `ck_case_check_results_rev_gt_1` (`resulting_revision_number > 1`)
+- Index: `ix_case_check_results_case_id` (`case_id`)
+
+---
+
 ## Architectural Guarantees
 
 ### 1. JSONB Snapshot Rationale
@@ -194,3 +234,11 @@ Technician question answers are stored in `case_question_answers` independently 
 - Answers such as `UNKNOWN` or `NOT_APPLICABLE` deliberately produce no observations, but their historical record in `case_question_answers` is required so that case reconstruction via `load_structured_case` populates `previous_answers` and prevents the question selection engine from repeatedly re-asking already answered questions.
 - In this milestone, exactly one answer produces one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
 - No unique constraint is placed on `(case_id, question_id)`, leaving future capability open for re-answering or corrective workflows.
+
+### 5. Troubleshooting Check-Result History and Reconstruction Rationale
+Technician troubleshooting check results are stored in `case_check_results` independently of whether a check generates diagnostic observations:
+- Completed checks with definitive findings (`SUPPORTS`, `CONTRADICTS`) generate structured rows in `case_observations` with `first_seen_revision = N` and `source = USER_CHECK_RESULT`.
+- Non-executing checks (`BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`) and completed checks with non-definitive findings (`INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`) deliberately produce no observations, but their historical record in `case_check_results` is required so that case reconstruction via `load_structured_case` populates `previous_check_results` with exact fidelity.
+- Each submitted check result produces one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
+- No unique constraint is placed on `(case_id, check_id)`, allowing repeated checks across the investigation lifecycle.
+- Interleaved event histories (e.g. Revision 1: initial -> Revision 2: answer -> Revision 3: check -> Revision 4: answer) are fully supported with monotonic global revision numbering.

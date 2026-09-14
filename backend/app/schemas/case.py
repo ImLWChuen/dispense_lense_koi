@@ -10,10 +10,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.knowledge import get_defect_by_code
 from app.schemas.diagnosis import (
+    CheckExecutionStatus,
+    CheckFinding,
     DiagnosisRequest,
     DiagnosisResult,
     EvidenceSource,
@@ -177,15 +179,91 @@ class QuestionAnswerRecord(BaseModel):
     resulting_revision_number: int
 
 
+class CheckResultRecord(BaseModel):
+    """Persisted record of a technician troubleshooting check result."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    check_id: str
+    execution_status: CheckExecutionStatus | str
+    finding: CheckFinding | str
+    finding_details: str | None = None
+    outcome: str | None = None
+    source: EvidenceSource | str = EvidenceSource.USER_CHECK_RESULT
+    checked_at: datetime
+    resulting_revision_number: int
+
+
 class CaseAnswerResponse(DurableCaseResponse):
     """Canonical representation of a durable case after question answer submission.
 
     Extends DurableCaseResponse with current revision, the newly submitted answer record,
-    full answer history, and recommended next steps.
+    full answer history, previous check results, and recommended next steps.
     """
 
     current_revision: int
     submitted_answer: QuestionAnswerRecord
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
+
+
+class SubmitCheckResultRequest(BaseModel):
+    """Transport schema for submitting a technician troubleshooting check result.
+
+    Enforces optimistic concurrency via expected_revision and validates that
+    check_id is non-empty and expected_revision is >= 1.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    check_id: str = Field(
+        ...,
+        description="Identifier of the troubleshooting check performed (e.g. 'ACT01').",
+    )
+    execution_status: CheckExecutionStatus = Field(
+        default=CheckExecutionStatus.COMPLETED,
+        validation_alias=AliasChoices("execution_status", "status"),
+        description="Execution status of the check (COMPLETED, BLOCKED, FAILED, etc.).",
+    )
+    finding: CheckFinding = Field(
+        default=CheckFinding.INCONCLUSIVE,
+        validation_alias=AliasChoices("finding", "result"),
+        description="Technician finding from the check (SUPPORTS, CONTRADICTS, INCONCLUSIVE, etc.).",
+    )
+    outcome: str | None = Field(
+        default=None,
+        description="Specific outcome key (e.g. 'blockage_found', 'consistent_but_wrong_size').",
+    )
+    finding_details: str | None = Field(
+        default=None,
+        description="Optional details or technician notes describing the finding.",
+    )
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitCheckResultRequest:
+        if not self.check_id or not self.check_id.strip():
+            raise ValueError("check_id must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        return self
+
+
+class CaseCheckResultResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after check result submission.
+
+    Extends DurableCaseResponse with current revision, the newly submitted check result record,
+    full check result history, previous answer history, and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_check_result: CheckResultRecord
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
     previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None

@@ -30,6 +30,7 @@ from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_session_factory
 from app.models.case import (
     AnalysisRevisionModel,
+    CaseCheckResultModel,
     CaseModel,
     ObservationModel,
     QuestionAnswerModel,
@@ -37,6 +38,9 @@ from app.models.case import (
 from app.schemas.diagnosis import (
     AnalysisRevision,
     AnswerValue,
+    CheckExecutionStatus,
+    CheckFinding,
+    CheckResult,
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
@@ -178,6 +182,46 @@ def test_alembic_schema_structure_and_constraints():
     # Ensure no unique constraint on (case_id, question_id)
     assert not any(
         set(uq["column_names"]) == {"case_id", "question_id"} for uq in qa_uqs
+    )
+
+    # Check 'case_check_results' columns and constraints
+    assert "case_check_results" in tables
+    cr_cols = {c["name"]: c for c in inspector.get_columns("case_check_results")}
+    assert "id" in cr_cols
+    assert "case_id" in cr_cols
+    assert not cr_cols["case_id"]["nullable"]
+    assert "check_id" in cr_cols
+    assert "TEXT" in str(cr_cols["check_id"]["type"]).upper()
+    assert not cr_cols["check_id"]["nullable"]
+    assert "execution_status" in cr_cols
+    assert "VARCHAR" in str(cr_cols["execution_status"]["type"]).upper()
+    assert not cr_cols["execution_status"]["nullable"]
+    assert "finding" in cr_cols
+    assert "VARCHAR" in str(cr_cols["finding"]["type"]).upper()
+    assert not cr_cols["finding"]["nullable"]
+    assert "finding_details" in cr_cols
+    assert "TEXT" in str(cr_cols["finding_details"]["type"]).upper()
+    assert cr_cols["finding_details"]["nullable"]
+    assert "outcome" in cr_cols
+    assert "TEXT" in str(cr_cols["outcome"]["type"]).upper()
+    assert cr_cols["outcome"]["nullable"]
+    assert "source" in cr_cols
+    assert "VARCHAR" in str(cr_cols["source"]["type"]).upper()
+    assert not cr_cols["source"]["nullable"]
+    assert "checked_at" in cr_cols
+    assert not cr_cols["checked_at"]["nullable"]
+    assert "resulting_revision_number" in cr_cols
+    assert not cr_cols["resulting_revision_number"]["nullable"]
+
+    cr_fks = inspector.get_foreign_keys("case_check_results")
+    assert any(fk["referred_table"] == "cases" for fk in cr_fks)
+    cr_uqs = inspector.get_unique_constraints("case_check_results")
+    assert any(
+        set(uq["column_names"]) == {"case_id", "resulting_revision_number"} for uq in cr_uqs
+    )
+    # Ensure no unique constraint on (case_id, check_id)
+    assert not any(
+        set(uq["column_names"]) == {"case_id", "check_id"} for uq in cr_uqs
     )
 
 
@@ -1696,3 +1740,313 @@ def test_load_structured_case_exhausted_retries_raises_explicit_runtime_error():
         with factory() as s:
             s.execute(delete(CaseModel).where(CaseModel.case_id == case_id))
             s.commit()
+
+
+# ---------------------------------------------------------------------------
+# Check Result Persistence Tests (DLK-M3-013)
+# ---------------------------------------------------------------------------
+
+def test_append_check_result_revision_round_trip(case_repo, db_session):
+    """Verify check result persistence round-trips:
+    - CaseCheckResultModel is persisted with resulting_revision_number == 2
+    - Unrestricted text fields (finding_details, outcome) round-trip without truncation
+    - Newly introduced observations have first_seen_revision == 2
+    - Prior observations and revisions are preserved
+    - load_structured_case reconstructs previous_check_results with exact fidelity
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    initial_case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+            observations=[
+                Observation(
+                    observation_type=ObservationType.NOZZLE_CONDITION,
+                    value="drips_after_dispense",
+                    statement_type=StatementType.USER_OBSERVATION,
+                    source=EvidenceSource.USER,
+                )
+            ],
+        )
+    )
+    result1 = engine.diagnose(initial_case)
+    repo.save_initial_case(initial_case, result1)
+    db_session.commit()
+
+    long_finding_details = "Visual inspection under 50x microscope showed no debris or dried material: " + "detail_" * 30
+    check = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        finding_details=long_finding_details,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    loaded_case = repo.load_structured_case(case_id)
+    assert loaded_case is not None
+    updated_case, result2 = engine.submit_check_result(loaded_case, check)
+
+    rev_model = repo.append_check_result_revision(
+        case=updated_case,
+        check_result=check,
+        result=result2,
+        expected_revision=1,
+    )
+    db_session.commit()
+    assert rev_model.revision_number == 2
+
+    # Verify direct query on CaseCheckResultModel
+    cr_models = repo.get_case_check_results(case_id)
+    assert len(cr_models) == 1
+    assert cr_models[0].check_id == "ACT01"
+    assert cr_models[0].execution_status == CheckExecutionStatus.COMPLETED.value
+    assert cr_models[0].finding == CheckFinding.CONTRADICTS.value
+    assert cr_models[0].finding_details == long_finding_details
+    assert cr_models[0].outcome == "no_blockage"
+    assert cr_models[0].source == EvidenceSource.USER_CHECK_RESULT.value
+    assert cr_models[0].resulting_revision_number == 2
+
+    # Verify reconstruction through load_structured_case
+    reconstructed = repo.load_structured_case(case_id)
+    assert reconstructed is not None
+    assert len(reconstructed.analysis_revisions) == 2
+    assert reconstructed.analysis_revisions[-1].revision_number == 2
+    assert len(reconstructed.previous_check_results) == 1
+    rec_check = reconstructed.previous_check_results[0]
+    assert rec_check.check_id == "ACT01"
+    assert rec_check.execution_status == CheckExecutionStatus.COMPLETED
+    assert rec_check.finding == CheckFinding.CONTRADICTS
+    assert rec_check.finding_details == long_finding_details
+    assert rec_check.outcome == "no_blockage"
+    assert rec_check.source == EvidenceSource.USER_CHECK_RESULT
+
+    # Check observations: initial observation has first_seen_revision=1, new ones have first_seen_revision=2
+    obs_by_id = {o.observation_id: o for o in repo.get_case_observations(case_id)}
+    assert obs_by_id[initial_case.observations[0].id].first_seen_revision == 1
+    new_obs_items = [o for o in obs_by_id.values() if o.first_seen_revision == 2]
+    assert len(new_obs_items) >= 1
+
+
+def test_append_check_result_revision_stale_expected_revision(case_repo, db_session):
+    """Verify stale expected_revision raises StaleRevisionError without durable mutation."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+        )
+    )
+    result = engine.diagnose(case)
+    repo.save_initial_case(case, result)
+    db_session.commit()
+
+    # Advance to revision 2 with a check result
+    check1 = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    up_case, res2 = engine.submit_check_result(loaded, check1)
+    repo.append_check_result_revision(
+        case=up_case,
+        check_result=check1,
+        result=res2,
+        expected_revision=1,
+    )
+    db_session.commit()
+
+    revs_before = repo.list_case_revisions(case_id)
+    assert revs_before == [1, 2]
+    cr_before = repo.get_case_check_results(case_id)
+    assert len(cr_before) == 1
+
+    # Attempt append with stale expected_revision=1 (latest is 2)
+    check2 = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    loaded_v2 = repo.load_structured_case(case_id)
+    assert loaded_v2 is not None
+    up_case2, res3 = engine.submit_check_result(loaded_v2, check2)
+
+    with pytest.raises(StaleRevisionError) as exc_info:
+        repo.append_check_result_revision(
+            case=up_case2,
+            check_result=check2,
+            result=res3,
+            expected_revision=1,  # STALE: current is 2
+        )
+
+    assert exc_info.value.case_id == case_id
+    assert exc_info.value.expected_revision == 1
+    assert exc_info.value.current_revision == 2
+
+    # Verify zero new rows were created
+    assert repo.list_case_revisions(case_id) == revs_before
+    assert len(repo.get_case_check_results(case_id)) == len(cr_before)
+
+
+def test_append_check_result_revision_rollback_on_failure(case_repo, db_session):
+    """Verify that any failure during append_check_result_revision rolls back all mutations atomically."""
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+        )
+    )
+    result = engine.diagnose(case)
+    repo.save_initial_case(case, result)
+    db_session.commit()
+
+    check = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    up_case, res2 = engine.submit_check_result(loaded, check)
+
+    # Induce an error by corrupting the diagnosis result snapshot
+    bad_result = copy.deepcopy(res2)
+    bad_result.analysis_revision = None  # append_check_result_revision requires analysis_revision
+
+    with pytest.raises((ValueError, AttributeError)):
+        repo.append_check_result_revision(
+            case=up_case,
+            check_result=check,
+            result=bad_result,
+            expected_revision=1,
+        )
+    db_session.rollback()
+
+    # Verify state rolled back cleanly
+    assert len(repo.get_case_check_results(case_id)) == 0
+    assert repo.list_case_revisions(case_id) == [1]
+
+
+def test_interleaved_mixed_revisions_answer_and_check(case_repo, db_session):
+    """Verify mixed revision history:
+    Rev 1: Initial diagnosis
+    Rev 2: Question answer
+    Rev 3: Troubleshooting check result
+    Rev 4: Another question answer
+    Rev 5: Another troubleshooting check result
+    Reconstructed StructuredCase restores all answers, check results, observations, and revisions monotonically.
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # Rev 1: Initial case
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+        )
+    )
+    res1 = engine.diagnose(case)
+    repo.save_initial_case(case, res1)
+    db_session.commit()
+
+    # Rev 2: Question Answer (Q01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    ans1 = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        source=EvidenceSource.USER,
+    )
+    c2, res2 = engine.submit_question_answer(loaded, ans1)
+    repo.append_question_answer_revision(c2, ans1, res2, expected_revision=1)
+    db_session.commit()
+
+    # Rev 3: Check Result (ACT01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    assert len(loaded.previous_answers) == 1
+    assert len(loaded.previous_check_results) == 0
+    assert len(loaded.analysis_revisions) == 2
+    check1 = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c3, res3 = engine.submit_check_result(loaded, check1)
+    repo.append_check_result_revision(c3, check1, res3, expected_revision=2)
+    db_session.commit()
+
+    # Rev 4: Question Answer (Q02)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    assert len(loaded.previous_answers) == 1
+    assert len(loaded.previous_check_results) == 1
+    assert len(loaded.analysis_revisions) == 3
+    ans2 = QuestionAnswer(
+        question_id="Q02",
+        answer_value="all_points",
+        source=EvidenceSource.USER,
+    )
+    c4, res4 = engine.submit_question_answer(loaded, ans2)
+    repo.append_question_answer_revision(c4, ans2, res4, expected_revision=3)
+    db_session.commit()
+
+    # Rev 5: Check Result (ACT02)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    assert len(loaded.previous_answers) == 2
+    assert len(loaded.previous_check_results) == 1
+    assert len(loaded.analysis_revisions) == 4
+    check2 = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c5, res5 = engine.submit_check_result(loaded, check2)
+    repo.append_check_result_revision(c5, check2, res5, expected_revision=4)
+    db_session.commit()
+
+    # Final reconstruction verification
+    final_case = repo.load_structured_case(case_id)
+    assert final_case is not None
+    assert len(final_case.analysis_revisions) == 5
+    assert [r.revision_number for r in final_case.analysis_revisions] == [1, 2, 3, 4, 5]
+    assert len(final_case.previous_answers) == 2
+    assert [a.question_id for a in final_case.previous_answers] == ["Q01", "Q02"]
+    assert len(final_case.previous_check_results) == 2
+    assert [c.check_id for c in final_case.previous_check_results] == ["ACT01", "ACT02"]
