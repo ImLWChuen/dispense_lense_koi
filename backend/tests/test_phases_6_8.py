@@ -20,12 +20,17 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-from app.services.diagnosis.symptom_extractor import SymptomExtractor
-from app.services.diagnosis.defect_identifier import identify_defect
-from app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
-from app.services.diagnosis.question_engine import QuestionEngine
-from app.services.diagnosis.action_planner import ActionPlanner
-from app.schemas.diagnosis import (
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+import pytest
+from backend.app.services.diagnosis.symptom_extractor import SymptomExtractor
+from backend.app.services.diagnosis.defect_identifier import identify_defect
+from backend.app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
+from backend.app.services.diagnosis.question_engine import QuestionEngine
+from backend.app.services.diagnosis.action_planner import ActionPlanner
+from backend.app.schemas.diagnosis import (
     Observation,
     Question,
     QuestionAnswer,
@@ -42,11 +47,73 @@ def separator(title: str) -> None:
     print(f"{'='*70}\n")
 
 
+def _make_ranker_setup() -> tuple[RankingResult, list[Observation], str, CauseRanker]:
+    extractor = SymptomExtractor()
+    result = extractor.extract(
+        "The dispensing dots become smaller after the machine "
+        "has been running for around 20 minutes."
+    )
+    defect = identify_defect(result.observations)
+    assert defect is not None, "Should identify a defect"
+    ranker = CauseRanker()
+    ranking = ranker.rank(result.observations, defect.code)
+    return ranking, result.observations, defect.code, ranker
+
+
+@pytest.fixture
+def ranker_setup() -> tuple[RankingResult, list[Observation], str, CauseRanker]:
+    return _make_ranker_setup()
+
+
+@pytest.fixture
+def ranking(ranker_setup: tuple[RankingResult, list[Observation], str, CauseRanker]) -> RankingResult:
+    return ranker_setup[0]
+
+
+@pytest.fixture
+def observations(ranker_setup: tuple[RankingResult, list[Observation], str, CauseRanker]) -> list[Observation]:
+    return ranker_setup[1]
+
+
+@pytest.fixture
+def defect_code(ranker_setup: tuple[RankingResult, list[Observation], str, CauseRanker]) -> str:
+    return ranker_setup[2]
+
+
+@pytest.fixture
+def ranker(ranker_setup: tuple[RankingResult, list[Observation], str, CauseRanker]) -> CauseRanker:
+    return ranker_setup[3]
+
+
+@pytest.fixture
+def first_question(ranking: RankingResult) -> Question:
+    engine = QuestionEngine()
+    result = engine.select_next_question(
+        ranked_causes=ranking.ranked_causes,
+        previous_answers=[],
+        defect_code=ranking.defect_code,
+    )
+    assert result.selected_question is not None, "Should select a question"
+    return result.selected_question
+
+
+@pytest.fixture
+def first_check(ranking: RankingResult) -> TroubleshootingCheck:
+    planner = ActionPlanner()
+    result = planner.select_next_action(
+        ranked_causes=ranking.ranked_causes,
+        previous_check_results=[],
+        defect_code=ranking.defect_code,
+    )
+    assert result.selected_check is not None, "Should select a check"
+    return result.selected_check
+
+
 # ===================================================================
 # Test 1: Cause Ranker
 # ===================================================================
 
-def _verify_cause_ranker() -> tuple[RankingResult, list[Observation], str]:
+def test_cause_ranker() -> None:
     separator("PHASE 6: Cause Ranker")
 
     # Setup: extract symptoms and identify defect
@@ -85,7 +152,6 @@ def _verify_cause_ranker() -> tuple[RankingResult, list[Observation], str]:
     print(f"  Has sufficient evidence: {ranking.has_sufficient_evidence}")
 
     print("\n✓ Cause ranker passed")
-    return ranking, result.observations, defect.code
 
 
 # ===================================================================
@@ -149,7 +215,6 @@ def _verify_question_engine(ranking: RankingResult) -> Question:
     print(f"  Overlapping causes: {targets_overlap}")
 
     print("\n✓ Question engine passed")
-    return q
 
 
 # ===================================================================
@@ -245,7 +310,6 @@ def _verify_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
         print(f"  {marker} {c.name:<35s}  Priority: {c.priority_score:.1f}  Effort: {c.effort_level}")
 
     print("\n✓ Action planner passed")
-    return check
 
 
 # ===================================================================
@@ -338,19 +402,32 @@ def _verify_full_pipeline() -> None:
 # Pytest entry point and script runner
 # ===================================================================
 
-def test_phases_6_through_8() -> None:
-    """Run the ordered verification flow as one pytest test."""
-    ranking, observations, defect_code = _verify_cause_ranker()
+if __name__ == "__main__":
+    test_cause_ranker()
+    ranking, observations, defect_code, ranker = _make_ranker_setup()
 
-    ranker = CauseRanker()
-    _verify_reranking(ranker, observations, defect_code)
+    test_reranking(ranker, observations, defect_code)
 
-    first_question = _verify_question_engine(ranking)
-    _verify_question_already_answered(ranking, first_question)
-    _verify_question_stopping()
+    q_engine = QuestionEngine()
+    q_res = q_engine.select_next_question(
+        ranked_causes=ranking.ranked_causes,
+        previous_answers=[],
+        defect_code=ranking.defect_code,
+    )
+    assert q_res.selected_question is not None
+    first_q = q_res.selected_question
+    test_question_already_answered(ranking, first_q)
+    test_question_stopping()
 
-    first_check = _verify_action_planner(ranking)
-    _verify_action_already_attempted(ranking, first_check)
+    a_planner = ActionPlanner()
+    a_res = a_planner.select_next_action(
+        ranked_causes=ranking.ranked_causes,
+        previous_check_results=[],
+        defect_code=ranking.defect_code,
+    )
+    assert a_res.selected_check is not None
+    first_c = a_res.selected_check
+    test_action_already_attempted(ranking, first_c)
 
     _verify_full_pipeline()
 

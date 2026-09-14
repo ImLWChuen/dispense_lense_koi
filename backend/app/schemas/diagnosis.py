@@ -417,6 +417,7 @@ class StructuredCase(BaseModel):
     previous_check_results: list[CheckResult] = []
     analysis_revisions: list[AnalysisRevision] = []
     issue_condition: IssueCondition = IssueCondition.UNRESOLVED
+    confirmed_causes: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)
 
 

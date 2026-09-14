@@ -19,4 +19,5 @@ include = ["backend*"]
 venvPath = "."
 venv = ".venv"
 include = ["backend"]
-extraPaths = ["."]
+extraPaths = [".", "backend"]
+pythonpath = ["backend"]
