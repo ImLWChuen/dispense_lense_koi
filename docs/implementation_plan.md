@@ -447,6 +447,44 @@ relevant checks
 source references
 applicable context
 ```
+Do not put domain rules directly inside Python files.
+
+Use the project's knowledge structure:
+
+```text
+backend/app/knowledge/
+├── defects.json
+├── causes.json
+├── questions.json
+├── actions.json
+└── rules.json
+```
+
+Team KOI specifically defines these files and says they establish the domain knowledge source.
+
+The coding agent should create a **knowledge access interface**, for example:
+
+```python
+get_defect(defect_id)
+get_candidate_causes(defect_id, context)
+get_evidence_rules(cause_id)
+get_questions(cause_ids)
+get_actions(cause_ids, context)
+```
+
+### Important update
+
+Do **not** create an independent second set of rules inside:
+
+```text
+cause_ranker.py
+question_engine.py
+action_planner.py
+```
+
+The algorithms should **consume knowledge**, not duplicate it.
+
+The planning package also explicitly recommends one canonical authored knowledge source rather than conflicting JSON and SQL rule copies.
 
 ---
 
@@ -680,6 +718,74 @@ The requirements explicitly warn against inflating support with repeated or corr
 ---
 
 # 10. PHASE 6 — Cause Ranking Algorithm
+
+The Team KOI files explicitly contain:
+
+```text
+backend/app/services/retrieval/
+├── case_retriever.py
+├── embeddings.py
+└── similarity.py
+```
+
+and describe historical cases as an input to diagnosis.
+
+Therefore the cause ranker should be designed to accept:
+
+```python
+historical_evidence: list[HistoricalEvidence]
+```
+
+Example:
+
+```text
+Current case:
+Undersized/intermittent dispensing
+
+Historical evidence:
+5 similar cases
+
+3 confirmed:
+Air / Supply Issue
+
+1 confirmed:
+Nozzle Restriction
+
+1 confirmed:
+Material Condition
+```
+
+The historical results should become **evidence**, not automatic truth.
+
+For example:
+
+```text
+Historical evidence:
+supports Air / Supply Issue
+
+BUT
+
+current case:
+different material
+```
+
+Therefore the historical contribution may be reduced or ignored depending on applicability.
+
+### Important
+
+Member 2 does **not** implement:
+
+```text
+embeddings.py
+similarity.py
+case_retriever.py
+```
+
+Those belong to the Historical Retrieval module.
+
+Member 2 only defines **how retrieved historical evidence affects diagnosis**.
+
+---
 
 For the first implementation, use a deterministic evidence-support algorithm.
 
