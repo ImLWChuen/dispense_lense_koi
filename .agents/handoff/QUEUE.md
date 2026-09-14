@@ -2,45 +2,45 @@
 
 ## Current milestone
 
-Adaptive investigation — durable technician answer submission accepted
+Troubleshooting-check workflow closeout
 
-## Accepted prerequisites
+## Review state
 
-- Member 2 question-answer contract — merged to synchronized `main`
-  - Q01-Q15 answer semantics aligned with knowledge definitions
-  - UNKNOWN / NOT_APPLICABLE semantics available
-  - answer-driven diagnosis revision workflow available
+- `DLK-M3-013` — Check-result semantic closeout and durable troubleshooting-check result API — **changes_requested**
+  - reviewed commit: `5e7cb8270762f0e0c06a0c994a0fa424f16f9c2a`
+  - review: `.agents/handoff/reviews/DLK-M3-013-review.md`
+  - unfinished-state rejection resolved by DLK-M3-014; remaining verification closeout is DLK-M3-015
 
-- `DLK-M3-010` — durable case API rollback and response-parity closeout — **accepted**
-  - accepted commit: `d94e8ea54837719a444a27af05f2eac71efcb34f`
-  - review: `.agents/handoff/reviews/DLK-M3-010-review.md`
+## Changes requested
 
-- `DLK-M3-011` — question-answer persistence and immutable analysis revision append — **accepted**
-  - accepted commit: `f242cba7bbfd9521f5e7f497894a22477307b6b3`
-  - review: `.agents/handoff/reviews/DLK-M3-011-review.md`
-
-- `DLK-M3-012` — technician question-answer submission API — **accepted**
-  - accepted commit: `17756205b7299037b5c23a6b97209ac5f594f749`
-  - review: `.agents/handoff/reviews/DLK-M3-012-review.md`
-
-## Ready
-
-None. No implementation task is currently released.
+- `DLK-M3-014` — Troubleshooting-check result closeout — **changes_requested**
+  - reviewed commit: `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`
+  - review: `.agents/handoff/reviews/DLK-M3-014-review.md`
+  - remaining correction: assert pending-write evidence outside the handled request and compare complete preserved state
+  - task: `.agents/handoff/tasks/DLK-M3-014-check-result-closeout.md`
+  - branch: `backend-database`
+  - depends on: `DLK-M3-013`
 
 ## Not released
 
-Pending future task planning and relevant teammate contract checks:
+Blocked until DLK-M3-015 is accepted and closes the prior review chain:
 
-- troubleshooting-check result submission
-- troubleshooting outcome → evidence integration
-- cause confirmation workflow
+- explicit cause-confirmation persistence/API
 - issue recovery verification
 - report generation
 - image/CV integration
 - LLM integration
 - historical-case retrieval
-- frontend adaptive-answer integration
+- frontend check-result integration
 
-Before releasing troubleshooting-check APIs, the planner must re-check Member 2's current check/action outcome mappings and explicit human-confirmation semantics.
+## Ready
 
-No further implementation is authorized by this queue.
+- `DLK-M3-015` — Check-result verification closeout — **changes_requested**
+  - reviewed commit: `9ad094cfa3b56e3042996238ce4acc0752f9f98c`
+  - review: `.agents/handoff/reviews/DLK-M3-015-review.md`
+  - remaining corrections: seed prior check history; preserve exact snapshot values and capture full pending revision JSON
+  - task: `.agents/handoff/tasks/DLK-M3-015-check-result-verification-closeout.md`
+  - branch: `backend-database`
+  - depends on: DLK-M3-014 implementation at `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`; acceptance is not a prerequisite for this correction
+
+Only DLK-M3-015 is authorized for implementation.

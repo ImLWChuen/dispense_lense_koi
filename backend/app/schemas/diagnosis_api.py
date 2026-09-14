@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from backend.app.knowledge import get_defect_by_code
-from backend.app.schemas.diagnosis import DiagnosisRequest, Observation
+from app.knowledge import get_defect_by_code
+from app.schemas.diagnosis import DiagnosisRequest, Observation
 
 
 class InitialDiagnosisRequest(BaseModel):
