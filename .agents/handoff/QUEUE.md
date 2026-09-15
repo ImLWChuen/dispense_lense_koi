@@ -2,24 +2,26 @@
 
 ## Current milestone
 
-Explicit root-cause confirmation
+Cause-confirmation workflow closeout
 
-## Accepted prerequisite
+## Review state
 
-- `DLK-M3-016` — Final check-result rollback/exact-state verification — **accepted**
-  - reviewed commit: `a262a22305e70d47fd40a66e6e7abd1b48d19a16`
-  - closes the DLK-M3-013 through DLK-M3-016 troubleshooting-check correction chain
+- `DLK-M3-017` — Explicit durable root-cause confirmation workflow — **changes_requested**
+  - reviewed commit: `d15c080b532cdbb03b62f81d910e8d41b83e7771`
+  - blockers:
+    - sanitize unexpected engine `ValueError`s as HTTP 500
+    - enforce `confirmed_by` maximum length 64 at request validation
 
 ## Ready
 
-- `DLK-M3-017` — Explicit durable root-cause confirmation workflow — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-017-cause-confirmation-api.md`
+- `DLK-M3-018` — Cause-confirmation API closeout — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-018-cause-confirmation-closeout.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-016`
+  - depends on: `DLK-M3-017`
 
 ## Not released
 
-Blocked until DLK-M3-017 is implemented and accepted:
+Blocked until DLK-M3-018 is implemented and accepted:
 
 - issue recovery / post-correction verification
 - resolved / recurred state workflow
@@ -27,6 +29,6 @@ Blocked until DLK-M3-017 is implemented and accepted:
 - image/CV integration
 - LLM integration
 - historical-case retrieval
-- frontend confirmation integration
+- frontend cause-confirmation integration
 
-Only DLK-M3-017 is authorized for implementation.
+Only DLK-M3-018 is authorized for implementation.

@@ -36,6 +36,7 @@ from app.schemas.diagnosis import (
     QuestionAnswer,
     StatementType,
 )
+from app.knowledge import get_causes_for_defect
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
 
@@ -800,19 +801,28 @@ def submit_case_cause_confirmation(
                 ),
             )
 
-        # Validate cause_id and execute domain confirm_cause
-        try:
-            updated_case, result = engine.confirm_cause(
-                case=case,
-                cause_id=request.cause_id,
-                confirmed_by=request.confirmed_by,
-                confirmation_details=request.notes or "",
-            )
-        except ValueError as e:
+        # Validate cause_id against candidate causes for the defect before persistence
+        candidate_cause_ids: list[str] = []
+        if case.analysis_revisions and case.analysis_revisions[-1].ranked_causes:
+            candidate_cause_ids = [c.cause_id for c in case.analysis_revisions[-1].ranked_causes]
+        elif case.defect_code:
+            candidate_cause_ids = [c.id for c in get_causes_for_defect(case.defect_code)]
+
+        if request.cause_id not in candidate_cause_ids:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(e),
+                detail=(
+                    f"Cannot confirm cause '{request.cause_id}': not found in current ranked causes. "
+                    f"Available causes: {candidate_cause_ids}"
+                ),
             )
+
+        updated_case, result = engine.confirm_cause(
+            case=case,
+            cause_id=request.cause_id,
+            confirmed_by=request.confirmed_by,
+            confirmation_details=request.notes or "",
+        )
 
         try:
             rev_model = repository.append_cause_confirmation_revision(

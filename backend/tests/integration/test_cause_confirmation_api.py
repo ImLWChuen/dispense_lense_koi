@@ -24,6 +24,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Generator
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -148,6 +149,11 @@ def test_cause_confirmation_endpoint_registered_in_openapi():
     assert "409" in responses
     assert "422" in responses
     assert "500" in responses
+    # Verify confirmed_by maxLength is 64 in OpenAPI schema
+    schemas = schema["components"]["schemas"]
+    assert "SubmitCauseConfirmationRequest" in schemas
+    conf_req_schema = schemas["SubmitCauseConfirmationRequest"]
+    assert conf_req_schema["properties"]["confirmed_by"]["maxLength"] == 64
 
 
 # ===========================================================================
@@ -703,3 +709,131 @@ def test_committed_response_matches_persisted_state(tracked_cases: list[str]):
         assert confs[0].confirmed_by == data["submitted_confirmation"]["confirmed_by"]
         assert confs[0].notes == data["submitted_confirmation"]["notes"]
         assert confs[0].resulting_revision_number == data["submitted_confirmation"]["resulting_revision_number"]
+
+
+# ===========================================================================
+# 12. R1 Regression: Unexpected Engine ValueError Returns Sanitized 500
+# ===========================================================================
+
+def test_engine_internal_value_error_returns_sanitized_500_and_does_not_mutate(tracked_cases: list[str]):
+    """Verify that an unexpected internal ValueError from engine.confirm_cause
+    returns a sanitized 500 without leaking raw details or sensitive markers,
+    and creates no durable mutation in the database.
+    """
+    case_id = _create_durable_case()
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline_state = capture_complete_case_state(session, case_id)
+        repo = CaseRepository(session)
+        assert repo.list_case_revisions(case_id) == [1]
+        assert len(repo.get_case_cause_confirmations(case_id)) == 0
+
+    # Inject mock engine that raises unexpected internal ValueError with sensitive marker
+    sensitive_marker = "internal engine detail C:/private/model/path/secret-key-12345"
+    mock_engine = MagicMock(spec=DiagnosticEngine)
+    mock_engine.confirm_cause.side_effect = ValueError(sensitive_marker)
+
+    app.dependency_overrides[get_diagnosis_engine] = lambda: mock_engine
+    try:
+        resp = client.post(
+            f"/api/v1/cases/{case_id}/cause-confirmations",
+            json={
+                "cause_id": "nozzle_restriction",
+                "expected_revision": 1,
+                "confirmed_by": "technician",
+                "notes": "Testing unexpected engine error handling",
+            },
+        )
+        assert resp.status_code == 500
+        assert sensitive_marker not in resp.text
+        assert "secret-key-12345" not in resp.text
+        assert "C:/private/model/path" not in resp.text
+        assert "internal engine detail" not in resp.text
+        assert resp.json()["detail"] == "An unexpected error occurred while submitting the cause confirmation."
+    finally:
+        app.dependency_overrides.pop(get_diagnosis_engine, None)
+
+    # Verify fresh session proves zero mutation
+    with factory() as session:
+        after_state = capture_complete_case_state(session, case_id)
+        assert after_state == baseline_state
+        repo = CaseRepository(session)
+        assert repo.list_case_revisions(case_id) == [1]
+        assert len(repo.get_case_cause_confirmations(case_id)) == 0
+
+    # Retain proof that unknown cause returns 422
+    unknown_resp = client.post(
+        f"/api/v1/cases/{case_id}/cause-confirmations",
+        json={
+            "cause_id": "nonexistent_unknown_cause",
+            "expected_revision": 1,
+        },
+    )
+    assert unknown_resp.status_code == 422
+    assert "not found in current ranked causes" in unknown_resp.json()["detail"]
+
+
+# ===========================================================================
+# 13. R2 Boundary: confirmed_by 64 Characters Succeeds, 65 Characters Returns 422
+# ===========================================================================
+
+def test_confirmed_by_exactly_64_chars_succeeds_and_persists_exactly(tracked_cases: list[str]):
+    """Verify that confirmed_by with exactly 64 characters succeeds and persists faithfully."""
+    case_id = _create_durable_case()
+    tracked_cases.append(case_id)
+
+    performer_64 = "x" * 64
+    conf_payload = {
+        "cause_id": "nozzle_restriction",
+        "expected_revision": 1,
+        "confirmed_by": performer_64,
+        "notes": "64 char performer boundary test",
+    }
+    resp = client.post(f"/api/v1/cases/{case_id}/cause-confirmations", json=conf_payload)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["current_revision"] == 2
+    assert data["submitted_confirmation"]["confirmed_by"] == performer_64
+
+    factory = get_session_factory()
+    with factory() as session:
+        repo = CaseRepository(session)
+        confs = repo.get_case_cause_confirmations(case_id)
+        assert len(confs) == 1
+        assert confs[0].confirmed_by == performer_64
+        assert len(confs[0].confirmed_by) == 64
+        assert repo.list_case_revisions(case_id) == [1, 2]
+
+
+def test_confirmed_by_65_chars_rejected_with_422_before_persistence(tracked_cases: list[str]):
+    """Verify that confirmed_by with 65 characters is rejected with 422 before persistence."""
+    case_id = _create_durable_case()
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline_state = capture_complete_case_state(session, case_id)
+        repo = CaseRepository(session)
+        assert repo.list_case_revisions(case_id) == [1]
+
+    performer_65 = "y" * 65
+    conf_payload = {
+        "cause_id": "nozzle_restriction",
+        "expected_revision": 1,
+        "confirmed_by": performer_65,
+    }
+    resp = client.post(f"/api/v1/cases/{case_id}/cause-confirmations", json=conf_payload)
+    assert resp.status_code == 422
+    err_text = resp.text.lower()
+    assert "confirmed_by" in err_text or "at most 64" in err_text
+
+    # Verify zero persistence occurred
+    with factory() as session:
+        after_state = capture_complete_case_state(session, case_id)
+        assert after_state == baseline_state
+        repo = CaseRepository(session)
+        assert len(repo.get_case_cause_confirmations(case_id)) == 0
+        assert repo.list_case_revisions(case_id) == [1]

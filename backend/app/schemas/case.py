@@ -316,6 +316,7 @@ class SubmitCauseConfirmationRequest(BaseModel):
     )
     confirmed_by: str = Field(
         default="technician",
+        max_length=64,
         description="Identifier or role of the person confirming the cause.",
     )
     notes: str | None = Field(
@@ -329,6 +330,8 @@ class SubmitCauseConfirmationRequest(BaseModel):
             raise ValueError("cause_id must be a non-empty string.")
         if self.expected_revision < 1:
             raise ValueError("expected_revision must be >= 1.")
+        if self.confirmed_by is not None and len(self.confirmed_by) > 64:
+            raise ValueError("confirmed_by must be at most 64 characters.")
         return self
 
 

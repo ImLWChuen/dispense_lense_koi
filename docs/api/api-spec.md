@@ -2046,24 +2046,25 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 |---|---|---|---|---|
 | `cause_id` | `string` | **Yes** | — | Identifier of the candidate cause being confirmed as root cause (e.g. `"nozzle_restriction"`, `"pressure_instability"`). |
 | `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
-| `confirmed_by` | `string` | No | `"technician"` | Identifier or role of the user confirming the cause. |
+| `confirmed_by` | `string` | No | `"technician"` | Identifier or role of the user confirming the cause (maximum length 64 characters). |
 | `notes` | `string` \| `null` | No | `null` | Optional technician notes or observations explaining the confirmation. |
 
 #### Input Validation Rules (HTTP 422)
 
-1. **Unknown or Invalid Cause:** Supplying a `cause_id` not found among candidate causes for the defect returns `422 Unprocessable Entity` (`"Cannot confirm unknown or invalid cause '...' for defect '...'"`).
-2. **Empty Cause ID:** Submitting an empty or whitespace-only `cause_id` returns `422 Unprocessable Entity` (`"cause_id must be a non-empty string."`).
-3. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity` (`"expected_revision must be >= 1."`).
-4. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
-5. **Extra Forbidden Fields:** Supplying forbidden top-level fields returns `422 Unprocessable Entity`.
+1. **Unknown or Invalid Cause:** Supplying a `cause_id` not found among candidate causes for the defect returns `422 Unprocessable Entity` (`"Cannot confirm cause '...'..."`).
+2. **Performer Length Exceeded:** Submitting `confirmed_by` longer than 64 characters returns `422 Unprocessable Entity` before persistence.
+3. **Empty Cause ID:** Submitting an empty or whitespace-only `cause_id` returns `422 Unprocessable Entity` (`"cause_id must be a non-empty string."`).
+4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity` (`"expected_revision must be >= 1."`).
+5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+6. **Extra Forbidden Fields:** Supplying forbidden top-level fields returns `422 Unprocessable Entity`.
 
 #### Status and Error Codes
 
 - `200 OK` — Cause confirmation accepted and revision N+1 committed.
 - `404 Not Found` — Case ID does not exist in the database.
 - `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
-- `422 Unprocessable Entity` — Invalid input schema, empty cause, or invalid/unrecognized cause ID.
-- `500 Internal Server Error` — Unexpected persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+- `422 Unprocessable Entity` — Invalid input schema, empty cause, invalid/unrecognized cause ID, or `confirmed_by` exceeding 64 characters.
+- `500 Internal Server Error` — Unexpected internal diagnostic engine or database failure. Error responses are sanitized and do not echo internal exception details, stack traces, paths, or credentials.
 
 #### Representative Execution Example
 
