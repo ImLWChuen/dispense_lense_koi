@@ -2,45 +2,37 @@
 
 ## Current milestone
 
-Troubleshooting-check workflow closeout
+Recovery-verification workflow closeout — complete
 
 ## Review state
 
-- `DLK-M3-013` — Check-result semantic closeout and durable troubleshooting-check result API — **changes_requested**
-  - reviewed commit: `5e7cb8270762f0e0c06a0c994a0fa424f16f9c2a`
-  - review: `.agents/handoff/reviews/DLK-M3-013-review.md`
-  - unfinished-state rejection resolved by DLK-M3-014; remaining verification closeout is DLK-M3-015
+- `DLK-M3-019` — Durable recovery action and post-correction verification workflow — **changes_requested**
+  - reviewed commit: `d881b44b59a80bbefd173d180541ae884fbf87ed`
+  - historical decision at the earlier commit; all three findings resolved by accepted DLK-M3-020
+  - resolved findings:
+    - require `RECOVERY_PENDING_VERIFICATION` before any verification submission
+    - sanitize unexpected state-manager `ValueError`s as HTTP 500
+    - prove rollback preserves prior confirmation and lifecycle audit history
 
-## Changes requested
+## Latest accepted task
 
-- `DLK-M3-014` — Troubleshooting-check result closeout — **changes_requested**
-  - reviewed commit: `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`
-  - review: `.agents/handoff/reviews/DLK-M3-014-review.md`
-  - remaining correction: assert pending-write evidence outside the handled request and compare complete preserved state
-  - task: `.agents/handoff/tasks/DLK-M3-014-check-result-closeout.md`
+- `DLK-M3-020` — Recovery-verification workflow closeout — **accepted**
+  - reviewed commit: `78a9a2bbf3a14329a26b42b333cdce492c4eee96`
+  - review: `.agents/handoff/reviews/DLK-M3-020-review.md`
+  - closes the DLK-M3-019 correction chain
+  - task: `.agents/handoff/tasks/DLK-M3-020-recovery-verification-closeout.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-013`
+  - depends on: `DLK-M3-019`
 
 ## Not released
 
-Blocked until DLK-M3-015 is accepted and closes the prior review chain:
+The recovery-verification prerequisite is cleared. These areas still require planning and a released task:
 
-- explicit cause-confirmation persistence/API
-- issue recovery verification
+- resolved-issue recurrence reporting (`RECURRED`)
 - report generation
 - image/CV integration
 - LLM integration
 - historical-case retrieval
-- frontend check-result integration
+- frontend recovery/verification integration
 
-## Ready
-
-- `DLK-M3-015` — Check-result verification closeout — **changes_requested**
-  - reviewed commit: `9ad094cfa3b56e3042996238ce4acc0752f9f98c`
-  - review: `.agents/handoff/reviews/DLK-M3-015-review.md`
-  - remaining corrections: seed prior check history; preserve exact snapshot values and capture full pending revision JSON
-  - task: `.agents/handoff/tasks/DLK-M3-015-check-result-verification-closeout.md`
-  - branch: `backend-database`
-  - depends on: DLK-M3-014 implementation at `0e220344f9e96fa40a5443db9f72e9cfa5fb5ce5`; acceptance is not a prerequisite for this correction
-
-Only DLK-M3-015 is authorized for implementation.
+No new task is currently released for implementation.

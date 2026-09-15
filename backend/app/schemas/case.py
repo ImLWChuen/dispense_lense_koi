@@ -14,6 +14,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.knowledge import get_defect_by_code
 from app.schemas.diagnosis import (
+    CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
     DiagnosisRequest,
@@ -280,5 +281,203 @@ class CaseCheckResultResponse(DurableCaseResponse):
     submitted_check_result: CheckResultRecord
     previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
     previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
+
+
+class CauseConfirmationRecord(BaseModel):
+    """Persisted record of an explicit technician root-cause confirmation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    cause_id: str
+    confirmed_by: str = "technician"
+    notes: str | None = None
+    confirmed_at: datetime
+    resulting_revision_number: int
+
+
+class SubmitCauseConfirmationRequest(BaseModel):
+    """Transport schema for explicitly confirming a diagnostic root cause.
+
+    Enforces optimistic concurrency via expected_revision and validates that
+    cause_id is non-empty and expected_revision is >= 1.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    cause_id: str = Field(
+        ...,
+        description="Identifier of the candidate cause being confirmed as root cause.",
+    )
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    confirmed_by: str = Field(
+        default="technician",
+        max_length=64,
+        description="Identifier or role of the person confirming the cause.",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Optional technician notes or observations explaining the confirmation.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitCauseConfirmationRequest:
+        if not self.cause_id or not self.cause_id.strip():
+            raise ValueError("cause_id must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        if self.confirmed_by is not None and len(self.confirmed_by) > 64:
+            raise ValueError("confirmed_by must be at most 64 characters.")
+        return self
+
+
+class CaseCauseConfirmationResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after explicit cause confirmation.
+
+    Extends DurableCaseResponse with current revision, the newly submitted confirmation record,
+    full confirmation history, check result history, answer history, and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_confirmation: CauseConfirmationRecord
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    confirmed_cause: str | None = None
+    selected_cause_conclusion: CauseConclusion | str = CauseConclusion.CONFIRMED
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
+
+
+class LifecycleEventRecord(BaseModel):
+    """Persisted record of an issue lifecycle event (recovery action or verification)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int | None = None
+    case_id: str
+    event_type: str
+    prior_issue_condition: IssueCondition | str
+    resulting_issue_condition: IssueCondition | str
+    resulting_revision_number: int
+    actor: str = "technician"
+    details: str = ""
+    verification_passed: bool | None = None
+    created_at: datetime
+
+
+class SubmitRecoveryActionRequest(BaseModel):
+    """Transport schema for recording an applied corrective/recovery action.
+
+    Transitions issue condition to RECOVERY_PENDING_VERIFICATION.
+    Enforces optimistic concurrency via expected_revision and validates that
+    recovery_details is a non-empty string, expected_revision is >= 1, and
+    performed_by is at most 64 characters.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    recovery_details: str = Field(
+        ...,
+        description="Description of the applied corrective/recovery action.",
+    )
+    performed_by: str = Field(
+        default="technician",
+        max_length=64,
+        description="Identifier or role of the person performing the recovery action.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitRecoveryActionRequest:
+        if not self.recovery_details or not self.recovery_details.strip():
+            raise ValueError("recovery_details must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        if self.performed_by is not None and len(self.performed_by) > 64:
+            raise ValueError("performed_by must be at most 64 characters.")
+        return self
+
+
+class SubmitRecoveryVerificationRequest(BaseModel):
+    """Transport schema for verifying the recovery result of a case.
+
+    Transitions issue condition to RESOLVED (if passed) or UNRESOLVED (if failed).
+    Enforces optimistic concurrency via expected_revision and validates that
+    expected_revision is >= 1, and verified_by is at most 64 characters.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    verification_passed: bool = Field(
+        ...,
+        description="True if verification succeeded (test shots/inspection nominal), False otherwise.",
+    )
+    verification_details: str = Field(
+        default="",
+        description="Supporting notes or findings regarding the verification.",
+    )
+    verified_by: str = Field(
+        default="technician",
+        max_length=64,
+        description="Identifier or role of the person verifying the recovery.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitRecoveryVerificationRequest:
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        if self.verified_by is not None and len(self.verified_by) > 64:
+            raise ValueError("verified_by must be at most 64 characters.")
+        return self
+
+
+class CaseRecoveryActionResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after recovery action submission.
+
+    Extends DurableCaseResponse with current revision, the submitted recovery action record,
+    lifecycle event history, confirmation history, check result history, answer history,
+    and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_recovery_action: LifecycleEventRecord
+    submitted_event: LifecycleEventRecord
+    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    confirmed_cause: str | None = None
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
+
+
+class CaseRecoveryVerificationResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after recovery verification submission.
+
+    Extends DurableCaseResponse with current revision, the submitted verification record,
+    lifecycle event history, confirmation history, check result history, answer history,
+    and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_verification: LifecycleEventRecord
+    submitted_event: LifecycleEventRecord
+    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    confirmed_cause: str | None = None
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None

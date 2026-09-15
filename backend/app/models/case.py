@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -105,6 +106,20 @@ class CaseModel(Base):
         back_populates="case",
         cascade="all, delete-orphan",
         order_by="CaseCheckResultModel.resulting_revision_number",
+    )
+
+    cause_confirmations: Mapped[list[CaseCauseConfirmationModel]] = relationship(
+        "CaseCauseConfirmationModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseCauseConfirmationModel.resulting_revision_number",
+    )
+
+    lifecycle_events: Mapped[list[CaseLifecycleEventModel]] = relationship(
+        "CaseLifecycleEventModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseLifecycleEventModel.resulting_revision_number",
     )
 
 
@@ -382,4 +397,140 @@ class CaseCheckResultModel(Base):
     case: Mapped[CaseModel] = relationship(
         "CaseModel",
         back_populates="check_results",
+    )
+
+
+class CaseCauseConfirmationModel(Base):
+    """Technician root cause confirmation event associated with a diagnostic case revision."""
+
+    __tablename__ = "case_cause_confirmations"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_cause_confirmations_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_cause_confirmations_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cause_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Root cause identifier confirmed by technician",
+    )
+    confirmed_by: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="technician",
+        comment="Technician identifier or role (e.g. technician)",
+    )
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional technician notes or observations explaining confirmation",
+    )
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware confirmation timestamp",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this confirmation (> 1)",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="cause_confirmations",
+    )
+
+
+class CaseLifecycleEventModel(Base):
+    """Technician issue lifecycle event (recovery action or verification) associated with a diagnostic case revision."""
+
+    __tablename__ = "case_lifecycle_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_lifecycle_events_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_lifecycle_events_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Lifecycle event type (e.g. RECOVERY_ACTION, RECOVERY_VERIFICATION)",
+    )
+    prior_issue_condition: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Issue condition before this event",
+    )
+    resulting_issue_condition: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Issue condition after this event",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this event (> 1)",
+    )
+    actor: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="technician",
+        comment="Technician identifier or role performing/verifying recovery",
+    )
+    details: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+        comment="Details of recovery action or verification notes",
+    )
+    verification_passed: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+        comment="True if verification succeeded, False if failed, None for recovery action",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware event timestamp",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="lifecycle_events",
     )
