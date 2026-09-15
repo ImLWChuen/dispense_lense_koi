@@ -11,7 +11,8 @@ The persistence foundation establishes relational storage for:
 3. **Append-only immutable analysis revisions** (`analysis_revisions`);
 4. **Technician question-answer history** (`case_question_answers`, added in DLK-M3-011);
 5. **Technician troubleshooting check-result history** (`case_check_results`, added in DLK-M3-013);
-6. **Technician root-cause confirmation history** (`case_cause_confirmations`, added in DLK-M3-017).
+6. **Technician root-cause confirmation history** (`case_cause_confirmations`, added in DLK-M3-017);
+7. **Technician lifecycle transition events** (`case_lifecycle_events`, added in DLK-M3-019).
 
 ---
 
@@ -24,6 +25,7 @@ erDiagram
     CASES ||--o{ CASE_QUESTION_ANSWERS : "has"
     CASES ||--o{ CASE_CHECK_RESULTS : "has"
     CASES ||--o{ CASE_CAUSE_CONFIRMATIONS : "has"
+    CASES ||--o{ CASE_LIFECYCLE_EVENTS : "has"
 
     CASES {
         uuid case_id PK "UUID-compatible identifier"
@@ -93,6 +95,19 @@ erDiagram
         text notes "Optional technician notes"
         timestamptz confirmed_at "Timezone-aware timestamp"
         int resulting_revision_number "Analysis revision created from confirmation"
+    }
+
+    CASE_LIFECYCLE_EVENTS {
+        serial id PK "Surrogate primary key"
+        uuid case_id FK "Owning case reference"
+        varchar event_type "Lifecycle event type"
+        varchar prior_issue_condition "Issue condition before event"
+        varchar resulting_issue_condition "Issue condition after event"
+        int resulting_revision_number "Analysis revision created from event"
+        varchar actor "Actor applying action or verification"
+        text details "Action or verification details"
+        boolean verification_passed "Verification outcome flag"
+        timestamptz created_at "Timezone-aware creation timestamp"
     }
 ```
 
@@ -238,6 +253,31 @@ Stores technician root-cause confirmations associated with diagnostic revisions.
 
 ---
 
+### 7. `case_lifecycle_events`
+Stores append-only audit history of issue condition lifecycle transitions (recovery actions and recovery verifications).
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `SERIAL` | No | Surrogate integer primary key. |
+| `case_id` | `UUID` | No | Foreign key referencing `cases.case_id`. |
+| `event_type` | `VARCHAR(64)` | No | Lifecycle event type (`RECOVERY_ACTION`, `RECOVERY_VERIFICATION`). |
+| `prior_issue_condition` | `VARCHAR(64)` | No | Issue condition prior to transition (e.g. `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`). |
+| `resulting_issue_condition` | `VARCHAR(64)` | No | Issue condition resulting from transition (e.g. `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, `UNRESOLVED`). |
+| `resulting_revision_number` | `INTEGER` | No | Analysis revision number produced by this lifecycle transition event (> 1). |
+| `actor` | `VARCHAR(64)` | No | Identifier or role of technician performing/verifying the transition (default `'technician'`). |
+| `details` | `TEXT` | No | Full descriptive details of the corrective action or verification observations. |
+| `verification_passed` | `BOOLEAN` | Yes | Explicit verification outcome: `True` (passed), `False` (failed), `None` for recovery actions. |
+| `created_at` | `TIMESTAMPTZ` | No | Timezone-aware timestamp of the transition event. |
+
+**Constraints:**
+- Primary Key: `pk_case_lifecycle_events` (`id`)
+- Foreign Key: `fk_case_lifecycle_events_case_id_cases` (`case_id` -> `cases.case_id` `ON DELETE CASCADE`)
+- Unique Constraint: `uq_case_lifecycle_events_case_id_rev` (`case_id`, `resulting_revision_number`)
+- Check Constraint: `ck_case_lifecycle_events_rev_gt_1` (`resulting_revision_number > 1`)
+- Index: `ix_case_lifecycle_events_case_id` (`case_id`)
+
+---
+
 ## Architectural Guarantees
 
 ### 1. JSONB Snapshot Rationale
@@ -285,3 +325,13 @@ Technician root-cause confirmations are stored in `case_cause_confirmations` to 
 - Each confirmed cause produces exactly one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
 - During case reconstruction via `load_structured_case()`, confirmed causes are populated into `StructuredCase.confirmed_causes`, guaranteeing subsequent diagnostic evaluations preserve `CONFIRMED` cause conclusions.
 - Monotonic global revision numbering is maintained across question answers, check results, and cause confirmations.
+
+### 7. Lifecycle Transition History and Independent Verification Rationale
+Technician recovery actions and post-correction verifications are stored in `case_lifecycle_events` to provide an immutable, append-only audit log of issue lifecycle transitions:
+- In accordance with DispenseIQ diagnostic principles:
+  - Applying a recovery action transitions the case to `RECOVERY_PENDING_VERIFICATION` through `StateManager.transition_issue_condition(...)` and does **not** directly resolve the issue.
+  - Resolving an issue requires an explicit verification step (`verification_passed = True`) moving the case from `RECOVERY_PENDING_VERIFICATION` to `RESOLVED`.
+  - If verification fails (`verification_passed = False`), the issue transitions back to `UNRESOLVED`, preserving prior investigation and confirmation history.
+  - Cause confirmation and issue condition remain strictly independent: an unconfirmed cause can be resolved after recovery verification, and a confirmed cause remains confirmed even if recovery verification fails.
+- Each accepted recovery action or verification appends exactly one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
+- Monotonic global revision numbering is shared across all workflow event types (initial diagnosis, question answers, check results, cause confirmations, recovery actions, and recovery verifications).

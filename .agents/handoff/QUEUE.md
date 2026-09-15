@@ -2,33 +2,30 @@
 
 ## Current milestone
 
-Cause-confirmation workflow closeout
+Issue recovery and post-correction verification
 
-## Review state
+## Accepted prerequisite
 
-- `DLK-M3-017` — Explicit durable root-cause confirmation workflow — **changes_requested**
-  - reviewed commit: `d15c080b532cdbb03b62f81d910e8d41b83e7771`
-  - blockers:
-    - sanitize unexpected engine `ValueError`s as HTTP 500
-    - enforce `confirmed_by` maximum length 64 at request validation
+- `DLK-M3-018` — Cause-confirmation API closeout — **accepted**
+  - reviewed commit: `0227574b358972bc439416184093ca1b8407125d`
+  - closes the DLK-M3-017 cause-confirmation correction chain
 
-## Ready
+## In Progress
 
-- `DLK-M3-018` — Cause-confirmation API closeout — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-018-cause-confirmation-closeout.md`
+- `DLK-M3-019` — Durable recovery action and post-correction verification workflow — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-019-recovery-verification-api.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-017`
+  - depends on: `DLK-M3-018`
 
 ## Not released
 
-Blocked until DLK-M3-018 is implemented and accepted:
+Blocked until DLK-M3-019 is implemented and accepted:
 
-- issue recovery / post-correction verification
-- resolved / recurred state workflow
+- resolved-issue recurrence reporting (`RECURRED`)
 - report generation
 - image/CV integration
 - LLM integration
 - historical-case retrieval
-- frontend cause-confirmation integration
+- frontend recovery/verification integration
 
-Only DLK-M3-018 is authorized for implementation.
+Only DLK-M3-019 is authorized for implementation.
