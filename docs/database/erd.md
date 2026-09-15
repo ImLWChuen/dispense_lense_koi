@@ -10,7 +10,8 @@ The persistence foundation establishes relational storage for:
 2. **Structured observations with provenance** (`case_observations`);
 3. **Append-only immutable analysis revisions** (`analysis_revisions`);
 4. **Technician question-answer history** (`case_question_answers`, added in DLK-M3-011);
-5. **Technician troubleshooting check-result history** (`case_check_results`, added in DLK-M3-013).
+5. **Technician troubleshooting check-result history** (`case_check_results`, added in DLK-M3-013);
+6. **Technician root-cause confirmation history** (`case_cause_confirmations`, added in DLK-M3-017).
 
 ---
 
@@ -22,6 +23,7 @@ erDiagram
     CASES ||--o{ ANALYSIS_REVISIONS : "has"
     CASES ||--o{ CASE_QUESTION_ANSWERS : "has"
     CASES ||--o{ CASE_CHECK_RESULTS : "has"
+    CASES ||--o{ CASE_CAUSE_CONFIRMATIONS : "has"
 
     CASES {
         uuid case_id PK "UUID-compatible identifier"
@@ -81,6 +83,16 @@ erDiagram
         varchar source "Provenance source"
         timestamptz checked_at "Timezone-aware timestamp"
         int resulting_revision_number "Analysis revision created from check"
+    }
+
+    CASE_CAUSE_CONFIRMATIONS {
+        serial id PK "Surrogate primary key"
+        uuid case_id FK "Owning case reference"
+        text cause_id "Confirmed root cause identifier"
+        varchar confirmed_by "Technician identifier or role"
+        text notes "Optional technician notes"
+        timestamptz confirmed_at "Timezone-aware timestamp"
+        int resulting_revision_number "Analysis revision created from confirmation"
     }
 ```
 
@@ -204,6 +216,28 @@ Stores technician troubleshooting check executions and findings associated with 
 
 ---
 
+### 6. `case_cause_confirmations`
+Stores technician root-cause confirmations associated with diagnostic revisions.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `SERIAL` | No | Surrogate integer primary key. |
+| `case_id` | `UUID` | No | Foreign key referencing `cases.case_id`. |
+| `cause_id` | `TEXT` | No | Identifier of the confirmed root cause (unrestricted domain text). |
+| `confirmed_by` | `VARCHAR(64)` | No | Identifier or role of technician confirming the cause (default `'technician'`). |
+| `notes` | `TEXT` | Yes | Optional technician explanation, equipment findings, or notes. |
+| `confirmed_at` | `TIMESTAMPTZ` | No | Timezone-aware timestamp of the confirmation. |
+| `resulting_revision_number` | `INTEGER` | No | Analysis revision number produced by this confirmation event (> 1). |
+
+**Constraints:**
+- Primary Key: `pk_case_cause_confirmations` (`id`)
+- Foreign Key: `fk_case_cause_confirmations_case_id_cases` (`case_id` -> `cases.case_id` `ON DELETE CASCADE`)
+- Unique Constraint: `uq_case_cause_confirmations_case_id_rev` (`case_id`, `resulting_revision_number`)
+- Check Constraint: `ck_case_cause_confirmations_rev_gt_1` (`resulting_revision_number > 1`)
+- Index: `ix_case_cause_confirmations_case_id` (`case_id`)
+
+---
+
 ## Architectural Guarantees
 
 ### 1. JSONB Snapshot Rationale
@@ -242,3 +276,12 @@ Technician troubleshooting check results are stored in `case_check_results` inde
 - Each submitted check result produces one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
 - No unique constraint is placed on `(case_id, check_id)`, allowing repeated checks across the investigation lifecycle.
 - Interleaved event histories (e.g. Revision 1: initial -> Revision 2: answer -> Revision 3: check -> Revision 4: answer) are fully supported with monotonic global revision numbering.
+
+### 6. Root-Cause Confirmation History and Semantic Separation Rationale
+Technician root-cause confirmations are stored in `case_cause_confirmations` to preserve explicit, auditable confirmation events:
+- In accordance with core diagnostic rules: `check completed` != `check supports cause` != `cause confirmed` != `issue resolved`.
+- Troubleshooting checks and high evidence scores do **never** confirm a cause automatically.
+- Confirming a cause sets the candidate cause conclusion to `CONFIRMED`, but does **never** transition the overall `issue_condition` to `RESOLVED` (which requires independent recovery verification).
+- Each confirmed cause produces exactly one new analysis revision (`resulting_revision_number > 1`), enforced by unique constraint `(case_id, resulting_revision_number)`.
+- During case reconstruction via `load_structured_case()`, confirmed causes are populated into `StructuredCase.confirmed_causes`, guaranteeing subsequent diagnostic evaluations preserve `CONFIRMED` cause conclusions.
+- Monotonic global revision numbering is maintained across question answers, check results, and cause confirmations.

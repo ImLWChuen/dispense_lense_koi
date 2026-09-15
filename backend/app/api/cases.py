@@ -12,16 +12,20 @@ from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_db
 from app.schemas.case import (
     CaseAnswerResponse,
+    CaseCauseConfirmationResponse,
     CaseCheckResultResponse,
     CaseObservationResponse,
+    CauseConfirmationRecord,
     CheckResultRecord,
     CreateCaseRequest,
     DurableCaseResponse,
     QuestionAnswerRecord,
     SubmitAnswerRequest,
+    SubmitCauseConfirmationRequest,
     SubmitCheckResultRequest,
 )
 from app.schemas.diagnosis import (
+    CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
     CheckResult,
@@ -735,4 +739,262 @@ def submit_case_check_result(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while submitting the check result.",
+        )
+
+
+@router.post(
+    "/{case_id}/cause-confirmations",
+    response_model=CaseCauseConfirmationResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_409_CONFLICT: {"description": "Stale expected revision"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Validation error or invalid cause"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Explicitly confirm a diagnostic root cause",
+    description=(
+        "Explicitly confirms a candidate cause as the root cause for an active durable case. "
+        "Enforces optimistic locking via expected_revision, invokes Member 2's confirm_cause() "
+        "workflow, produces immutable Revision N+1, and atomically persists the confirmation "
+        "record and revision snapshot. Does not automatically resolve the case issue."
+    ),
+)
+def submit_case_cause_confirmation(
+    case_id: str,
+    request: SubmitCauseConfirmationRequest,
+    engine: DiagnosticEngine = Depends(get_diagnosis_engine),
+    repository: CaseRepository = Depends(get_case_repository),
+    session: Session = Depends(get_db),
+) -> CaseCauseConfirmationResponse:
+    """Submit an explicit root-cause confirmation and evaluate the resulting revision."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+
+        case = repository.load_structured_case(canonical_id)
+        if case is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+
+        current_rev = (
+            case.analysis_revisions[-1].revision_number
+            if case.analysis_revisions
+            else 1
+        )
+        if request.expected_revision != current_rev:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Stale revision for case '{canonical_id}': expected revision "
+                    f"{request.expected_revision}, but current revision is {current_rev}."
+                ),
+            )
+
+        # Validate cause_id and execute domain confirm_cause
+        try:
+            updated_case, result = engine.confirm_cause(
+                case=case,
+                cause_id=request.cause_id,
+                confirmed_by=request.confirmed_by,
+                confirmation_details=request.notes or "",
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
+
+        try:
+            rev_model = repository.append_cause_confirmation_revision(
+                case=updated_case,
+                cause_id=request.cause_id,
+                confirmed_by=request.confirmed_by,
+                notes=request.notes,
+                result=result,
+                expected_revision=request.expected_revision,
+            )
+
+            target_revision = rev_model.revision_number
+
+            case_model = repository.get_case(canonical_id)
+            if case_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Case '{canonical_id}' not found.",
+                )
+
+            obs_models = repository.get_case_observations(canonical_id, max_revision=target_revision)
+            rev1_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+            if rev1_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Initial diagnosis revision for case '{canonical_id}' not found.",
+                )
+
+            initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
+            qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
+            conf_models = repository.get_case_cause_confirmations(canonical_id, max_revision=target_revision)
+
+            observations = [
+                CaseObservationResponse(
+                    id=obs.observation_id,
+                    observation_id=obs.observation_id,
+                    observation_type=(
+                        ObservationType(obs.observation_type)
+                        if obs.observation_type in ObservationType._value2member_map_
+                        else obs.observation_type
+                    ),
+                    value=obs.value,
+                    original_text=obs.original_text,
+                    statement_type=(
+                        StatementType(obs.statement_type)
+                        if obs.statement_type in StatementType._value2member_map_
+                        else obs.statement_type
+                    ),
+                    source=(
+                        EvidenceSource(obs.source)
+                        if obs.source in EvidenceSource._value2member_map_
+                        else obs.source
+                    ),
+                    confidence=obs.confidence,
+                    timestamp=obs.created_at,
+                    created_at=obs.created_at,
+                    first_seen_revision=obs.first_seen_revision,
+                )
+                for obs in obs_models
+                if obs.first_seen_revision <= target_revision
+            ]
+
+            previous_answers = [
+                QuestionAnswerRecord(
+                    question_id=qm.question_id,
+                    answer_value=qm.answer_value,
+                    answer_text=qm.answer_text,
+                    source=(
+                        EvidenceSource(qm.source)
+                        if qm.source in EvidenceSource._value2member_map_
+                        else qm.source
+                    ),
+                    answered_at=qm.answered_at,
+                    resulting_revision_number=qm.resulting_revision_number,
+                )
+                for qm in qa_models
+                if qm.resulting_revision_number <= target_revision
+            ]
+
+            previous_check_results = [
+                CheckResultRecord(
+                    check_id=cm.check_id,
+                    execution_status=(
+                        CheckExecutionStatus(cm.execution_status)
+                        if cm.execution_status in CheckExecutionStatus._value2member_map_
+                        else cm.execution_status
+                    ),
+                    finding=(
+                        CheckFinding(cm.finding)
+                        if cm.finding in CheckFinding._value2member_map_
+                        else cm.finding
+                    ),
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=(
+                        EvidenceSource(cm.source)
+                        if cm.source in EvidenceSource._value2member_map_
+                        else cm.source
+                    ),
+                    checked_at=cm.checked_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                )
+                for cm in cr_models
+                if cm.resulting_revision_number <= target_revision
+            ]
+
+            previous_confirmations = [
+                CauseConfirmationRecord(
+                    cause_id=cfm.cause_id,
+                    confirmed_by=cfm.confirmed_by,
+                    notes=cfm.notes,
+                    confirmed_at=cfm.confirmed_at,
+                    resulting_revision_number=cfm.resulting_revision_number,
+                )
+                for cfm in conf_models
+                if cfm.resulting_revision_number <= target_revision
+            ]
+
+            matching_submitted = [
+                c for c in previous_confirmations if c.resulting_revision_number == target_revision
+            ]
+            if not matching_submitted:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Submitted confirmation record not found for the resulting revision.",
+                )
+            submitted_confirmation = matching_submitted[-1]
+
+            issue_cond = (
+                IssueCondition(case_model.issue_condition)
+                if case_model.issue_condition in IssueCondition._value2member_map_
+                else case_model.issue_condition
+            )
+
+            response = CaseCauseConfirmationResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=case_model.defect_name,
+                issue_condition=issue_cond,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=result,
+                current_revision=target_revision,
+                submitted_confirmation=submitted_confirmation,
+                previous_confirmations=previous_confirmations,
+                previous_check_results=previous_check_results,
+                previous_answers=previous_answers,
+                confirmed_cause=request.cause_id,
+                selected_cause_conclusion=CauseConclusion.CONFIRMED,
+                next_question=result.next_question,
+                next_check=result.next_check,
+            )
+
+            session.commit()
+            return response
+        except StaleRevisionError as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            )
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception:
+            session.rollback()
+            logger.exception("Unexpected error during cause confirmation persistence")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred while persisting the cause confirmation revision.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during cause confirmation submission")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while submitting the cause confirmation.",
         )

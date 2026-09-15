@@ -14,6 +14,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.knowledge import get_defect_by_code
 from app.schemas.diagnosis import (
+    CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
     DiagnosisRequest,
@@ -280,5 +281,70 @@ class CaseCheckResultResponse(DurableCaseResponse):
     submitted_check_result: CheckResultRecord
     previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
     previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None
+
+
+class CauseConfirmationRecord(BaseModel):
+    """Persisted record of an explicit technician root-cause confirmation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    cause_id: str
+    confirmed_by: str = "technician"
+    notes: str | None = None
+    confirmed_at: datetime
+    resulting_revision_number: int
+
+
+class SubmitCauseConfirmationRequest(BaseModel):
+    """Transport schema for explicitly confirming a diagnostic root cause.
+
+    Enforces optimistic concurrency via expected_revision and validates that
+    cause_id is non-empty and expected_revision is >= 1.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    cause_id: str = Field(
+        ...,
+        description="Identifier of the candidate cause being confirmed as root cause.",
+    )
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    confirmed_by: str = Field(
+        default="technician",
+        description="Identifier or role of the person confirming the cause.",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Optional technician notes or observations explaining the confirmation.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitCauseConfirmationRequest:
+        if not self.cause_id or not self.cause_id.strip():
+            raise ValueError("cause_id must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        return self
+
+
+class CaseCauseConfirmationResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after explicit cause confirmation.
+
+    Extends DurableCaseResponse with current revision, the newly submitted confirmation record,
+    full confirmation history, check result history, answer history, and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_confirmation: CauseConfirmationRecord
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    confirmed_cause: str | None = None
+    selected_cause_conclusion: CauseConclusion | str = CauseConclusion.CONFIRMED
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None

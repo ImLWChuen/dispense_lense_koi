@@ -107,6 +107,13 @@ class CaseModel(Base):
         order_by="CaseCheckResultModel.resulting_revision_number",
     )
 
+    cause_confirmations: Mapped[list[CaseCauseConfirmationModel]] = relationship(
+        "CaseCauseConfirmationModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseCauseConfirmationModel.resulting_revision_number",
+    )
+
 
 class ObservationModel(Base):
     """Structured observation extracted from user text or entered directly."""
@@ -382,4 +389,64 @@ class CaseCheckResultModel(Base):
     case: Mapped[CaseModel] = relationship(
         "CaseModel",
         back_populates="check_results",
+    )
+
+
+class CaseCauseConfirmationModel(Base):
+    """Technician root cause confirmation event associated with a diagnostic case revision."""
+
+    __tablename__ = "case_cause_confirmations"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_cause_confirmations_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_cause_confirmations_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cause_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Root cause identifier confirmed by technician",
+    )
+    confirmed_by: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="technician",
+        comment="Technician identifier or role (e.g. technician)",
+    )
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional technician notes or observations explaining confirmation",
+    )
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware confirmation timestamp",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this confirmation (> 1)",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="cause_confirmations",
     )

@@ -2023,6 +2023,140 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 6. Technician Explicit Root-Cause Confirmation Submission
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/cause-confirmations`
+- **Description:** Submits an explicit technician root-cause confirmation for an active durable case, executes Member 2's `confirm_cause()` diagnostic engine workflow, evaluates the next immutable analysis revision, and atomically persists the cause confirmation event and the revision snapshot in PostgreSQL.
+
+#### Lifecycle & Concurrency Contract
+
+- **Atomic Revision Advance:** Each accepted cause confirmation atomically appends one `CaseCauseConfirmation` history record and one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** The client must provide `expected_revision`. The update succeeds only if `expected_revision` matches the case's current persisted revision at transaction execution time.
+- **Stale Revisions (409 Conflict):** If `expected_revision` does not match the latest persisted revision (e.g. concurrent submissions or replays), the transaction is rejected with `409 Conflict` and no rows or revisions are committed.
+- **Member 2 Diagnostic Authority & Semantic Boundaries:**
+  - `cause_id` is validated against candidate causes for the defect. Unknown or domain-invalid causes return `422 Unprocessable Entity` before persistence.
+  - **Supporting Checks Do Not Confirm a Cause Automatically:** A supporting check result or high evidence score increases hypothesis ranking, but **never** confirms a cause automatically. Cause confirmation requires an explicit technician submission.
+  - **Cause Confirmation Does Not Resolve the Issue:** Explicitly confirming a cause sets the candidate cause conclusion to `CONFIRMED`, but **never** transitions the overall `issue_condition` to `RESOLVED`. Issue resolution requires independent post-correction recovery verification.
+  - **No Recovery Verification State:** The endpoint preserves issue resolution independently and never invents recovery or resolution state.
+- **Idempotency & Replay:** Re-submitting the same payload with an outdated `expected_revision` safely fails with `409 Conflict`.
+
+#### Request Schema (`SubmitCauseConfirmationRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `cause_id` | `string` | **Yes** | — | Identifier of the candidate cause being confirmed as root cause (e.g. `"nozzle_restriction"`, `"pressure_instability"`). |
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `confirmed_by` | `string` | No | `"technician"` | Identifier or role of the user confirming the cause. |
+| `notes` | `string` \| `null` | No | `null` | Optional technician notes or observations explaining the confirmation. |
+
+#### Input Validation Rules (HTTP 422)
+
+1. **Unknown or Invalid Cause:** Supplying a `cause_id` not found among candidate causes for the defect returns `422 Unprocessable Entity` (`"Cannot confirm unknown or invalid cause '...' for defect '...'"`).
+2. **Empty Cause ID:** Submitting an empty or whitespace-only `cause_id` returns `422 Unprocessable Entity` (`"cause_id must be a non-empty string."`).
+3. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity` (`"expected_revision must be >= 1."`).
+4. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+5. **Extra Forbidden Fields:** Supplying forbidden top-level fields returns `422 Unprocessable Entity`.
+
+#### Status and Error Codes
+
+- `200 OK` — Cause confirmation accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist in the database.
+- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` — Invalid input schema, empty cause, or invalid/unrecognized cause ID.
+- `500 Internal Server Error` — Unexpected persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+
+#### Representative Execution Example
+
+##### Request Payload (`POST /api/v1/cases/{case_id}/cause-confirmations`)
+```json
+{
+  "cause_id": "nozzle_restriction",
+  "expected_revision": 3,
+  "confirmed_by": "technician",
+  "notes": "Direct microscopic bore inspection confirms solder paste restriction."
+}
+```
+
+##### Response Payload (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "issue_condition": "UNRESOLVED",
+  "created_at": "2026-09-14T14:19:10.123456Z",
+  "observations": [ ... ],
+  "initial_diagnosis": { ... },
+  "diagnosis": {
+    "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "cause_name": "Nozzle Restriction",
+        "score": 40.0,
+        "conclusion": "CONFIRMED",
+        "supporting_evidence": [ ... ],
+        "contradicting_evidence": [],
+        "neutral_evidence": []
+      }
+    ],
+    "analysis_revision": {
+      "revision_number": 4,
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Cause 'nozzle_restriction' explicitly confirmed by technician.",
+      "changes_from_previous": []
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "current_revision": 4,
+  "submitted_confirmation": {
+    "cause_id": "nozzle_restriction",
+    "confirmed_by": "technician",
+    "notes": "Direct microscopic bore inspection confirms solder paste restriction.",
+    "confirmed_at": "2026-09-14T14:21:00.123456Z",
+    "resulting_revision_number": 4
+  },
+  "previous_confirmations": [
+    {
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "technician",
+      "notes": "Direct microscopic bore inspection confirms solder paste restriction.",
+      "confirmed_at": "2026-09-14T14:21:00.123456Z",
+      "resulting_revision_number": 4
+    }
+  ],
+  "previous_check_results": [
+    {
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "outcome": "air_bubbles_found",
+      "resulting_revision_number": 3
+    }
+  ],
+  "previous_answers": [
+    {
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "resulting_revision_number": 2
+    }
+  ],
+  "confirmed_cause": "nozzle_restriction",
+  "selected_cause_conclusion": "CONFIRMED",
+  "next_question": { ... },
+  "next_check": { ... }
+}
+```
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found
@@ -2036,7 +2170,7 @@ Example (`GET /api/v1/cases/00000000-0000-0000-0000-000000000000`):
 ```
 
 ### HTTP 409 Conflict
-Returned when submitting a question answer with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
+Returned when submitting a question answer, troubleshooting check result, or cause confirmation with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
 
 Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with stale `expected_revision: 1` when case is at revision 2):
 ```json
@@ -2044,7 +2178,7 @@ Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with 
   "detail": "Stale revision for case 'e1b68f9a-1175-4189-aedf-24a6cd637f97': expected revision 1, but current revision is 2."
 }
 ```
-*Note: No partial writes, answer records, observation rows, or revision snapshots are committed on a 409 Conflict.*
+*Note: No partial writes, answer records, check result records, confirmation records, observation rows, or revision snapshots are committed on a 409 Conflict.*
 
 ### HTTP 422 Unprocessable Entity
 Returned when request input fails validation rules. Validation errors are returned as a structured array or error detail.

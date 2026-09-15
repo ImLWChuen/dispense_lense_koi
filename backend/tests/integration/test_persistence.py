@@ -32,6 +32,7 @@ from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_session_factory
 from app.models.case import (
     AnalysisRevisionModel,
+    CaseCauseConfirmationModel,
     CaseCheckResultModel,
     CaseModel,
     ObservationModel,
@@ -40,6 +41,7 @@ from app.models.case import (
 from app.schemas.diagnosis import (
     AnalysisRevision,
     AnswerValue,
+    CauseConclusion,
     CheckExecutionStatus,
     CheckFinding,
     CheckResult,
@@ -2260,3 +2262,223 @@ def test_interleaved_mixed_revisions_answer_and_check(case_repo, db_session):
     assert [a.question_id for a in final_case.previous_answers] == ["Q01", "Q02"]
     assert len(final_case.previous_check_results) == 2
     assert [c.check_id for c in final_case.previous_check_results] == ["ACT01", "ACT02"]
+
+
+def test_append_cause_confirmation_revision_rollback_on_failure(case_repo, db_session):
+    """Verify that a failure during append_cause_confirmation_revision rolls back
+    flushed confirmation and revision rows, preserving prior state intact.
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    # 1. Create control case advanced to Revision 3
+    control_id = str(uuid.uuid4())
+    tracked_ids.append(control_id)
+    ctrl_case = engine.prepare_case(
+        StructuredCase(
+            case_id=control_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Control case for confirmation rollback",
+        )
+    )
+    ctrl_res1 = engine.diagnose(ctrl_case)
+    repo.save_initial_case(ctrl_case, ctrl_res1)
+    db_session.commit()
+
+    ctrl_loaded = repo.load_structured_case(control_id)
+    assert ctrl_loaded is not None
+    ctrl_ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation", source=EvidenceSource.USER)
+    c_case2, c_res2 = engine.submit_question_answer(ctrl_loaded, ctrl_ans)
+    repo.append_question_answer_revision(c_case2, ctrl_ans, c_res2, expected_revision=1)
+    db_session.commit()
+
+    ctrl_loaded2 = repo.load_structured_case(control_id)
+    assert ctrl_loaded2 is not None
+    ctrl_chk = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c_case3, c_res3 = engine.submit_check_result(ctrl_loaded2, ctrl_chk)
+    repo.append_check_result_revision(c_case3, ctrl_chk, c_res3, expected_revision=2)
+    db_session.commit()
+
+    # 2. Create target case advanced to Revision 3
+    target_id = str(uuid.uuid4())
+    tracked_ids.append(target_id)
+    tgt_case = engine.prepare_case(
+        StructuredCase(
+            case_id=target_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Target case for confirmation rollback",
+        )
+    )
+    tgt_res1 = engine.diagnose(tgt_case)
+    repo.save_initial_case(tgt_case, tgt_res1)
+    db_session.commit()
+
+    tgt_loaded = repo.load_structured_case(target_id)
+    assert tgt_loaded is not None
+    tgt_ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation", source=EvidenceSource.USER)
+    t_case2, t_res2 = engine.submit_question_answer(tgt_loaded, tgt_ans)
+    repo.append_question_answer_revision(t_case2, tgt_ans, t_res2, expected_revision=1)
+    db_session.commit()
+
+    tgt_loaded2 = repo.load_structured_case(target_id)
+    assert tgt_loaded2 is not None
+    tgt_chk = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    t_case3, t_res3 = engine.submit_check_result(tgt_loaded2, tgt_chk)
+    repo.append_check_result_revision(t_case3, tgt_chk, t_res3, expected_revision=2)
+    db_session.commit()
+
+    factory = get_session_factory()
+    with factory() as session:
+        control_baseline = capture_complete_case_state(session, control_id)
+        target_baseline = capture_complete_case_state(session, target_id)
+
+    assert len(target_baseline["question_answers"]) >= 1
+    assert len(target_baseline["check_results"]) >= 1
+    baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    attempted_rev = baseline_rev + 1
+
+    # 3. Confirm cause with engine
+    tgt_loaded3 = repo.load_structured_case(target_id)
+    assert tgt_loaded3 is not None
+    confirmed_case, res_conf = engine.confirm_cause(
+        tgt_loaded3,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        confirmation_details="Tested rollback",
+    )
+
+    # 4. Use self-managed repository to test repository's own rollback
+    self_managed_repo = CaseRepository()
+    fault_reached = False
+
+    def fail_after_flush_before_commit(session: Session) -> None:
+        nonlocal fault_reached
+        target_confs = session.scalars(
+            select(CaseCauseConfirmationModel).where(
+                CaseCauseConfirmationModel.case_id == target_id,
+                CaseCauseConfirmationModel.resulting_revision_number == attempted_rev,
+            )
+        ).all()
+        if not target_confs:
+            return
+
+        fault_reached = True
+        raise RuntimeError("Simulated repository flush boundary fault during confirmation")
+
+    event.listen(Session, "before_commit", fail_after_flush_before_commit)
+    try:
+        with pytest.raises(RuntimeError, match="Simulated repository flush boundary fault during confirmation"):
+            self_managed_repo.append_cause_confirmation_revision(
+                case=confirmed_case,
+                cause_id="nozzle_restriction",
+                confirmed_by="technician",
+                notes="Tested rollback",
+                result=res_conf,
+                expected_revision=baseline_rev,
+            )
+    finally:
+        event.remove(Session, "before_commit", fail_after_flush_before_commit)
+
+    assert fault_reached is True
+
+    # 5. Verify fresh session proves baseline preservation and no phantom writes
+    with factory() as fresh_session:
+        target_after = capture_complete_case_state(fresh_session, target_id)
+        control_after = capture_complete_case_state(fresh_session, control_id)
+
+        assert target_after == target_baseline
+        assert control_after == control_baseline
+
+        confs = list(fresh_session.scalars(
+            select(CaseCauseConfirmationModel).where(CaseCauseConfirmationModel.case_id == target_id)
+        ).all())
+        assert len(confs) == 0
+
+
+def test_interleaved_mixed_revisions_answer_check_and_confirmation(case_repo, db_session):
+    """Verify mixed revision history:
+    Rev 1: Initial diagnosis
+    Rev 2: Question answer
+    Rev 3: Troubleshooting check result
+    Rev 4: Root cause confirmation
+    Reconstructed StructuredCase restores all answers, check results, confirmations, and revisions monotonically.
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # Rev 1: Initial case
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+        )
+    )
+    res1 = engine.diagnose(case)
+    repo.save_initial_case(case, res1)
+    db_session.commit()
+
+    # Rev 2: Question Answer (Q01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    ans1 = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        source=EvidenceSource.USER,
+    )
+    c2, res2 = engine.submit_question_answer(loaded, ans1)
+    repo.append_question_answer_revision(c2, ans1, res2, expected_revision=1)
+    db_session.commit()
+
+    # Rev 3: Check Result (ACT01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    check1 = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c3, res3 = engine.submit_check_result(loaded, check1)
+    repo.append_check_result_revision(c3, check1, res3, expected_revision=2)
+    db_session.commit()
+
+    # Rev 4: Cause Confirmation
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    c4, res4 = engine.confirm_cause(loaded, cause_id="pressure_instability", confirmed_by="technician", confirmation_details="Confirmed by pressure log")
+    repo.append_cause_confirmation_revision(c4, cause_id="pressure_instability", confirmed_by="technician", notes="Confirmed by pressure log", result=res4, expected_revision=3)
+    db_session.commit()
+
+    # Final reconstruction verification
+    final_case = repo.load_structured_case(case_id)
+    assert final_case is not None
+    assert len(final_case.analysis_revisions) == 4
+    assert [r.revision_number for r in final_case.analysis_revisions] == [1, 2, 3, 4]
+    assert len(final_case.previous_answers) == 1
+    assert [a.question_id for a in final_case.previous_answers] == ["Q01"]
+    assert len(final_case.previous_check_results) == 1
+    assert [c.check_id for c in final_case.previous_check_results] == ["ACT01"]
+    assert final_case.confirmed_causes == ["pressure_instability"]
+    # Check that in the latest revision, pressure_instability is CONFIRMED
+    confirmed = next((c for c in final_case.analysis_revisions[-1].ranked_causes if c.cause_id == "pressure_instability"), None)
+    assert confirmed is not None
+    assert confirmed.conclusion == CauseConclusion.CONFIRMED
