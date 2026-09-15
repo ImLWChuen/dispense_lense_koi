@@ -2552,28 +2552,49 @@ def test_append_recovery_action_revision_rollback_on_failure(case_repo, db_sessi
     repo.append_check_result_revision(t_case3, tgt_chk, t_res3, expected_revision=2)
     db_session.commit()
 
+    tgt_loaded3 = repo.load_structured_case(target_id)
+    assert tgt_loaded3 is not None
+    t_case4, t_res4 = engine.confirm_cause(
+        tgt_loaded3,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        confirmation_details="Microscope confirmed restriction",
+    )
+    repo.append_cause_confirmation_revision(
+        t_case4,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        notes="Microscope confirmed restriction",
+        result=t_res4,
+        expected_revision=3,
+    )
+    db_session.commit()
+
     factory = get_session_factory()
     with factory() as session:
         control_baseline = capture_complete_case_state(session, control_id)
         target_baseline = capture_complete_case_state(session, target_id)
 
-    assert len(target_baseline["question_answers"]) >= 1
-    assert len(target_baseline["check_results"]) >= 1
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(target_baseline["check_results"]) == 1
+    assert len(target_baseline["cause_confirmations"]) == 1
+    assert len(target_baseline["lifecycle_events"]) == 0
     assert target_baseline["case"]["issue_condition"] == "UNRESOLVED"
     baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    assert baseline_rev == 4
     attempted_rev = baseline_rev + 1
 
     # 3. Prepare recovery action transition
-    tgt_loaded3 = repo.load_structured_case(target_id)
-    assert tgt_loaded3 is not None
+    tgt_loaded4 = repo.load_structured_case(target_id)
+    assert tgt_loaded4 is not None
     new_cond, _ = StateManager.transition_issue_condition(
-        current_condition=tgt_loaded3.issue_condition,
+        current_condition=tgt_loaded4.issue_condition,
         target_condition=IssueCondition.RECOVERY_PENDING_VERIFICATION,
         verification_passed=False,
         verification_details="Replaced fluid syringe",
     )
-    tgt_loaded3.issue_condition = new_cond
-    res_rec = engine.diagnose(tgt_loaded3)
+    tgt_loaded4.issue_condition = new_cond
+    res_rec = engine.diagnose(tgt_loaded4)
     res_rec.issue_condition = new_cond
 
     # 4. Use self-managed repository to test repository's own rollback
@@ -2598,7 +2619,7 @@ def test_append_recovery_action_revision_rollback_on_failure(case_repo, db_sessi
     try:
         with pytest.raises(RuntimeError, match="Simulated repository flush boundary fault during recovery action"):
             self_managed_repo.append_recovery_action_revision(
-                case=tgt_loaded3,
+                case=tgt_loaded4,
                 performed_by="technician",
                 recovery_details="Replaced fluid syringe",
                 result=res_rec,
@@ -2616,6 +2637,11 @@ def test_append_recovery_action_revision_rollback_on_failure(case_repo, db_sessi
 
         assert target_after == target_baseline
         assert control_after == control_baseline
+        assert len(target_after["cause_confirmations"]) == 1
+        assert len(target_after["question_answers"]) == 1
+        assert len(target_after["check_results"]) == 1
+        assert len(target_after["lifecycle_events"]) == 0
+        assert len(target_after["analysis_revisions"]) == 4
 
         events = list(fresh_session.scalars(
             select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == target_id)
@@ -2655,7 +2681,7 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
     ctrl_res = engine.diagnose(ctrl_case)
     repo.save_initial_case(ctrl_case, ctrl_res)
 
-    # 2. Setup target case up to recovery action (Rev 2)
+    # 2. Setup target case up to recovery action (Rev 5)
     tgt_case = engine.prepare_case(
         StructuredCase(
             case_id=target_id,
@@ -2668,23 +2694,65 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
     repo.save_initial_case(tgt_case, tgt_res)
     db_session.commit()
 
-    tgt_loaded = repo.load_structured_case(target_id)
-    assert tgt_loaded is not None
+    # Rev 2: QA
+    tgt_loaded1 = repo.load_structured_case(target_id)
+    assert tgt_loaded1 is not None
+    tgt_ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation", source=EvidenceSource.USER)
+    t_case2, t_res2 = engine.submit_question_answer(tgt_loaded1, tgt_ans)
+    repo.append_question_answer_revision(t_case2, tgt_ans, t_res2, expected_revision=1)
+    db_session.commit()
+
+    # Rev 3: Check
+    tgt_loaded2 = repo.load_structured_case(target_id)
+    assert tgt_loaded2 is not None
+    tgt_chk = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    t_case3, t_res3 = engine.submit_check_result(tgt_loaded2, tgt_chk)
+    repo.append_check_result_revision(t_case3, tgt_chk, t_res3, expected_revision=2)
+    db_session.commit()
+
+    # Rev 4: Cause Confirmation
+    tgt_loaded3 = repo.load_structured_case(target_id)
+    assert tgt_loaded3 is not None
+    t_case4, t_res4 = engine.confirm_cause(
+        tgt_loaded3,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        confirmation_details="Microscope confirmed restriction",
+    )
+    repo.append_cause_confirmation_revision(
+        t_case4,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        notes="Microscope confirmed restriction",
+        result=t_res4,
+        expected_revision=3,
+    )
+    db_session.commit()
+
+    # Rev 5: Recovery Action
+    tgt_loaded4 = repo.load_structured_case(target_id)
+    assert tgt_loaded4 is not None
     new_cond, _ = StateManager.transition_issue_condition(
-        current_condition=tgt_loaded.issue_condition,
+        current_condition=tgt_loaded4.issue_condition,
         target_condition=IssueCondition.RECOVERY_PENDING_VERIFICATION,
         verification_passed=False,
         verification_details="Replaced fluid syringe",
     )
-    tgt_loaded.issue_condition = new_cond
-    res_rec = engine.diagnose(tgt_loaded)
+    tgt_loaded4.issue_condition = new_cond
+    res_rec = engine.diagnose(tgt_loaded4)
     res_rec.issue_condition = new_cond
     repo.append_recovery_action_revision(
-        case=tgt_loaded,
+        case=tgt_loaded4,
         performed_by="technician",
         recovery_details="Replaced fluid syringe",
         result=res_rec,
-        expected_revision=1,
+        expected_revision=4,
     )
     db_session.commit()
 
@@ -2693,22 +2761,28 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
         control_baseline = capture_complete_case_state(session, control_id)
         target_baseline = capture_complete_case_state(session, target_id)
 
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(target_baseline["check_results"]) == 1
+    assert len(target_baseline["cause_confirmations"]) == 1
+    assert len(target_baseline["lifecycle_events"]) == 1
+    assert target_baseline["lifecycle_events"][0]["event_type"] == "RECOVERY_ACTION"
+    assert target_baseline["lifecycle_events"][0]["resulting_revision_number"] == 5
     assert target_baseline["case"]["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
     baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
-    assert baseline_rev == 2
+    assert baseline_rev == 5
     attempted_rev = baseline_rev + 1
 
     # 3. Prepare recovery verification transition (passed -> RESOLVED)
-    tgt_loaded2 = repo.load_structured_case(target_id)
-    assert tgt_loaded2 is not None
+    tgt_loaded5 = repo.load_structured_case(target_id)
+    assert tgt_loaded5 is not None
     resolved_cond, _ = StateManager.transition_issue_condition(
-        current_condition=tgt_loaded2.issue_condition,
+        current_condition=tgt_loaded5.issue_condition,
         target_condition=IssueCondition.RESOLVED,
         verification_passed=True,
         verification_details="Test shots nominal",
     )
-    tgt_loaded2.issue_condition = resolved_cond
-    res_ver = engine.diagnose(tgt_loaded2)
+    tgt_loaded5.issue_condition = resolved_cond
+    res_ver = engine.diagnose(tgt_loaded5)
     res_ver.issue_condition = resolved_cond
 
     # 4. Use self-managed repository to test repository's own rollback
@@ -2733,7 +2807,7 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
     try:
         with pytest.raises(RuntimeError, match="Simulated repository flush boundary fault during recovery verification"):
             self_managed_repo.append_recovery_verification_revision(
-                case=tgt_loaded2,
+                case=tgt_loaded5,
                 verified_by="qa_engineer",
                 verification_passed=True,
                 verification_details="Test shots nominal",
@@ -2752,12 +2826,28 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
 
         assert target_after == target_baseline
         assert control_after == control_baseline
+        assert len(target_after["cause_confirmations"]) == 1
+        assert len(target_after["question_answers"]) == 1
+        assert len(target_after["check_results"]) == 1
+        assert len(target_after["lifecycle_events"]) == 1
+        assert target_after["lifecycle_events"][0]["event_type"] == "RECOVERY_ACTION"
+        assert target_after["lifecycle_events"][0]["resulting_revision_number"] == 5
+        assert len(target_after["analysis_revisions"]) == 5
 
-        events = list(fresh_session.scalars(
+        all_events = list(fresh_session.scalars(
             select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == target_id)
         ).all())
-        assert len(events) == 1
-        assert events[0].event_type == "RECOVERY_ACTION"
+        assert len(all_events) == 1
+        assert all_events[0].event_type == "RECOVERY_ACTION"
+        assert all_events[0].resulting_revision_number == 5
+
+        rev6_events = list(fresh_session.scalars(
+            select(CaseLifecycleEventModel).where(
+                CaseLifecycleEventModel.case_id == target_id,
+                CaseLifecycleEventModel.resulting_revision_number == attempted_rev,
+            )
+        ).all())
+        assert len(rev6_events) == 0
         assert target_after["case"]["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
 
 

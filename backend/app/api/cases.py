@@ -1076,26 +1076,25 @@ def submit_case_recovery_action(
         target_condition = IssueCondition.RECOVERY_PENDING_VERIFICATION
         valid_targets = StateManager._VALID_ISSUE_TRANSITIONS.get(case.issue_condition, set())
         if target_condition not in valid_targets:
+            curr_cond_val = (
+                case.issue_condition.value
+                if hasattr(case.issue_condition, "value")
+                else str(case.issue_condition)
+            )
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
                     f"Illegal issue condition transition: cannot apply recovery action from condition "
-                    f"'{case.issue_condition.value if hasattr(case.issue_condition, 'value') else case.issue_condition}'."
+                    f"'{curr_cond_val}'."
                 ),
             )
 
-        try:
-            new_condition, transition_explanation = StateManager.transition_issue_condition(
-                current_condition=case.issue_condition,
-                target_condition=target_condition,
-                verification_passed=False,
-                verification_details=request.recovery_details,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Illegal issue condition transition: {e}",
-            )
+        new_condition, transition_explanation = StateManager.transition_issue_condition(
+            current_condition=case.issue_condition,
+            target_condition=target_condition,
+            verification_passed=False,
+            verification_details=request.recovery_details,
+        )
 
         # Transition issue condition on structured case
         case.issue_condition = new_condition
@@ -1381,6 +1380,22 @@ def submit_case_recovery_verification(
                 ),
             )
 
+        # R1: Operation-specific precondition: recovery verification requires RECOVERY_PENDING_VERIFICATION
+        current_condition = (
+            case.issue_condition
+            if isinstance(case.issue_condition, IssueCondition)
+            else IssueCondition(case.issue_condition)
+        )
+        if current_condition != IssueCondition.RECOVERY_PENDING_VERIFICATION:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Illegal issue condition transition: cannot verify recovery for case '{canonical_id}' from condition "
+                    f"'{current_condition.value}': recovery verification requires "
+                    f"'{IssueCondition.RECOVERY_PENDING_VERIFICATION.value}'."
+                ),
+            )
+
         # Select target condition based on verification_passed
         target_condition = (
             IssueCondition.RESOLVED
@@ -1389,29 +1404,22 @@ def submit_case_recovery_verification(
         )
 
         # Enforce legal state machine transition via StateManager
-        valid_targets = StateManager._VALID_ISSUE_TRANSITIONS.get(case.issue_condition, set())
+        valid_targets = StateManager._VALID_ISSUE_TRANSITIONS.get(current_condition, set())
         if target_condition not in valid_targets:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
                     f"Illegal issue condition transition: cannot verify recovery from condition "
-                    f"'{case.issue_condition.value if hasattr(case.issue_condition, 'value') else case.issue_condition}' "
-                    f"to '{target_condition.value}'."
+                    f"'{current_condition.value}' to '{target_condition.value}'."
                 ),
             )
 
-        try:
-            new_condition, transition_explanation = StateManager.transition_issue_condition(
-                current_condition=case.issue_condition,
-                target_condition=target_condition,
-                verification_passed=request.verification_passed,
-                verification_details=request.verification_details,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Illegal issue condition transition: {e}",
-            )
+        new_condition, transition_explanation = StateManager.transition_issue_condition(
+            current_condition=current_condition,
+            target_condition=target_condition,
+            verification_passed=request.verification_passed,
+            verification_details=request.verification_details,
+        )
 
         # Transition issue condition on structured case
         case.issue_condition = new_condition

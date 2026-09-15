@@ -2183,8 +2183,8 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 - `200 OK` — Recovery action accepted and committed.
 - `404 Not Found` — Case ID does not exist.
 - `409 Conflict` — `expected_revision` is stale or does not match current persisted revision.
-- `422 Unprocessable Entity` — Illegal transition, empty details, `performed_by` exceeding 64 characters, or malformed UUID.
-- `500 Internal Server Error` — Sanitized unexpected error.
+- `422 Unprocessable Entity` — Illegal transition (e.g. attempting recovery action from `RESOLVED`), empty details, `performed_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal transition or persistence failure); raw exception details or internal paths are never reflected.
 
 ##### Representative Request Example
 ```json
@@ -2231,7 +2231,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 ##### Lifecycle & Concurrency Contract
 - **Atomic Revision Advance:** Each accepted verification atomically appends one `CaseLifecycleEvent` record (event_type: `RECOVERY_VERIFICATION`), updates `cases.issue_condition`, and appends one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
 - **Optimistic Concurrency Control:** Requires `expected_revision`. Stale revisions return `409 Conflict`.
-- **State Machine Enforcement:** Only valid when current issue condition is `RECOVERY_PENDING_VERIFICATION`. Submitting verification from `UNRESOLVED` returns `422 Unprocessable Entity`.
+- **Precondition & State Machine Enforcement:** Recovery verification is accepted **only** when the current persisted issue condition is `RECOVERY_PENDING_VERIFICATION`. Verification submitted from `UNRESOLVED` or `RESOLVED` (for both `verification_passed=true` and `verification_passed=false`) returns controlled `422 Unprocessable Entity` before any lifecycle mutation.
 - **Independence from Cause Confirmation:** An issue can be resolved with or without a confirmed root cause. A confirmed cause remains confirmed even if recovery verification fails.
 - **No Recurrence API:** Recurrence transitions (`RECURRED`) are not supported by this endpoint.
 
@@ -2248,8 +2248,8 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 - `200 OK` — Verification accepted and committed.
 - `404 Not Found` — Case ID does not exist.
 - `409 Conflict` — `expected_revision` is stale or replayed.
-- `422 Unprocessable Entity` — Illegal transition (e.g. direct from UNRESOLVED), empty details, `verified_by` exceeding 64 characters, or malformed UUID.
-- `500 Internal Server Error` — Sanitized unexpected error.
+- `422 Unprocessable Entity` — Precondition or illegal transition failure (verification requested when current condition is not `RECOVERY_PENDING_VERIFICATION`, such as from `UNRESOLVED` or `RESOLVED`), empty details, `verified_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
 
 ##### Representative Request Example
 ```json

@@ -2,24 +2,27 @@
 
 ## Current milestone
 
-Issue recovery and post-correction verification
+Recovery-verification workflow closeout
 
-## Accepted prerequisite
+## Review state
 
-- `DLK-M3-018` — Cause-confirmation API closeout — **accepted**
-  - reviewed commit: `0227574b358972bc439416184093ca1b8407125d`
-  - closes the DLK-M3-017 cause-confirmation correction chain
+- `DLK-M3-019` — Durable recovery action and post-correction verification workflow — **changes_requested**
+  - reviewed commit: `d881b44b59a80bbefd173d180541ae884fbf87ed`
+  - blockers:
+    - require `RECOVERY_PENDING_VERIFICATION` before any verification submission
+    - sanitize unexpected state-manager `ValueError`s as HTTP 500
+    - prove rollback preserves prior confirmation and lifecycle audit history
 
-## In Progress
+## Ready
 
-- `DLK-M3-019` — Durable recovery action and post-correction verification workflow — **implemented**
-  - task: `.agents/handoff/tasks/DLK-M3-019-recovery-verification-api.md`
+- `DLK-M3-020` — Recovery-verification workflow closeout — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-020-recovery-verification-closeout.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-018`
+  - depends on: `DLK-M3-019`
 
 ## Not released
 
-Blocked until DLK-M3-019 is implemented and accepted:
+Blocked until DLK-M3-020 is implemented and accepted:
 
 - resolved-issue recurrence reporting (`RECURRED`)
 - report generation
@@ -28,4 +31,4 @@ Blocked until DLK-M3-019 is implemented and accepted:
 - historical-case retrieval
 - frontend recovery/verification integration
 
-Only DLK-M3-019 is authorized for implementation.
+Only DLK-M3-020 is authorized for implementation.

@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.models.case import (
     AnalysisRevisionModel,
+    CaseCauseConfirmationModel,
     CaseCheckResultModel,
+    CaseLifecycleEventModel,
     CaseModel,
     ObservationModel,
     QuestionAnswerModel,
@@ -29,6 +31,8 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
     - All observations (sorted deterministically by observation_id)
     - All question answers (sorted by resulting_revision_number, question_id)
     - All check results (sorted by resulting_revision_number, check_id)
+    - All cause confirmations (sorted by resulting_revision_number, cause_id)
+    - All lifecycle events (sorted by resulting_revision_number, event_type)
     - All analysis revisions and their full result_snapshot JSON payloads
     """
     case_row = session.scalar(
@@ -116,6 +120,49 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
         for c in cr_rows
     ]
 
+    conf_rows = session.scalars(
+        select(CaseCauseConfirmationModel)
+        .where(CaseCauseConfirmationModel.case_id == case_id)
+        .order_by(
+            CaseCauseConfirmationModel.resulting_revision_number.asc(),
+            CaseCauseConfirmationModel.cause_id.asc(),
+        )
+        .execution_options(populate_existing=True)
+    ).all()
+    conf_data = [
+        {
+            "cause_id": str(c.cause_id),
+            "confirmed_by": str(c.confirmed_by) if c.confirmed_by is not None else None,
+            "notes": str(c.notes) if c.notes is not None else None,
+            "confirmed_at": c.confirmed_at.isoformat() if c.confirmed_at is not None else None,
+            "resulting_revision_number": int(c.resulting_revision_number),
+        }
+        for c in conf_rows
+    ]
+
+    lifecycle_rows = session.scalars(
+        select(CaseLifecycleEventModel)
+        .where(CaseLifecycleEventModel.case_id == case_id)
+        .order_by(
+            CaseLifecycleEventModel.resulting_revision_number.asc(),
+            CaseLifecycleEventModel.event_type.asc(),
+        )
+        .execution_options(populate_existing=True)
+    ).all()
+    lifecycle_data = [
+        {
+            "event_type": str(l.event_type),
+            "prior_issue_condition": str(l.prior_issue_condition) if l.prior_issue_condition is not None else None,
+            "resulting_issue_condition": str(l.resulting_issue_condition) if l.resulting_issue_condition is not None else None,
+            "resulting_revision_number": int(l.resulting_revision_number),
+            "actor": str(l.actor) if l.actor is not None else None,
+            "details": str(l.details) if l.details is not None else None,
+            "verification_passed": bool(l.verification_passed) if l.verification_passed is not None else None,
+            "created_at": l.created_at.isoformat() if l.created_at is not None else None,
+        }
+        for l in lifecycle_rows
+    ]
+
     rev_rows = session.scalars(
         select(AnalysisRevisionModel)
         .where(AnalysisRevisionModel.case_id == case_id)
@@ -138,5 +185,7 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
         "observations": obs_data,
         "question_answers": qa_data,
         "check_results": cr_data,
+        "cause_confirmations": conf_data,
+        "lifecycle_events": lifecycle_data,
         "analysis_revisions": rev_data,
     }

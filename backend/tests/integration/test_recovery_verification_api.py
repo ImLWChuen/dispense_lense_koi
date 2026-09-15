@@ -1,4 +1,4 @@
-﻿"""
+"""
 DispenseIQ — Recovery Action & Post-Correction Verification Integration Tests
 
 Tests:
@@ -169,6 +169,27 @@ def _advance_case_to_rev3(tracked_ids: list[str]) -> tuple[dict[str, Any], int]:
     assert chk_resp.json()["current_revision"] == 3
 
     return chk_resp.json(), 3
+
+
+def _advance_case_to_rev4_with_confirmation(tracked_ids: list[str]) -> tuple[dict[str, Any], int]:
+    """Create a case and advance it to Revision 4 (Rev 1: initial, Rev 2: QA, Rev 3: Check, Rev 4: Confirmation)."""
+    case_data, _ = _advance_case_to_rev3(tracked_ids)
+    case_id = case_data["case_id"]
+
+    conf_resp = client.post(
+        f"/api/v1/cases/{case_id}/cause-confirmations",
+        json={
+            "cause_id": "nozzle_restriction",
+            "expected_revision": 3,
+            "confirmed_by": "lead_tech",
+            "notes": "Verified restriction via microscopic inspection",
+        },
+    )
+    assert conf_resp.status_code == 200
+    assert conf_resp.json()["current_revision"] == 4
+
+    return conf_resp.json(), 4
+
 
 def test_recovery_routes_registered_in_openapi():
     resp = client.get("/openapi.json")
@@ -476,25 +497,287 @@ def test_direct_verification_from_unresolved_is_rejected_422(tracked_cases: list
     factory = get_session_factory()
     with factory() as session:
         baseline = capture_complete_case_state(session, case_id)
+def test_recovery_verification_from_unresolved_pass_rejected_422(tracked_cases: list[str]):
+    """R1 regression: Verification with verification_passed=True on an UNRESOLVED case
+    using non-stale current revision returns 422 with zero mutation."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+    assert case_data["issue_condition"] == "UNRESOLVED"
+    assert rev == 4
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
 
     resp = client.post(
         f"/api/v1/cases/{case_id}/recovery-verifications",
         json={
-            "expected_revision": 1,
+            "expected_revision": rev,
             "verification_passed": True,
-            "verification_details": "Trying to skip recovery action",
+            "verification_details": "Attempting verification directly from UNRESOLVED with pass",
+            "verified_by": "qa_inspector",
         },
     )
     assert resp.status_code == 422, resp.text
     assert "Illegal issue condition transition" in resp.json()["detail"]
+    assert "recovery verification requires 'RECOVERY_PENDING_VERIFICATION'" in resp.json()["detail"]
 
     with factory() as session:
         after = capture_complete_case_state(session, case_id)
         assert after == baseline
-        events = session.scalars(
+        events = list(session.scalars(
             select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
-        ).all()
+        ).all())
         assert len(events) == 0
+
+
+def test_recovery_verification_from_unresolved_fail_rejected_422(tracked_cases: list[str]):
+    """R1 regression: Verification with verification_passed=False on an UNRESOLVED case
+    using non-stale current revision returns 422 with zero mutation."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+    assert case_data["issue_condition"] == "UNRESOLVED"
+    assert rev == 4
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": rev,
+            "verification_passed": False,
+            "verification_details": "Attempting verification directly from UNRESOLVED with fail",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "Illegal issue condition transition" in resp.json()["detail"]
+    assert "recovery verification requires 'RECOVERY_PENDING_VERIFICATION'" in resp.json()["detail"]
+
+    with factory() as session:
+        after = capture_complete_case_state(session, case_id)
+        assert after == baseline
+        events = list(session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
+        ).all())
+        assert len(events) == 0
+
+
+def test_recovery_verification_from_resolved_pass_rejected_422(tracked_cases: list[str]):
+    """R1 regression: Verification with verification_passed=True on an already RESOLVED case
+    using non-stale current revision returns 422 with zero mutation."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+
+    act_resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": rev,
+            "recovery_details": "Nozzle cleaning and purge",
+            "performed_by": "lead_tech",
+        },
+    )
+    assert act_resp.status_code == 200
+    assert act_resp.json()["current_revision"] == 5
+
+    ver_resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 5,
+            "verification_passed": True,
+            "verification_details": "Inspection verified nominal",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert ver_resp.status_code == 200
+    assert ver_resp.json()["issue_condition"] == "RESOLVED"
+    assert ver_resp.json()["current_revision"] == 6
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 6,
+            "verification_passed": True,
+            "verification_details": "Attempting second verification pass on already RESOLVED case",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "Illegal issue condition transition" in resp.json()["detail"]
+    assert "recovery verification requires 'RECOVERY_PENDING_VERIFICATION'" in resp.json()["detail"]
+
+    with factory() as session:
+        after = capture_complete_case_state(session, case_id)
+        assert after == baseline
+        events = list(session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
+        ).all())
+        assert len(events) == 2
+
+
+def test_recovery_verification_from_resolved_fail_rejected_422(tracked_cases: list[str]):
+    """R1 regression: Verification with verification_passed=False on an already RESOLVED case
+    using non-stale current revision returns 422 with zero mutation."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+
+    act_resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": rev,
+            "recovery_details": "Nozzle cleaning and purge",
+            "performed_by": "lead_tech",
+        },
+    )
+    assert act_resp.status_code == 200
+    assert act_resp.json()["current_revision"] == 5
+
+    ver_resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 5,
+            "verification_passed": True,
+            "verification_details": "Inspection verified nominal",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert ver_resp.status_code == 200
+    assert ver_resp.json()["issue_condition"] == "RESOLVED"
+    assert ver_resp.json()["current_revision"] == 6
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
+
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 6,
+            "verification_passed": False,
+            "verification_details": "Attempting verification fail on already RESOLVED case",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "Illegal issue condition transition" in resp.json()["detail"]
+    assert "recovery verification requires 'RECOVERY_PENDING_VERIFICATION'" in resp.json()["detail"]
+
+    with factory() as session:
+        after = capture_complete_case_state(session, case_id)
+        assert after == baseline
+        events = list(session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
+        ).all())
+        assert len(events) == 2
+
+
+def test_recovery_action_unexpected_state_manager_value_error_returns_sanitized_500(
+    monkeypatch: pytest.MonkeyPatch, tracked_cases: list[str]
+):
+    """R2 regression: Unexpected ValueError during legal recovery action transition
+    returns sanitized 500 without leaking sensitive paths/markers and causes zero mutations."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
+
+    leak_marker = "SYNTHETIC_SENSITIVE_LEAK: /private/internal/secret_core_path.py line 42"
+
+    def mock_transition_issue_condition(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError(leak_marker)
+
+    monkeypatch.setattr(
+        "app.api.cases.StateManager.transition_issue_condition",
+        mock_transition_issue_condition,
+    )
+
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": rev,
+            "recovery_details": "Ultrasonic bath and fresh nozzle",
+            "performed_by": "tech_alice",
+        },
+    )
+    assert resp.status_code == 500
+    assert leak_marker not in resp.text
+    assert "/private/internal/secret_core_path.py" not in resp.text
+    assert resp.json()["detail"] == "An unexpected error occurred while submitting the recovery action."
+
+    with factory() as session:
+        after = capture_complete_case_state(session, case_id)
+        assert after == baseline
+        events = list(session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
+        ).all())
+        assert len(events) == 0
+
+
+def test_recovery_verification_unexpected_state_manager_value_error_returns_sanitized_500(
+    monkeypatch: pytest.MonkeyPatch, tracked_cases: list[str]
+):
+    """R2 regression: Unexpected ValueError during legal recovery verification transition
+    returns sanitized 500 without leaking sensitive paths/markers and causes zero mutations."""
+    case_data, rev = _advance_case_to_rev4_with_confirmation(tracked_cases)
+    case_id = case_data["case_id"]
+
+    act_resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": rev,
+            "recovery_details": "Nozzle cleaned",
+            "performed_by": "tech_alice",
+        },
+    )
+    assert act_resp.status_code == 200
+    assert act_resp.json()["current_revision"] == 5
+    assert act_resp.json()["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+
+    factory = get_session_factory()
+    with factory() as session:
+        baseline = capture_complete_case_state(session, case_id)
+
+    leak_marker = "SYNTHETIC_SENSITIVE_LEAK: /private/internal/secret_core_path.py line 42"
+
+    def mock_transition_issue_condition(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError(leak_marker)
+
+    monkeypatch.setattr(
+        "app.api.cases.StateManager.transition_issue_condition",
+        mock_transition_issue_condition,
+    )
+
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 5,
+            "verification_passed": True,
+            "verification_details": "Inspection passed",
+            "verified_by": "qa_inspector",
+        },
+    )
+    assert resp.status_code == 500
+    assert leak_marker not in resp.text
+    assert "/private/internal/secret_core_path.py" not in resp.text
+    assert resp.json()["detail"] == "An unexpected error occurred while submitting the recovery verification."
+
+    with factory() as session:
+        after = capture_complete_case_state(session, case_id)
+        assert after == baseline
+        events = list(session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == case_id)
+        ).all())
+        assert len(events) == 1
+        assert events[0].event_type == "RECOVERY_ACTION"
+        assert events[0].resulting_revision_number == 5
 
 
 def test_illegal_recovery_action_from_resolved_rejected_422(tracked_cases: list[str]):
@@ -581,10 +864,10 @@ def test_recovery_verification_stale_revision_and_replay_rejected_409(tracked_ca
 
 
 def test_recovery_action_rollback_on_injected_database_failure(tracked_cases: list[str]):
-    control_data, _ = _advance_case_to_rev3(tracked_cases)
+    control_data, _ = _advance_case_to_rev4_with_confirmation(tracked_cases)
     control_id = control_data["case_id"]
 
-    target_data, _ = _advance_case_to_rev3(tracked_cases)
+    target_data, _ = _advance_case_to_rev4_with_confirmation(tracked_cases)
     target_id = target_data["case_id"]
 
     factory = get_session_factory()
@@ -592,7 +875,14 @@ def test_recovery_action_rollback_on_injected_database_failure(tracked_cases: li
         control_baseline = capture_complete_case_state(session, control_id)
         target_baseline = capture_complete_case_state(session, target_id)
 
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(target_baseline["check_results"]) == 1
+    assert len(target_baseline["cause_confirmations"]) == 1
+    assert len(target_baseline["lifecycle_events"]) == 0
+    assert target_baseline["case"]["issue_condition"] == "UNRESOLVED"
+
     baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    assert baseline_rev == 4
     attempted_rev = baseline_rev + 1
 
     fault_reached = False
@@ -661,6 +951,11 @@ def test_recovery_action_rollback_on_injected_database_failure(tracked_cases: li
         assert target_after == target_baseline
         assert control_after == control_baseline
         assert target_after["case"]["issue_condition"] == "UNRESOLVED"
+        assert len(target_after["cause_confirmations"]) == 1
+        assert len(target_after["question_answers"]) == 1
+        assert len(target_after["check_results"]) == 1
+        assert len(target_after["lifecycle_events"]) == 0
+        assert len(target_after["analysis_revisions"]) == 4
 
         events = list(
             fresh_session.scalars(
@@ -671,19 +966,19 @@ def test_recovery_action_rollback_on_injected_database_failure(tracked_cases: li
 
 
 def test_recovery_verification_rollback_on_injected_database_failure(tracked_cases: list[str]):
-    control_data, _ = _advance_case_to_rev3(tracked_cases)
+    control_data, _ = _advance_case_to_rev4_with_confirmation(tracked_cases)
     control_id = control_data["case_id"]
 
-    target_data, _ = _advance_case_to_rev3(tracked_cases)
+    target_data, _ = _advance_case_to_rev4_with_confirmation(tracked_cases)
     target_id = target_data["case_id"]
 
     client.post(
         f"/api/v1/cases/{control_id}/recovery-actions",
-        json={"expected_revision": 3, "recovery_details": "Action control"},
+        json={"expected_revision": 4, "recovery_details": "Action control", "performed_by": "tech_control"},
     )
     client.post(
         f"/api/v1/cases/{target_id}/recovery-actions",
-        json={"expected_revision": 3, "recovery_details": "Action target"},
+        json={"expected_revision": 4, "recovery_details": "Action target", "performed_by": "tech_target"},
     )
 
     factory = get_session_factory()
@@ -691,8 +986,16 @@ def test_recovery_verification_rollback_on_injected_database_failure(tracked_cas
         control_baseline = capture_complete_case_state(session, control_id)
         target_baseline = capture_complete_case_state(session, target_id)
 
-    baseline_rev = 4
-    attempted_rev = 5
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(target_baseline["check_results"]) == 1
+    assert len(target_baseline["cause_confirmations"]) == 1
+    assert len(target_baseline["lifecycle_events"]) == 1
+    assert target_baseline["lifecycle_events"][0]["event_type"] == "RECOVERY_ACTION"
+    assert target_baseline["lifecycle_events"][0]["resulting_revision_number"] == 5
+    assert target_baseline["case"]["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+
+    baseline_rev = 5
+    attempted_rev = 6
 
     fault_reached = False
     pending_event_captured: dict[str, Any] = {}
@@ -759,8 +1062,24 @@ def test_recovery_verification_rollback_on_injected_database_failure(tracked_cas
         assert target_after == target_baseline
         assert control_after == control_baseline
         assert target_after["case"]["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+        assert len(target_after["cause_confirmations"]) == 1
+        assert len(target_after["question_answers"]) == 1
+        assert len(target_after["check_results"]) == 1
+        assert len(target_after["lifecycle_events"]) == 1
+        assert target_after["lifecycle_events"][0]["event_type"] == "RECOVERY_ACTION"
+        assert target_after["lifecycle_events"][0]["resulting_revision_number"] == 5
+        assert len(target_after["analysis_revisions"]) == 5
 
-        events = list(
+        all_events = list(
+            fresh_session.scalars(
+                select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == target_id)
+            ).all()
+        )
+        assert len(all_events) == 1
+        assert all_events[0].event_type == "RECOVERY_ACTION"
+        assert all_events[0].resulting_revision_number == 5
+
+        rev6_events = list(
             fresh_session.scalars(
                 select(CaseLifecycleEventModel).where(
                     CaseLifecycleEventModel.case_id == target_id,
@@ -768,7 +1087,7 @@ def test_recovery_verification_rollback_on_injected_database_failure(tracked_cas
                 )
             ).all()
         )
-        assert len(events) == 0
+        assert len(rev6_events) == 0
 
 
 def test_monotonic_mixed_revision_history_all_five_event_types(tracked_cases: list[str]):
