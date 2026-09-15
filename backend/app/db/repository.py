@@ -249,6 +249,24 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_latest_analysis_revision(
+        self,
+        case_id: str,
+    ) -> AnalysisRevisionModel | None:
+        """Retrieve the latest analysis revision for a case ordered by revision_number descending."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(AnalysisRevisionModel)
+                .where(AnalysisRevisionModel.case_id == case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            return session.scalars(stmt).first()
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_question_answers(
         self, case_id: str, max_revision: int | None = None
     ) -> list[QuestionAnswerModel]:

@@ -262,10 +262,10 @@ Do not push, merge, rebase, create/update a PR, or modify `main`.
 - Implemented `POST /api/v1/cases/{case_id}/recurrences` to allow durable reporting of recurrence for an issue previously verified as `RESOLVED`.
 - Strictly enforces the `issue_condition == RESOLVED` precondition: requests from `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED` return HTTP `422` with zero database mutation.
 - Enforces optimistic concurrency by verifying `expected_revision == current_revision`, rejecting stale or replayed requests with HTTP `409` and zero mutation.
-- Integrates with domain `StateManager.record_recurrence(current_case)` to transition issue condition to `RECURRED` without modifying any cause conclusions, rankings, or evidence.
+- Integrates with domain `StateManager.transition_issue_condition(current_case, ...)` to transition issue condition to `RECURRED` without modifying any cause conclusions, rankings, or evidence.
 - Preserves cause invariant: confirmed causes remain confirmed, and unconfirmed causes do not become confirmed.
 - Does not trigger an automatic recovery cycle or modify earlier recovery verification events.
-- Reuses existing `CaseLifecycleEventModel` with `event_type="RECURRENCE"`, `verification_passed=None`, `details=request.recurrence_details`, and `reported_by=request.reported_by`. Appends immutable Revision N+1 in an atomic locked session.
+- Reuses existing `CaseLifecycleEventModel` with `event_type="RECURRENCE"`, `verification_passed=None`, `details=request.recurrence_details`, and actor field `actor`. Appends immutable Revision N+1 in an atomic locked session via `append_recurrence_revision` and `append_lifecycle_event_revision`.
 - Sanitizes unexpected domain or internal `ValueError`s into generic HTTP `500` without leaking internal diagnostic strings or system details.
 - Validated post-write rollback: failure injected at `before_commit` rolls back pending database writes, preserving complete target case baseline and unrelated control cases.
 
@@ -273,7 +273,7 @@ Do not push, merge, rebase, create/update a PR, or modify `main`.
 
 - `backend/app/schemas/case.py`: Added `SubmitRecurrenceRequest` (validating `expected_revision >= 1`, non-empty `recurrence_details`, optional `reported_by` max 64 chars, and forbidding extra attributes) and `CaseRecurrenceResponse` schema models.
 - `backend/app/api/cases.py`: Implemented `submit_case_recurrence` route handler with UUID validation, `RESOLVED` precondition check, optimistic revision checking, domain state transition, locked repository append, pre-commit response serialization, and sanitized HTTP 500 handling.
-- `backend/app/db/repository.py`: Added `append_recurrence_event` method wrapping atomic `append_lifecycle_event` with `event_type="RECURRENCE"`, `verification_passed=None`, `details`, and `reported_by`.
+- `backend/app/db/repository.py`: Added `append_recurrence_revision` method wrapping atomic `append_lifecycle_event_revision` with `event_type="RECURRENCE"`, `verification_passed=None`, `details`, and `actor`.
 - `backend/tests/integration/test_recurrence_api.py`: Added integration test suite with 9 scenarios testing happy path, unconfirmed cause preservation, invalid source states (422), stale revision conflict (409), input validation and missing case (404/422), internal error sanitization (500), post-write rollback before commit, and 7-revision mixed sequence.
 - `backend/tests/integration/test_persistence.py`: Added persistence-level recurrence integration tests verifying locked atomic persistence, revision monotonicity, and rollback guarantees.
 - `docs/api/api-spec.md`: Documented `POST /api/v1/cases/{case_id}/recurrences` with request/response schemas, status codes (`200`, `404`, `409`, `422`, `500`), optimistic concurrency, and domain semantics.
@@ -291,9 +291,11 @@ Do not push, merge, rebase, create/update a PR, or modify `main`.
 - **Response**: `200 OK` returning `CaseRecurrenceResponse`:
   - `case_id`: UUID string.
   - `issue_condition`: `"RECURRED"`.
-  - `lifecycle_event`: Event representation with `id`, `event_type="RECURRENCE"`, `verification_passed=None`, `details`, `reported_by`, `created_at`.
-  - `revision`: Updated revision metadata (`revision_number`, `source_event_type="RECURRENCE"`, `source_event_id`).
-  - `diagnosis`: Full current diagnosis projection.
+  - `current_revision`: Updated revision number.
+  - `submitted_recurrence`: Event representation with `id`, `case_id`, `event_type="RECURRENCE"`, `prior_issue_condition`, `resulting_issue_condition`, `resulting_revision_number`, `actor`, `details`, `verification_passed=None`, `created_at`.
+  - `submitted_event`: Alias identical to `submitted_recurrence`.
+  - `lifecycle_events`: Chronological list of all `LifecycleEventRecord` models.
+  - `diagnosis`: Full current diagnosis projection with `diagnosis.analysis_revision`.
 - **Error Codes**:
   - `404 Not Found`: Case does not exist.
   - `409 Conflict`: Stale `expected_revision` or replay.
@@ -303,13 +305,13 @@ Do not push, merge, rebase, create/update a PR, or modify `main`.
 ### Lifecycle/revision decisions
 
 - Reused existing `CaseLifecycleEventModel` table with `event_type="RECURRENCE"` and `verification_passed=None`. No database migration required.
-- Reconstructed `StructuredCase` from durable history and passed it to `StateManager.record_recurrence()`, ensuring consistency with domain transition rules.
+- Reconstructed `StructuredCase` from durable history and passed it to `StateManager.transition_issue_condition()`, ensuring consistency with domain transition rules.
 - Atomic append operation generates Revision N+1 linked to the new recurrence lifecycle event. All prior revision snapshots remain strictly immutable.
 - Explicitly maintained separation of concerns: reporting recurrence updates issue condition only; it does not unconfirm or confirm causes, modify cause rankings, or generate automated recovery actions.
 
 ### Rollback verification
 
-- Implemented in `test_post_write_rollback_preserves_target_and_control` using SQLAlchemy `before_commit` hook after `append_recurrence_event` has flushed pending writes to the database.
+- Implemented in `test_post_write_rollback_preserves_target_and_control` using SQLAlchemy `before_commit` hook after `append_recurrence_revision` has flushed pending writes to the database.
 - Failure injection verified that production transaction handling safely issues `session.rollback()`.
 - Verified in an independent database session that:
   1. The flushed recurrence event is completely absent from `case_lifecycle_events`.

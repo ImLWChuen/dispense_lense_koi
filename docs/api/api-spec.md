@@ -2366,6 +2366,222 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 9. Durable Case Report Export
+
+#### 9.1 Export Full Case Report
+
+- **Method / Path:** `GET /api/v1/cases/{case_id}/report`
+- **Description:** Returns a complete, deterministic, and durable read-model report of a troubleshooting case. Assembles the report entirely from persistent database records and audit revision history without invoking the diagnostic engine, recalculating scores, advancing state, creating revisions, or writing audit records.
+
+##### Read-Only & Zero Recalculation Contract
+- **No Diagnostic Recalculation:** Assembles the report strictly from persisted tables (`cases`, `analysis_revisions`, `question_answer_revisions`, `check_result_revisions`, `cause_confirmation_revisions`, `case_lifecycle_events`). Diagnostic engine rules and scoring logic are never invoked.
+- **Zero Mutation:** Operates strictly within a read-only transaction. No database tables are inserted, updated, or deleted; no analysis revisions or lifecycle event records are generated.
+- **Deterministic History Ordering:** All audit event arrays (`question_answers`, `check_results`, `cause_confirmations`, `lifecycle_events`) are guaranteed to be sorted in strict ascending chronological and revision order.
+- **Empty History Handling:** Cases with no question answers, check results, cause confirmations, or lifecycle events return empty lists (`[]`) without synthetic or fabricated events.
+- **Document Rendering Notice:** Returns structured JSON only. Binary PDF, Word/DOCX, or HTML document rendering is explicitly deferred to future increments.
+
+##### Response Schema (`CaseReportResponse`)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | `UUID` | **Yes** | Unique identifier of the case. |
+| `title` | `string` | **Yes** | Case title. |
+| `description` | `string` | **Yes** | Detailed case description. |
+| `initial_symptoms` | `array[string]` | **Yes** | Initial symptoms provided at case inception. |
+| `dispense_pattern` | `string` | No | Dispense pattern classification (or null). |
+| `fluid_type` | `string` | No | Dispensed fluid type (or null). |
+| `created_at` | `datetime` | **Yes** | ISO-8601 timestamp when the case was created. |
+| `updated_at` | `datetime` | **Yes** | ISO-8601 timestamp of last case update. |
+| `current_diagnosis` | `DiagnosisResponse` | **Yes** | Current analysis snapshot from the latest analysis revision (aliased as `diagnosis`). |
+| `diagnosis` | `DiagnosisResponse` | **Yes** | Alias for `current_diagnosis`. |
+| `question_answers` | `array[QuestionAnswerRecord]` | **Yes** | Historical question-answer submissions in ascending revision order (aliased as `question_answer_history`). |
+| `question_answer_history` | `array[QuestionAnswerRecord]` | **Yes** | Alias for `question_answers`. |
+| `check_results` | `array[CheckResultRecord]` | **Yes** | Historical troubleshooting check results in ascending revision order (aliased as `check_result_history`). |
+| `check_result_history` | `array[CheckResultRecord]` | **Yes** | Alias for `check_results`. |
+| `cause_confirmations` | `array[CauseConfirmationRecord]` | **Yes** | Historical cause confirmation submissions in ascending revision order (aliased as `cause_confirmation_history`). |
+| `cause_confirmation_history` | `array[CauseConfirmationRecord]` | **Yes** | Alias for `cause_confirmations`. |
+| `lifecycle_events` | `array[CaseLifecycleEventRecord]` | **Yes** | Complete audit log of lifecycle transitions in ascending revision order (aliased as `lifecycle_event_history`). |
+| `lifecycle_event_history` | `array[CaseLifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
+| `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the final or current case state. |
+
+##### Outcome Summary Schema (`CaseOutcomeSummary`)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `issue_condition` | `string` | **Yes** | Current case issue condition (`UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, or `RECURRED`). |
+| `current_revision` | `integer` | **Yes** | Current revision number of the case. |
+| `confirmed_causes` | `array[string]` | **Yes** | List of confirmed root causes (empty if none confirmed). |
+| `is_resolved` | `boolean` | **Yes** | Whether the case is currently in `RESOLVED` condition. |
+
+##### Status and Error Codes
+- `200 OK` — Complete report assembled and returned.
+- `404 Not Found` — Case ID does not exist in database.
+- `422 Unprocessable Entity` — Invalid case ID format (not a valid UUID).
+- `500 Internal Server Error` — Sanitized unexpected error during report assembly; raw internal details and paths are never exposed.
+
+##### Representative Request Example
+```http
+GET /api/v1/cases/514614df-ea4c-4855-be1e-98ea73135a8d/report HTTP/1.1
+Host: localhost:8000
+Accept: application/json
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "title": "Severe Dispense Tail Issue",
+  "description": "Tail defect observed on dispense line A",
+  "initial_symptoms": [
+    "tail"
+  ],
+  "dispense_pattern": "lines",
+  "fluid_type": "epoxy",
+  "created_at": "2026-09-14T10:00:00Z",
+  "updated_at": "2026-09-14T12:00:00Z",
+  "current_diagnosis": {
+    "issue_condition": "RESOLVED",
+    "analysis_revision": {
+      "revision_number": 6
+    },
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "name": "Nozzle Restriction / Clog",
+        "score": 45.0,
+        "is_confirmed": true
+      }
+    ],
+    "unconfirmed_causes": []
+  },
+  "diagnosis": {
+    "issue_condition": "RESOLVED",
+    "analysis_revision": {
+      "revision_number": 6
+    },
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "name": "Nozzle Restriction / Clog",
+        "score": 45.0,
+        "is_confirmed": true
+      }
+    ],
+    "unconfirmed_causes": []
+  },
+  "question_answers": [
+    {
+      "revision_number": 2,
+      "question_id": "fluid_temp",
+      "answer": "fluid_temp_normal",
+      "created_at": "2026-09-14T10:15:00Z"
+    }
+  ],
+  "question_answer_history": [
+    {
+      "revision_number": 2,
+      "question_id": "fluid_temp",
+      "answer": "fluid_temp_normal",
+      "created_at": "2026-09-14T10:15:00Z"
+    }
+  ],
+  "check_results": [
+    {
+      "revision_number": 3,
+      "check_id": "check_nozzle_clog",
+      "result": "positive",
+      "notes": "Debris observed in nozzle tip",
+      "created_at": "2026-09-14T10:30:00Z"
+    }
+  ],
+  "check_result_history": [
+    {
+      "revision_number": 3,
+      "check_id": "check_nozzle_clog",
+      "result": "positive",
+      "notes": "Debris observed in nozzle tip",
+      "created_at": "2026-09-14T10:30:00Z"
+    }
+  ],
+  "cause_confirmations": [
+    {
+      "revision_number": 4,
+      "confirmed_cause": "nozzle_restriction",
+      "notes": "Verified nozzle restriction",
+      "created_at": "2026-09-14T10:45:00Z"
+    }
+  ],
+  "cause_confirmation_history": [
+    {
+      "revision_number": 4,
+      "confirmed_cause": "nozzle_restriction",
+      "notes": "Verified nozzle restriction",
+      "created_at": "2026-09-14T10:45:00Z"
+    }
+  ],
+  "lifecycle_events": [
+    {
+      "event_type": "RECOVERY_ACTION",
+      "prior_issue_condition": "UNRESOLVED",
+      "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_revision_number": 5,
+      "actor": "technician_dan",
+      "details": "Replaced nozzle tip and performed purge cycle",
+      "verification_passed": null,
+      "created_at": "2026-09-14T11:00:00Z"
+    },
+    {
+      "event_type": "RECOVERY_VERIFICATION",
+      "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_issue_condition": "RESOLVED",
+      "resulting_revision_number": 6,
+      "actor": "technician_dan",
+      "details": "5 test shots inspected under microscope. Zero tailing observed.",
+      "verification_passed": true,
+      "created_at": "2026-09-14T11:30:00Z"
+    }
+  ],
+  "lifecycle_event_history": [
+    {
+      "event_type": "RECOVERY_ACTION",
+      "prior_issue_condition": "UNRESOLVED",
+      "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_revision_number": 5,
+      "actor": "technician_dan",
+      "details": "Replaced nozzle tip and performed purge cycle",
+      "verification_passed": null,
+      "created_at": "2026-09-14T11:00:00Z"
+    },
+    {
+      "event_type": "RECOVERY_VERIFICATION",
+      "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_issue_condition": "RESOLVED",
+      "resulting_revision_number": 6,
+      "actor": "technician_dan",
+      "details": "5 test shots inspected under microscope. Zero tailing observed.",
+      "verification_passed": true,
+      "created_at": "2026-09-14T11:30:00Z"
+    }
+  ],
+  "outcome_summary": {
+    "issue_condition": "RESOLVED",
+    "current_revision": 6,
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "is_resolved": true
+  }
+}
+```
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found
@@ -2510,6 +2726,13 @@ Example response (recurrence reporting failure):
   "detail": "An unexpected error occurred while submitting the issue recurrence."
 }
 ```
+
+Example response (case report generation failure):
+```json
+{
+  "detail": "An unexpected error occurred while generating the case report."
+}
+```
 *Note: Exception details, stack traces, database URLs, credentials, SQL statements, file system paths, and submitted user data are sanitized and never exposed in the response.*
 
 ---
@@ -2537,3 +2760,9 @@ Example response (recurrence reporting failure):
    - When an issue that was previously `RESOLVED` recurs in production, submit `POST /api/v1/cases/{case_id}/recurrences` with the current revision and descriptive recurrence details.
    - Recurrence reporting transitions the condition from `RESOLVED` to `RECURRED`. It is valid **only** from `RESOLVED`; calling this endpoint on an `UNRESOLVED` or `RECOVERY_PENDING_VERIFICATION` case returns HTTP 422.
    - Recurrence does not automatically initiate recovery or alter prior root-cause confirmation.
+
+6. **Durable Case Report Export:**
+   - Use `GET /api/v1/cases/{case_id}/report` to retrieve the comprehensive, deterministic read-model for a case.
+   - The report contains the complete case profile, latest diagnosis snapshot, complete audit history (`question_answers`, `check_results`, `cause_confirmations`, `lifecycle_events`) in strict ascending revision order, and a compact `outcome_summary`.
+   - The endpoint performs zero diagnostic recalculation and commits zero mutations.
+   - Note that binary document export (PDF, Word/DOCX) is not performed by the backend in this increment; the frontend should format or render the returned JSON report as needed for display or client-side print/export.

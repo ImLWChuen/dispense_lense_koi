@@ -18,6 +18,7 @@ from app.schemas.case import (
     CaseRecoveryActionResponse,
     CaseRecoveryVerificationResponse,
     CaseRecurrenceResponse,
+    CaseReportResponse,
     CauseConfirmationRecord,
     CheckResultRecord,
     CreateCaseRequest,
@@ -46,6 +47,7 @@ from app.schemas.diagnosis import (
 from app.knowledge import get_causes_for_defect
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
+from app.services.reporting.report_generator import build_case_report
 
 logger = logging.getLogger(__name__)
 
@@ -1973,4 +1975,51 @@ def submit_case_recurrence(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while submitting the issue recurrence.",
+        )
+
+
+@router.get(
+    "/{case_id}/report",
+    response_model=CaseReportResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid case ID format"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Export deterministic durable case report",
+    description=(
+        "Assembles a deterministic read-only report of a durable case from persisted state "
+        "and audit history. Performs no diagnostic recalculation and creates no database mutations."
+    ),
+)
+def get_case_report(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> CaseReportResponse:
+    """Export a deterministic read-only case report from persisted storage."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        report = build_case_report(canonical_id, repository)
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+        return report
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during case report export for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the case report.",
         )
