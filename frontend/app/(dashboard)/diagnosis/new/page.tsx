@@ -1,10 +1,63 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import ProblemForm from "@/components/diagnosis/ProblemForm";
 import ImageUpload from "@/components/diagnosis/ImageUpload";
+import { casesApi } from "@/lib/api/cases";
+import { CreateCaseRequest, Observation } from "@/types/api";
 
 export default function NewDiagnosisPage() {
+    const router = useRouter();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async (data: Record<string, unknown>) => {
+        setIsSubmitting(true);
+        setError(null);
+
+        try {
+            const observations: Observation[] = [];
+            
+            if (data.depositSize) {
+                observations.push({
+                    observation_type: "deposit_size",
+                    value: data.depositSize as string,
+                });
+            }
+            if (data.frequency) {
+                observations.push({
+                    observation_type: "frequency_pattern",
+                    value: data.frequency as string,
+                });
+            }
+            if (data.location) {
+                observations.push({
+                    observation_type: "location_pattern",
+                    value: data.location as string,
+                });
+            }
+
+            const request: CreateCaseRequest = {
+                defect_code: data.defect as string,
+                description: data.description as string,
+                machine_context: data.equipment ? { equipment: data.equipment } : undefined,
+                observations: observations,
+            };
+
+            const response = await casesApi.createCase(request);
+            router.push(`/diagnosis/${response.case_id}`);
+        } catch (err: any) {
+            console.error("Failed to create diagnosis", err);
+            setError(err.message || "An error occurred while creating the diagnosis.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -26,11 +79,22 @@ export default function NewDiagnosisPage() {
                             Describe the dispensing symptom and provide evidence
                             to begin AI-assisted troubleshooting.
                         </p>
+                        
+                        {error && (
+                            <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
+                                {error}
+                            </div>
+                        )}
+                        {isSubmitting && (
+                            <div className="mt-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-700">
+                                Creating diagnosis... Please wait.
+                            </div>
+                        )}
                     </div>
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="xl:col-span-2">
-                            <ProblemForm />
+                            <ProblemForm onSubmit={handleSubmit} />
                         </div>
 
                         <div>

@@ -4,7 +4,11 @@ import PageContainer from "@/components/layout/PageContainer";
 import CaseDetails from "@/components/cases/CaseDetails";
 import SimilarCases from "@/components/cases/SimilarCases";
 
-export default function CaseDetailPage() {
+import { use } from "react";
+
+export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -29,7 +33,7 @@ export default function CaseDetailPage() {
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="xl:col-span-2">
-                            <CaseDetails />
+                            <CaseDetails caseId={resolvedParams.id} />
                         </div>
 
                         <div>
