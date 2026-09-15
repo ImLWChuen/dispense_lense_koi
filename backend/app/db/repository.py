@@ -1741,3 +1741,34 @@ class CaseRepository:
             result=result,
             expected_revision=expected_revision,
         )
+
+    def append_recurrence_revision(
+        self,
+        case: StructuredCase,
+        reported_by: str,
+        recurrence_details: str,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a recurrence lifecycle event and the resulting analysis revision."""
+        prior_cond = (
+            case.issue_condition.value
+            if hasattr(case.issue_condition, "value")
+            else str(case.issue_condition)
+        )
+        resulting_cond = (
+            result.issue_condition.value
+            if hasattr(result.issue_condition, "value")
+            else str(result.issue_condition)
+        )
+        return self.append_lifecycle_event_revision(
+            case=case,
+            event_type="RECURRENCE",
+            prior_issue_condition=prior_cond,
+            resulting_issue_condition=resulting_cond,
+            actor=reported_by or "technician",
+            details=recurrence_details,
+            verification_passed=None,
+            result=result,
+            expected_revision=expected_revision,
+        )

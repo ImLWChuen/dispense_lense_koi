@@ -481,3 +481,59 @@ class CaseRecoveryVerificationResponse(DurableCaseResponse):
     confirmed_cause: str | None = None
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None
+
+
+class SubmitRecurrenceRequest(BaseModel):
+    """Transport schema for reporting a recurred issue on a previously resolved case.
+
+    Transitions issue condition from RESOLVED to RECURRED.
+    Enforces optimistic concurrency via expected_revision and validates that
+    recurrence_details is a non-empty string, expected_revision is >= 1, and
+    reported_by is at most 64 characters.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    recurrence_details: str = Field(
+        ...,
+        description="Description of the recurred defect observations or symptoms.",
+    )
+    reported_by: str = Field(
+        default="technician",
+        max_length=64,
+        description="Identifier or role of the person reporting the recurrence.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitRecurrenceRequest:
+        if not self.recurrence_details or not self.recurrence_details.strip():
+            raise ValueError("recurrence_details must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        if self.reported_by is not None and len(self.reported_by) > 64:
+            raise ValueError("reported_by must be at most 64 characters.")
+        return self
+
+
+class CaseRecurrenceResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after recurrence submission.
+
+    Extends DurableCaseResponse with current revision, the submitted recurrence record,
+    lifecycle event history, confirmation history, check result history, answer history,
+    and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_recurrence: LifecycleEventRecord
+    submitted_event: LifecycleEventRecord
+    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    confirmed_cause: str | None = None
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None

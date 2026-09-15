@@ -2289,6 +2289,83 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 8. Resolved-Issue Recurrence Reporting
+
+#### 8.1 Report Recurrence of a Resolved Issue
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/recurrences`
+- **Description:** Records explicit reporting that a previously verified `RESOLVED` issue has recurred. Transitions the case issue condition from `RESOLVED` to `RECURRED` via the domain `StateManager`. Does **not** automatically start a new recovery cycle and does **not** alter cause confirmation conclusions.
+
+##### Lifecycle & Concurrency Contract
+- **Atomic Revision Advance:** Each accepted recurrence submission atomically appends one `CaseLifecycleEvent` record (event_type: `RECURRENCE`), advances `cases.issue_condition` to `RECURRED`, and appends one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** Requires `expected_revision`. Stale or replayed revisions return `409 Conflict` and commit zero mutations.
+- **Precondition & State Machine Enforcement:** Recurrence reporting is accepted **only** when the current persisted issue condition is `RESOLVED`. Recurrence requested from `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED` returns controlled `422 Unprocessable Entity` before any lifecycle mutation.
+- **Independence from Cause Conclusions:** A recurrence report leaves existing cause conclusions unchanged. A previously confirmed cause remains confirmed; an unconfirmed cause does not become confirmed merely because recurrence was reported.
+- **No Automatic Recovery or Report Generation:** Does not automatically start a new recovery cycle, enter `RECOVERY_PENDING_VERIFICATION`, or generate reports/exports.
+
+##### Request Schema (`SubmitRecurrenceRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
+| `recurrence_details` | `string` | **Yes** | — | Description of recurred defect observations or symptoms (unrestricted non-empty text). |
+| `reported_by` | `string` | No | `"technician"` | Identifier or role of actor reporting the recurrence (max length 64 characters). |
+
+##### Status and Error Codes
+- `200 OK` — Recurrence accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist.
+- `409 Conflict` — `expected_revision` is stale or replayed.
+- `422 Unprocessable Entity` — Precondition or validation failure (issue condition not `RESOLVED`, e.g. `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED`; empty details; `reported_by` exceeding 64 characters; or malformed UUID).
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
+
+##### Representative Request Example
+```json
+{
+  "expected_revision": 6,
+  "recurrence_details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+  "reported_by": "technician_dan"
+}
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "issue_condition": "RECURRED",
+  "current_revision": 7,
+  "submitted_recurrence": {
+    "event_type": "RECURRENCE",
+    "prior_issue_condition": "RESOLVED",
+    "resulting_issue_condition": "RECURRED",
+    "resulting_revision_number": 7,
+    "actor": "technician_dan",
+    "details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+    "verification_passed": null,
+    "created_at": "2026-09-14T16:00:00.123456Z"
+  },
+  "submitted_event": {
+    "event_type": "RECURRENCE",
+    "prior_issue_condition": "RESOLVED",
+    "resulting_issue_condition": "RECURRED",
+    "resulting_revision_number": 7,
+    "actor": "technician_dan",
+    "details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+    "verification_passed": null,
+    "created_at": "2026-09-14T16:00:00.123456Z"
+  },
+  "lifecycle_events": [ ... ],
+  "confirmed_cause": "nozzle_restriction",
+  "diagnosis": {
+    "issue_condition": "RECURRED",
+    "analysis_revision": {
+      "revision_number": 7
+    }
+  }
+}
+```
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found
@@ -2302,7 +2379,7 @@ Example (`GET /api/v1/cases/00000000-0000-0000-0000-000000000000`):
 ```
 
 ### HTTP 409 Conflict
-Returned when submitting a question answer, troubleshooting check result, cause confirmation, recovery action, or recovery verification with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
+Returned when submitting a question answer, troubleshooting check result, cause confirmation, recovery action, recovery verification, or recurrence report with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
 
 Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with stale `expected_revision: 1` when case is at revision 2):
 ```json
@@ -2426,6 +2503,13 @@ Example response (recovery verification failure):
   "detail": "An unexpected error occurred while recording the recovery verification."
 }
 ```
+
+Example response (recurrence reporting failure):
+```json
+{
+  "detail": "An unexpected error occurred while submitting the issue recurrence."
+}
+```
 *Note: Exception details, stack traces, database URLs, credentials, SQL statements, file system paths, and submitted user data are sanitized and never exposed in the response.*
 
 ---
@@ -2448,3 +2532,8 @@ Example response (recovery verification failure):
    - When corrective actions are taken, submit `POST /api/v1/cases/{case_id}/recovery-actions` to mark the issue as `RECOVERY_PENDING_VERIFICATION`. Do not assume the issue is resolved.
    - After testing (e.g. test shots or inspection), submit `POST /api/v1/cases/{case_id}/recovery-verifications` with `verification_passed: true` (transitions to `RESOLVED`) or `verification_passed: false` (reverts to `UNRESOLVED`).
    - Root cause confirmation and issue resolution are independent: an issue may be resolved without a confirmed root cause, and a confirmed root cause remains confirmed even if a recovery verification fails.
+
+5. **Recurrence Reporting Workflow:**
+   - When an issue that was previously `RESOLVED` recurs in production, submit `POST /api/v1/cases/{case_id}/recurrences` with the current revision and descriptive recurrence details.
+   - Recurrence reporting transitions the condition from `RESOLVED` to `RECURRED`. It is valid **only** from `RESOLVED`; calling this endpoint on an `UNRESOLVED` or `RECOVERY_PENDING_VERIFICATION` case returns HTTP 422.
+   - Recurrence does not automatically initiate recovery or alter prior root-cause confirmation.
