@@ -1922,7 +1922,7 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     repo, tracked_ids = case_repo
     engine = DiagnosticEngine()
 
-    # 1. Create control case (Case A) and advance to Rev 2 with a question answer
+    # 1. Create control case (Case A) and advance to Rev 3 with a question answer AND a prior check result
     control_id = str(uuid.uuid4())
     tracked_ids.append(control_id)
     control_case = engine.prepare_case(
@@ -1947,7 +1947,20 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     repo.append_question_answer_revision(c_ctrl, control_ans, res_ctrl, expected_revision=1)
     db_session.commit()
 
-    # 2. Create target case (Case B) and advance to Rev 2 with a question answer
+    control_loaded_rev2 = repo.load_structured_case(control_id)
+    assert control_loaded_rev2 is not None
+    control_prior_check = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c_ctrl_check, res_ctrl_check = engine.submit_check_result(control_loaded_rev2, control_prior_check)
+    repo.append_check_result_revision(c_ctrl_check, control_prior_check, res_ctrl_check, expected_revision=2)
+    db_session.commit()
+
+    # 2. Create target case (Case B) and advance to Rev 3 with an answer AND a prior check result
     target_id = str(uuid.uuid4())
     tracked_ids.append(target_id)
     target_case = engine.prepare_case(
@@ -1972,21 +1985,37 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     repo.append_question_answer_revision(c_tgt, target_ans, res_tgt, expected_revision=1)
     db_session.commit()
 
+    target_loaded_rev2 = repo.load_structured_case(target_id)
+    assert target_loaded_rev2 is not None
+    target_prior_check = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c_tgt_check, res_tgt_check = engine.submit_check_result(target_loaded_rev2, target_prior_check)
+    repo.append_check_result_revision(c_tgt_check, target_prior_check, res_tgt_check, expected_revision=2)
+    db_session.commit()
+
     # Capture complete baselines from an independent session
     factory = get_session_factory()
     with factory() as session:
         target_baseline = capture_complete_case_state(session, target_id)
         control_baseline = capture_complete_case_state(session, control_id)
 
-    assert len(target_baseline["analysis_revisions"]) == 2
-    assert len(target_baseline["question_answers"]) == 1
-    assert len(control_baseline["analysis_revisions"]) == 2
-    assert len(control_baseline["question_answers"]) == 1
+    # Verify nonempty baselines with both prior question answers AND prior check results
+    assert len(target_baseline["analysis_revisions"]) >= 3
+    assert len(target_baseline["question_answers"]) >= 1
+    assert len(target_baseline["check_results"]) >= 1
+    assert len(control_baseline["analysis_revisions"]) >= 3
+    assert len(control_baseline["question_answers"]) >= 1
+    assert len(control_baseline["check_results"]) >= 1
 
     baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
     attempted_rev = baseline_rev + 1
 
-    # 3. Create evidence-producing check result
+    # 3. Create subsequent evidence-producing check result
     check = CheckResult(
         check_id="ACT01",
         execution_status=CheckExecutionStatus.COMPLETED,
@@ -1996,6 +2025,7 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     )
     loaded_target = repo.load_structured_case(target_id)
     assert loaded_target is not None
+    assert len(loaded_target.previous_check_results) >= 1
     up_case, res_check = engine.submit_check_result(loaded_target, check)
 
     # 4. Use self-managed repository (session=None) to exercise repository's own rollback handler
@@ -2051,9 +2081,9 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
         rev_data = (
             {
                 "revision_number": int(revs[0].revision_number),
-                "defect_code": str(revs[0].defect_code),
-                "issue_condition": str(revs[0].issue_condition),
-                "has_snapshot": revs[0].result_snapshot is not None,
+                "defect_code": str(revs[0].defect_code) if revs[0].defect_code is not None else None,
+                "issue_condition": str(revs[0].issue_condition) if revs[0].issue_condition is not None else None,
+                "result_snapshot": copy.deepcopy(revs[0].result_snapshot),
             }
             if revs
             else None
@@ -2089,7 +2119,12 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
     assert len(captured_pending_evidence["observations"]) >= 1
     assert captured_pending_evidence.get("analysis_revision") is not None
     assert captured_pending_evidence["analysis_revision"]["revision_number"] == attempted_rev
-    assert captured_pending_evidence["analysis_revision"]["has_snapshot"] is True
+    pending_snapshot = captured_pending_evidence["analysis_revision"]["result_snapshot"]
+    assert isinstance(pending_snapshot, dict)
+    assert len(pending_snapshot) > 0
+    assert pending_snapshot["defect"] == "D03_INCONSISTENT_SIZE"
+    assert "ranked_causes" in pending_snapshot
+    assert any(c["cause_id"] == "nozzle_restriction" for c in pending_snapshot["ranked_causes"])
 
     # 5. Open fresh independent session to verify rollback without manual rollback call
     with factory() as independent_session:
@@ -2110,9 +2145,19 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
         ).all()
         assert len(attempted_obs) == 0
 
+        attempted_revs = independent_session.scalars(
+            select(AnalysisRevisionModel).where(
+                AnalysisRevisionModel.case_id == target_id,
+                AnalysisRevisionModel.revision_number == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_revs) == 0
+
         # Verify complete target and control baselines are preserved identically
         target_after = capture_complete_case_state(independent_session, target_id)
         assert target_after == target_baseline
+        assert len(target_after["check_results"]) >= 1
+        assert target_after["check_results"][0]["check_id"] == "ACT02"
 
         control_after = capture_complete_case_state(independent_session, control_id)
         assert control_after == control_baseline

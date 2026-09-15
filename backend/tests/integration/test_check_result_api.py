@@ -10,6 +10,7 @@ separation, and API regression safety.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import copy
 import os
 import uuid
@@ -518,7 +519,20 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
     )
     assert control_ans_resp.status_code == 200
 
-    # 2. Create target case (Case B) and advance to Rev 2 with an answer
+    control_prior_check_resp = client.post(
+        f"/api/v1/cases/{control_id}/check-results",
+        json={
+            "check_id": "ACT02",
+            "execution_status": "COMPLETED",
+            "finding": "SUPPORTS",
+            "outcome": "air_bubbles_found",
+            "finding_details": "Micro-air bubbles in control syringe",
+            "expected_revision": 2,
+        },
+    )
+    assert control_prior_check_resp.status_code == 200
+
+    # 2. Create target case (Case B) and advance to Rev 3 with an answer AND a prior check result
     target_resp = client.post(
         "/api/v1/cases",
         json={
@@ -542,21 +556,36 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
     )
     assert target_ans_resp.status_code == 200
 
+    target_prior_check_resp = client.post(
+        f"/api/v1/cases/{target_id}/check-results",
+        json={
+            "check_id": "ACT02",
+            "execution_status": "COMPLETED",
+            "finding": "SUPPORTS",
+            "outcome": "air_bubbles_found",
+            "finding_details": "Micro-air bubbles visible in syringe",
+            "expected_revision": 2,
+        },
+    )
+    assert target_prior_check_resp.status_code == 200
+
     # Capture complete baselines from an independent session
     with factory() as session:
         target_baseline = capture_complete_case_state(session, target_id)
         control_baseline = capture_complete_case_state(session, control_id)
 
-    # Verify nonempty baselines
-    assert len(target_baseline["analysis_revisions"]) == 2
-    assert len(target_baseline["question_answers"]) == 1
-    assert len(control_baseline["analysis_revisions"]) == 2
-    assert len(control_baseline["question_answers"]) == 1
+    # Verify nonempty baselines with both prior question answers AND prior check results
+    assert len(target_baseline["analysis_revisions"]) >= 3
+    assert len(target_baseline["question_answers"]) >= 1
+    assert len(target_baseline["check_results"]) >= 1
+    assert len(control_baseline["analysis_revisions"]) >= 3
+    assert len(control_baseline["question_answers"]) >= 1
+    assert len(control_baseline["check_results"]) >= 1
 
     baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
     attempted_rev = baseline_rev + 1
 
-    # 3. Prepare evidence-producing check result payload
+    # 3. Prepare subsequent evidence-producing check result payload
     check_payload = {
         "check_id": "ACT01",
         "execution_status": "COMPLETED",
@@ -619,10 +648,9 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
         rev_data = (
             {
                 "revision_number": int(revs[0].revision_number),
-                "defect_code": str(revs[0].defect_code),
-                "issue_condition": str(revs[0].issue_condition),
-                "has_snapshot": revs[0].result_snapshot is not None,
-                "snapshot_keys": sorted(list(revs[0].result_snapshot.keys())) if revs[0].result_snapshot else [],
+                "defect_code": str(revs[0].defect_code) if revs[0].defect_code is not None else None,
+                "issue_condition": str(revs[0].issue_condition) if revs[0].issue_condition is not None else None,
+                "result_snapshot": copy.deepcopy(revs[0].result_snapshot),
             }
             if revs
             else None
@@ -654,7 +682,12 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
     assert "check_result" in obs_types or "nozzle_condition" in obs_types
     assert captured_pending_evidence.get("analysis_revision") is not None
     assert captured_pending_evidence["analysis_revision"]["revision_number"] == attempted_rev
-    assert captured_pending_evidence["analysis_revision"]["has_snapshot"] is True
+    pending_snapshot = captured_pending_evidence["analysis_revision"]["result_snapshot"]
+    assert isinstance(pending_snapshot, dict)
+    assert len(pending_snapshot) > 0
+    assert pending_snapshot["defect"] == "D03_INCONSISTENT_SIZE"
+    assert "ranked_causes" in pending_snapshot
+    assert any(c["cause_id"] == "nozzle_restriction" for c in pending_snapshot["ranked_causes"])
 
     # 5. Assert response is sanitized 500
     assert resp.status_code == 500
@@ -682,9 +715,20 @@ def test_induced_persistence_failure_returns_sanitized_500_and_rolls_back(tracke
         ).all()
         assert len(attempted_obs) == 0
 
+        # Verify no analysis revision for attempted_rev was committed
+        attempted_revs = session.scalars(
+            select(AnalysisRevisionModel).where(
+                AnalysisRevisionModel.case_id == target_id,
+                AnalysisRevisionModel.revision_number == attempted_rev,
+            )
+        ).all()
+        assert len(attempted_revs) == 0
+
         # Verify target case complete baseline is preserved identically
         target_after = capture_complete_case_state(session, target_id)
         assert target_after == target_baseline
+        assert len(target_after["check_results"]) >= 1
+        assert target_after["check_results"][0]["check_id"] == "ACT02"
 
         # Verify control case complete baseline is preserved identically
         control_after = capture_complete_case_state(session, control_id)
@@ -1072,3 +1116,60 @@ def test_snapshot_helper_detects_nested_snapshot_mutation_with_identical_counts(
 
     # But full state comparison detects the mutation
     assert baseline != mutated
+
+
+# ===========================================================================
+# 20. Sensitivity: Snapshot Helper Distinguishes Empty String and None
+# ===========================================================================
+
+def test_snapshot_helper_distinguishes_empty_string_and_none_for_optional_fields(tracked_cases: list[str]):
+    """Sensitivity check (Requirement 3):
+    Demonstrates that capture_complete_case_state preserves "" and None as distinct
+    stored scalar values without truthiness normalization, and that exact state comparison
+    fails when an optional field changes between "" and None while row counts and revision
+    numbers are unchanged.
+    """
+    case_id_empty = str(uuid.uuid4())
+    case_id_none = str(uuid.uuid4())
+    tracked_cases.extend([case_id_empty, case_id_none])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+
+    with factory() as session:
+        case_empty = CaseModel(
+            case_id=case_id_empty,
+            description="Case with empty string optional fields",
+            material="",
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="",
+            issue_condition="UNRESOLVED",
+            created_at=now,
+        )
+        case_none = CaseModel(
+            case_id=case_id_none,
+            description="Case with None optional fields",
+            material=None,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name=None,
+            issue_condition="UNRESOLVED",
+            created_at=now,
+        )
+        session.add_all([case_empty, case_none])
+        session.commit()
+
+    with factory() as session:
+        snapshot_empty = capture_complete_case_state(session, case_id_empty)
+        snapshot_none = capture_complete_case_state(session, case_id_none)
+
+    # 1. Assert exact stored values are captured distinctly without truthiness collapsing
+    assert snapshot_empty["case"]["material"] == ""
+    assert snapshot_empty["case"]["defect_name"] == ""
+    assert snapshot_none["case"]["material"] is None
+    assert snapshot_none["case"]["defect_name"] is None
+
+    # 2. Assert that altering an optional field from "" to None in a baseline copy causes comparison failure
+    copied = copy.deepcopy(snapshot_empty)
+    copied["case"]["material"] = None
+    assert snapshot_empty != copied
+    assert snapshot_empty["case"]["material"] != copied["case"]["material"]

@@ -1,4 +1,4 @@
-﻿"""Test-only snapshot helper for capturing and verifying complete persistent case state.
+"""Test-only snapshot helper for capturing and verifying complete persistent case state.
 
 Used to verify that transaction rollback and rejected API requests leave
 prior database state, snapshots, and histories strictly unchanged.
@@ -41,14 +41,14 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
 
     case_data = {
         "case_id": str(case_row.case_id),
-        "description": str(case_row.description or ""),
-        "material": str(case_row.material) if case_row.material else None,
-        "method": str(case_row.method) if case_row.method else None,
+        "description": str(case_row.description) if case_row.description is not None else None,
+        "material": str(case_row.material) if case_row.material is not None else None,
+        "method": str(case_row.method) if case_row.method is not None else None,
         "machine_context": copy.deepcopy(case_row.machine_context),
-        "defect_code": str(case_row.defect_code) if case_row.defect_code else None,
-        "defect_name": str(case_row.defect_name) if case_row.defect_name else None,
-        "issue_condition": str(case_row.issue_condition),
-        "created_at": case_row.created_at.isoformat() if case_row.created_at else None,
+        "defect_code": str(case_row.defect_code) if case_row.defect_code is not None else None,
+        "defect_name": str(case_row.defect_name) if case_row.defect_name is not None else None,
+        "issue_condition": str(case_row.issue_condition) if case_row.issue_condition is not None else None,
+        "created_at": case_row.created_at.isoformat() if case_row.created_at is not None else None,
     }
 
     obs_rows = session.scalars(
@@ -60,13 +60,13 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
     obs_data = [
         {
             "observation_id": str(o.observation_id),
-            "observation_type": str(o.observation_type),
-            "value": str(o.value),
-            "original_text": str(o.original_text) if o.original_text else None,
-            "statement_type": str(o.statement_type),
-            "source": str(o.source),
+            "observation_type": str(o.observation_type) if o.observation_type is not None else None,
+            "value": str(o.value) if o.value is not None else None,
+            "original_text": str(o.original_text) if o.original_text is not None else None,
+            "statement_type": str(o.statement_type) if o.statement_type is not None else None,
+            "source": str(o.source) if o.source is not None else None,
             "confidence": float(o.confidence) if o.confidence is not None else None,
-            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "created_at": o.created_at.isoformat() if o.created_at is not None else None,
             "first_seen_revision": int(o.first_seen_revision),
         }
         for o in obs_rows
@@ -84,10 +84,10 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
     qa_data = [
         {
             "question_id": str(q.question_id),
-            "answer_value": str(q.answer_value),
-            "answer_text": str(q.answer_text) if q.answer_text else None,
-            "source": str(q.source),
-            "answered_at": q.answered_at.isoformat() if q.answered_at else None,
+            "answer_value": str(q.answer_value) if q.answer_value is not None else None,
+            "answer_text": str(q.answer_text) if q.answer_text is not None else None,
+            "source": str(q.source) if q.source is not None else None,
+            "answered_at": q.answered_at.isoformat() if q.answered_at is not None else None,
             "resulting_revision_number": int(q.resulting_revision_number),
         }
         for q in qa_rows
@@ -105,12 +105,12 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
     cr_data = [
         {
             "check_id": str(c.check_id),
-            "execution_status": str(c.execution_status),
-            "finding": str(c.finding),
-            "finding_details": str(c.finding_details) if c.finding_details else None,
-            "outcome": str(c.outcome) if c.outcome else None,
-            "source": str(c.source),
-            "checked_at": c.checked_at.isoformat() if c.checked_at else None,
+            "execution_status": str(c.execution_status) if c.execution_status is not None else None,
+            "finding": str(c.finding) if c.finding is not None else None,
+            "finding_details": str(c.finding_details) if c.finding_details is not None else None,
+            "outcome": str(c.outcome) if c.outcome is not None else None,
+            "source": str(c.source) if c.source is not None else None,
+            "checked_at": c.checked_at.isoformat() if c.checked_at is not None else None,
             "resulting_revision_number": int(c.resulting_revision_number),
         }
         for c in cr_rows
@@ -125,9 +125,9 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
     rev_data = [
         {
             "revision_number": int(r.revision_number),
-            "analyzed_at": r.analyzed_at.isoformat() if r.analyzed_at else None,
-            "defect_code": str(r.defect_code) if r.defect_code else None,
-            "issue_condition": str(r.issue_condition),
+            "analyzed_at": r.analyzed_at.isoformat() if r.analyzed_at is not None else None,
+            "defect_code": str(r.defect_code) if r.defect_code is not None else None,
+            "issue_condition": str(r.issue_condition) if r.issue_condition is not None else None,
             "result_snapshot": copy.deepcopy(r.result_snapshot),
         }
         for r in rev_rows
