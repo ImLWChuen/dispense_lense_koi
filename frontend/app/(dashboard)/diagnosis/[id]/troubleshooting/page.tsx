@@ -1,69 +1,108 @@
+"use client";
+
+import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
+import { CheckCircle2, ArrowRight } from "lucide-react";
 
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import TroubleshootingChecklist from "@/components/diagnosis/TroubleshootingChecklist";
 import QuestionProgress from "@/components/diagnosis/QuestionProgress";
+import { casesApi } from "@/lib/api/cases";
+import { DurableCaseResponse } from "@/types/api";
 
-const mockActions = [
-    {
-        id: "ACT01",
-        name: "Inspect Nozzle",
-        description:
-            "Visually inspect the dispensing nozzle for blockage, dried material, damage, or contamination.",
-        procedure:
-            "1. Stop dispensing operation.\n2. Remove the nozzle from the dispense head.\n3. Inspect the nozzle tip under magnification for blockage or damage.\n4. Check for dried material buildup at the tip face.\n5. Verify the nozzle bore is clear by visual or light-pass inspection.\n6. Document findings.",
-        effortLevel: "low" as const,
-        applicableCauses: ["nozzle_restriction", "nozzle_condition"],
-    },
-    {
-        id: "ACT02",
-        name: "Check Material Supply Condition",
-        description:
-            "Inspect the dispensing material syringe or reservoir for air bubbles, separation, contamination, or depletion.",
-        procedure:
-            "1. Visually inspect the syringe/reservoir for trapped air bubbles.\n2. Check material level — note if nearly depleted.\n3. Look for phase separation or settling.\n4. Verify the material is within its specified pot life.\n5. Check for contamination or discoloration.\n6. Document findings.",
-        effortLevel: "low" as const,
-        applicableCauses: ["material_condition", "air_supply_issue"],
-    },
-    {
-        id: "ACT03",
-        name: "Perform Test Shots",
-        description:
-            "Dispense a series of test dots and measure volume/size consistency to quantify the defect.",
-        procedure:
-            "1. Set up standard test substrate.\n2. Dispense 10-20 test shots at current parameters.\n3. Measure dot diameter or weight for each shot.\n4. Calculate mean, standard deviation, and coefficient of variation.\n5. Record any visible anomalies per shot.\n6. Compare against specification limits.\n7. Document results.",
-        effortLevel: "medium" as const,
-        applicableCauses: [
-            "pressure_instability",
-            "parameter_issue",
-            "equipment_condition",
-        ],
-    },
-    {
-        id: "ACT04",
-        name: "Verify Pressure Settings",
-        description:
-            "Check and verify the dispensing pressure settings and supply pressure consistency.",
-        procedure:
-            "1. Record current pressure setpoint.\n2. Monitor actual pressure gauge during dispensing.\n3. Note any fluctuation or drift.\n4. Verify regulator is functioning correctly.\n5. Check for pneumatic leaks in supply lines.\n6. Document findings.",
-        effortLevel: "medium" as const,
-        applicableCauses: ["pressure_instability", "parameter_issue"],
-    },
-    {
-        id: "ACT05",
-        name: "Inspect Valve Assembly",
-        description:
-            "Check the dispensing valve for wear, misalignment, or malfunction.",
-        procedure:
-            "1. Remove valve assembly for inspection.\n2. Check valve seat for wear or damage.\n3. Verify proper seating and seal integrity.\n4. Check actuator response time.\n5. Look for material leakage around seals.\n6. Document findings.",
-        effortLevel: "high" as const,
-        applicableCauses: ["valve_issue", "equipment_condition"],
-    },
-];
+export default function TroubleshootingPage({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+    const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Maintain a list of historical/pending checks.
+    const [checks, setChecks] = useState<any[]>([]);
 
-export default function TroubleshootingPage() {
+    const fetchCase = useCallback(async () => {
+        try {
+            const data = await casesApi.getCase(resolvedParams.id);
+            setCaseData(data);
+            
+            const nextCheck = data.diagnosis?.next_check;
+            
+            // Only add nextCheck if it's not already in the list
+            setChecks(prev => {
+                if (!nextCheck) return prev;
+                if (prev.some(c => c.check_id === nextCheck.check_id)) return prev;
+                return [...prev, nextCheck];
+            });
+            
+        } catch (err: any) {
+            console.error("Failed to fetch case", err);
+            setError(err.message || "Failed to load case data.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [resolvedParams.id]);
+
+    useEffect(() => {
+        fetchCase();
+    }, [fetchCase]);
+
+    const handleCheckSubmit = async (checkId: string, status: string, findingDetails: string, outcome: string) => {
+        if (!caseData?.diagnosis?.analysis_revision) return;
+        
+        setIsSubmitting(true);
+        try {
+            await casesApi.submitCheckResult(
+                caseData.case_id,
+                checkId,
+                status,
+                outcome, // API uses finding for "NORMAL", "CONFIRMED", etc.
+                caseData.diagnosis.analysis_revision.revision_number,
+                undefined, // optional outcome text
+                findingDetails
+            );
+            
+            // Refresh to get the next check or transition to verification
+            await fetchCase();
+        } catch (err: any) {
+            console.error("Failed to submit check result", err);
+            setError(err.message || "Failed to submit check result.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (isLoading && !caseData) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex h-64 items-center justify-center">
+                            <p className="text-gray-500">Loading troubleshooting checks...</p>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextCheck = diagnosis?.next_check;
+    const isDone = !nextCheck && !isLoading;
+
+    // Map checks to the UI component format
+    const checklistActions = checks.map(c => ({
+        id: c.check_id,
+        name: c.name,
+        description: c.description,
+        procedure: c.procedure,
+        effortLevel: c.effort_level as "low" | "medium" | "high",
+        applicableCauses: c.target_causes || [],
+    }));
+
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -75,7 +114,7 @@ export default function TroubleshootingPage() {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · DSP-2026-0185
+                                Diagnostic workflow · {resolvedParams.id.split('-')[0]}
                             </p>
 
                             <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
@@ -89,29 +128,61 @@ export default function TroubleshootingPage() {
                         </div>
 
                         <Link
-                            href="/diagnosis/DSP-2026-0185"
+                            href={`/diagnosis/${resolvedParams.id}`}
                             className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
                         >
                             ← Back to Diagnosis
                         </Link>
                     </div>
 
-                    <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
-                        <div className="xl:col-span-2">
-                            <TroubleshootingChecklist actions={mockActions} />
+                    {error && (
+                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
+                            {error}
+                        </div>
+                    )}
 
-                            <div className="mt-6 flex justify-end">
-                                <Link
-                                    href="/diagnosis/DSP-2026-0185/verification"
-                                    className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
-                                >
-                                    Continue to Verification →
-                                </Link>
-                            </div>
+                    <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
+                        <div className="xl:col-span-2 space-y-4">
+                            {checklistActions.length > 0 && (
+                                <TroubleshootingChecklist 
+                                    actions={checklistActions} 
+                                    onSubmit={handleCheckSubmit}
+                                    isSubmitting={isSubmitting}
+                                />
+                            )}
+                            
+                            {isDone && (
+                                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
+                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
+                                    <h3 className="text-lg font-semibold text-emerald-800">Checks Complete</h3>
+                                    <p className="mt-2 text-sm text-emerald-700">
+                                        The diagnostic engine has gathered sufficient physical evidence.
+                                        You can now proceed to cause verification.
+                                    </p>
+                                    <Link
+                                        href={`/diagnosis/${resolvedParams.id}/verification`}
+                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                    >
+                                        Continue to Verification
+                                        <ArrowRight size={16} />
+                                    </Link>
+                                </div>
+                            )}
+
+                            {!isDone && checklistActions.length > 0 && (
+                                <div className="mt-6 flex justify-end">
+                                    <Link
+                                        href={`/diagnosis/${resolvedParams.id}/verification`}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
+                                    >
+                                        Skip to Verification →
+                                    </Link>
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-6">
-                            <QuestionProgress current={3} total={5} />
+                            <QuestionProgress current={checks.length - (nextCheck ? 1 : 0)} total={checks.length} />
 
                             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                                 <p className="text-sm font-semibold text-gray-900">

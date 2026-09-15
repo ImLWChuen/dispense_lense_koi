@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import {
     ArrowRight,
@@ -13,49 +16,8 @@ import PageContainer from "@/components/layout/PageContainer";
 import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import CauseRanking from "@/components/diagnosis/CauseRanking";
 import EvidencePanel from "@/components/diagnosis/EvidencePanel";
-
-const mockEvidence = [
-    {
-        observation: "Deposit Size",
-        value: "undersized",
-        relation: "SUPPORTS" as const,
-        strength: "STRONG" as const,
-        explanation:
-            "A restricted nozzle directly reduces the amount of material that can pass through.",
-    },
-    {
-        observation: "Frequency Pattern",
-        value: "intermittent",
-        relation: "SUPPORTS" as const,
-        strength: "MODERATE" as const,
-        explanation:
-            "Intermittent occurrence suggests partial blockage that varies with flow conditions.",
-    },
-    {
-        observation: "Location Pattern",
-        value: "specific_nozzle",
-        relation: "SUPPORTS" as const,
-        strength: "STRONG" as const,
-        explanation:
-            "Issue isolated to a specific nozzle strongly indicates a localized restriction.",
-    },
-    {
-        observation: "Visual Appearance",
-        value: "thin_deposit",
-        relation: "SUPPORTS" as const,
-        strength: "MODERATE" as const,
-        explanation:
-            "Thin, flat deposits are consistent with reduced material flow through a restricted orifice.",
-    },
-    {
-        observation: "Purge Response",
-        value: "improves_temporarily",
-        relation: "CONTRADICTS" as const,
-        strength: "WEAK" as const,
-        explanation:
-            "Temporary improvement after purge may indicate trapped air rather than permanent restriction.",
-    },
-];
+import { casesApi } from "@/lib/api/cases";
+import { DurableCaseResponse } from "@/types/api";
 
 const workflowSteps = [
     {
@@ -84,7 +46,87 @@ const workflowSteps = [
     },
 ];
 
-export default function DiagnosisDetailPage() {
+export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+    const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchCase = async () => {
+            try {
+                setIsLoading(true);
+                const data = await casesApi.getCase(resolvedParams.id);
+                setCaseData(data);
+            } catch (err: any) {
+                console.error("Failed to fetch case", err);
+                setError(err.message || "Failed to load case data.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchCase();
+    }, [resolvedParams.id]);
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex h-64 items-center justify-center">
+                            <p className="text-gray-500">Loading case details...</p>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    if (error || !caseData) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex h-64 flex-col items-center justify-center">
+                            <p className="text-red-500">{error || "Case not found."}</p>
+                            <Link href="/cases" className="mt-4 text-[#5848e8] hover:underline">
+                                Return to Cases
+                            </Link>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    const diagnosis = caseData.diagnosis || caseData.initial_diagnosis;
+    const topCause = diagnosis?.ranked_causes?.[0];
+    
+    // Construct evidence for the top cause
+    const evidenceList: any[] = [];
+    if (topCause) {
+        const addEvidence = (list: any[], relation: string) => {
+            if (!list) return;
+            list.forEach(item => {
+                const obs = caseData.observations.find(o => o.observation_id === item.observation_id || o.id === item.observation_id);
+                evidenceList.push({
+                    observation: obs ? obs.observation_type : item.observation_id,
+                    value: obs ? obs.value : "unknown",
+                    relation,
+                    strength: item.strength || "MODERATE",
+                    explanation: item.explanation || "No explanation provided.",
+                });
+            });
+        };
+        addEvidence(topCause.supporting_evidence, "SUPPORTS");
+        addEvidence(topCause.contradicting_evidence, "CONTRADICTS");
+        addEvidence(topCause.neutral_evidence, "NEUTRAL");
+    }
+
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -120,16 +162,19 @@ export default function DiagnosisDetailPage() {
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         {/* Left: Summary + Evidence */}
                         <div className="space-y-6 xl:col-span-2">
-                            <CauseRanking />
-                            <EvidencePanel
-                                evidence={mockEvidence}
-                                causeLabel="Nozzle Restriction"
-                            />
+                            <CauseRanking causes={diagnosis?.ranked_causes} revision={diagnosis?.analysis_revision?.revision_number || 1} />
+                            
+                            {evidenceList.length > 0 && topCause && (
+                                <EvidencePanel
+                                    evidence={evidenceList}
+                                    causeLabel={topCause.name}
+                                />
+                            )}
                         </div>
 
                         {/* Right: Summary + Workflow */}
                         <div className="space-y-6">
-                            <DiagnosisSummary />
+                            <DiagnosisSummary caseData={caseData} />
 
                             {/* Workflow Actions */}
                             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -148,7 +193,7 @@ export default function DiagnosisDetailPage() {
                                         return (
                                             <Link
                                                 key={step.href}
-                                                href={`/diagnosis/DSP-2026-0185/${step.href}`}
+                                                href={`/diagnosis/${caseData.case_id}/${step.href}`}
                                                 className="group flex items-center gap-3 rounded-xl border border-gray-100 p-3 transition hover:border-[#6d5dfc]/30 hover:bg-[#faf9ff]"
                                             >
                                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition group-hover:bg-[#eeebff] group-hover:text-[#6d5dfc]">

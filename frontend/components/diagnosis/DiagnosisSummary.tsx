@@ -1,25 +1,26 @@
 import { Stethoscope } from "lucide-react";
 import ConfidenceScore from "./ConfidenceScore";
+import { DurableCaseResponse } from "@/types/api";
 
 interface DiagnosisSummaryProps {
-    caseId?: string;
-    defect?: string;
-    defectDescription?: string;
-    confidence?: number;
+    caseData?: DurableCaseResponse;
     status?: string;
-    causesCount?: number;
-    observationsCount?: number;
 }
 
 export default function DiagnosisSummary({
-    caseId = "DSP-2026-0185",
-    defect = "Too Little Material",
-    defectDescription = "Dispensed volume is consistently less than the target amount, resulting in undersized deposits.",
-    confidence = 87,
-    status = "In Progress",
-    causesCount = 5,
-    observationsCount = 6,
+    caseData,
+    status: externalStatus,
 }: DiagnosisSummaryProps) {
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const defect = diagnosis?.defect_name || diagnosis?.defect || "Foreign Object Debris (FOD) on Sensor";
+    const defectDescription = caseData?.description || "A particle or debris is obscuring the sensor field of view.";
+    const confidence = diagnosis?.ranked_causes?.[0]?.score ? Math.round(diagnosis.ranked_causes[0].score) : 92;
+    const computedStatus = caseData?.issue_condition === "RECOVERY_PENDING_VERIFICATION" ? "Pending Verification" : caseData?.issue_condition === "RESOLVED" ? "Resolved" : caseData?.issue_condition === "UNRESOLVED" ? "In Progress" : caseData?.issue_condition;
+    const status = externalStatus || computedStatus || "Pending Verification";
+    const causesCount = diagnosis?.ranked_causes?.length || 3;
+    const observationsCount = caseData?.observations?.length || 5;
+    const caseIdText = caseData?.case_id ? `Case ${caseData.case_id.split('-').slice(0, 2).join('-')}` : "Case DSP-2026";
+
     return (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="border-b border-gray-100 px-6 py-5">
@@ -34,7 +35,7 @@ export default function DiagnosisSummary({
                         </h2>
 
                         <p className="text-xs text-gray-500">
-                            Case {caseId}
+                            {caseIdText}
                         </p>
                     </div>
 

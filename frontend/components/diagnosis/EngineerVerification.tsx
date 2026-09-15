@@ -12,7 +12,7 @@ interface EngineerVerificationProps {
     causeName?: string;
     causeDescription?: string;
     confidence?: number;
-    onConfirm?: (notes: string) => void;
+    onConfirm?: (notes: string, recoveryAction?: string) => void;
     onReject?: (notes: string) => void;
 }
 
@@ -20,12 +20,33 @@ export default function EngineerVerification({
     causeName = "Nozzle Restriction",
     causeDescription = "Partial blockage of the dispensing nozzle was confirmed by visual inspection.",
     confidence = 87,
+    onConfirm,
+    onReject,
 }: EngineerVerificationProps) {
     const [decision, setDecision] = useState<
         "confirm" | "reject" | null
     >(null);
     const [notes, setNotes] = useState("");
     const [recoveryAction, setRecoveryAction] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleConfirm = async () => {
+        setIsSubmitting(true);
+        try {
+            await onConfirm?.(notes, recoveryAction);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleReject = async () => {
+        setIsSubmitting(true);
+        try {
+            await onReject?.(notes);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -64,12 +85,12 @@ export default function EngineerVerification({
                         <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
                             <div
                                 className="h-full rounded-full bg-[#6d5dfc]"
-                                style={{ width: `${confidence}%` }}
+                                style={{ width: `${Math.round(confidence)}%` }}
                             />
                         </div>
 
                         <span className="text-sm font-semibold text-[#5848e8]">
-                            {confidence}% confidence
+                            {Math.round(confidence)}% confidence
                         </span>
                     </div>
                 </div>
@@ -89,7 +110,8 @@ export default function EngineerVerification({
                 <div className="mt-5 grid grid-cols-2 gap-3">
                     <button
                         onClick={() => setDecision("confirm")}
-                        className={`flex items-center gap-3 rounded-xl border p-4 transition ${
+                        disabled={isSubmitting}
+                        className={`flex items-center gap-3 rounded-xl border p-4 transition disabled:opacity-50 ${
                             decision === "confirm"
                                 ? "border-green-400 bg-green-50 ring-1 ring-green-400"
                                 : "border-gray-200 hover:border-green-300 hover:bg-green-50/50"
@@ -117,7 +139,8 @@ export default function EngineerVerification({
 
                     <button
                         onClick={() => setDecision("reject")}
-                        className={`flex items-center gap-3 rounded-xl border p-4 transition ${
+                        disabled={isSubmitting}
+                        className={`flex items-center gap-3 rounded-xl border p-4 transition disabled:opacity-50 ${
                             decision === "reject"
                                 ? "border-red-400 bg-red-50 ring-1 ring-red-400"
                                 : "border-gray-200 hover:border-red-300 hover:bg-red-50/50"
@@ -154,9 +177,21 @@ export default function EngineerVerification({
                         onChange={(e) => setNotes(e.target.value)}
                         placeholder="Add your observations and reasoning..."
                         rows={3}
-                        className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white"
+                        disabled={isSubmitting}
+                        className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                     />
                 </div>
+
+                {decision === "reject" && (
+                    <button 
+                        onClick={handleReject}
+                        disabled={isSubmitting || !notes}
+                        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+                    >
+                        <XCircle size={16} />
+                        {isSubmitting ? "Submitting..." : "Submit Rejection"}
+                    </button>
+                )}
             </div>
 
             {/* Recovery Action */}
@@ -176,7 +211,8 @@ export default function EngineerVerification({
                         onChange={(e) => setRecoveryAction(e.target.value)}
                         placeholder="e.g. Cleaned nozzle tip with solvent, replaced O-ring seal..."
                         rows={3}
-                        className="mt-4 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white"
+                        disabled={isSubmitting}
+                        className="mt-4 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                     />
 
                     <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2">
@@ -192,9 +228,13 @@ export default function EngineerVerification({
                         </p>
                     </div>
 
-                    <button className="mt-5 inline-flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-700">
+                    <button 
+                        onClick={handleConfirm}
+                        disabled={isSubmitting || !recoveryAction}
+                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
+                    >
                         <CheckCircle2 size={16} />
-                        Mark as Resolved
+                        {isSubmitting ? "Submitting..." : "Mark as Resolved"}
                     </button>
                 </div>
             )}

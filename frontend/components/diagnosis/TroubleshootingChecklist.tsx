@@ -40,21 +40,42 @@ const statusConfig = {
 
 interface TroubleshootingChecklistProps {
     actions: TroubleshootingAction[];
+    onSubmit?: (actionId: string, status: string, findingDetails: string, outcome: string) => void;
+    isSubmitting?: boolean;
 }
 
 export default function TroubleshootingChecklist({
     actions,
+    onSubmit,
+    isSubmitting = false
 }: TroubleshootingChecklistProps) {
     const [statuses, setStatuses] = useState<Record<string, CheckStatus>>({});
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [findings, setFindings] = useState<Record<string, string>>({});
+    const [outcomes, setOutcomes] = useState<Record<string, string>>({});
 
     const toggleExpand = (id: string) => {
         setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const setStatus = (id: string, status: CheckStatus) => {
+    const handleStatusUpdate = (id: string, status: CheckStatus) => {
         setStatuses((prev) => ({ ...prev, [id]: status }));
+        
+        let apiStatus = "COMPLETED";
+        let apiFinding = "INCONCLUSIVE";
+        
+        if (status === "blocked") {
+            apiStatus = "BLOCKED";
+        } else if (status === "skipped") {
+            apiStatus = "SKIPPED";
+        }
+        
+        // Simple mapping for demo purposes. Ideally user selects from a dropdown of outcomes
+        if (outcomes[id] === "fixed") apiFinding = "CONTRADICTS";
+        else if (outcomes[id] === "found_issue") apiFinding = "SUPPORTS";
+        else if (status === "completed") apiFinding = "INCONCLUSIVE";
+
+        onSubmit?.(id, apiStatus, findings[id] || "", apiFinding);
     };
 
     return (
@@ -172,27 +193,30 @@ export default function TroubleshootingChecklist({
                                 <div className="mt-3 flex gap-2">
                                     <button
                                         onClick={() =>
-                                            setStatus(action.id, "completed")
+                                            handleStatusUpdate(action.id, "completed")
                                         }
-                                        className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
+                                        disabled={isSubmitting}
+                                        className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
                                     >
                                         Mark Complete
                                     </button>
 
                                     <button
                                         onClick={() =>
-                                            setStatus(action.id, "blocked")
+                                            handleStatusUpdate(action.id, "blocked")
                                         }
-                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                        disabled={isSubmitting}
+                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
                                     >
                                         Mark Blocked
                                     </button>
 
                                     <button
                                         onClick={() =>
-                                            setStatus(action.id, "skipped")
+                                            handleStatusUpdate(action.id, "skipped")
                                         }
-                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                        disabled={isSubmitting}
+                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
                                     >
                                         Skip
                                     </button>
