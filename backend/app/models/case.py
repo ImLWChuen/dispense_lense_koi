@@ -100,6 +100,13 @@ class CaseModel(Base):
         order_by="QuestionAnswerModel.resulting_revision_number",
     )
 
+    check_executions: Mapped[list[CheckExecutionModel]] = relationship(
+        "CheckExecutionModel",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CheckExecutionModel.resulting_revision_number",
+    )
+
 
 class ObservationModel(Base):
     """Structured observation extracted from user text or entered directly."""
@@ -301,4 +308,68 @@ class QuestionAnswerModel(Base):
     case: Mapped[CaseModel] = relationship(
         "CaseModel",
         back_populates="question_answers",
+    )
+
+
+class CheckExecutionModel(Base):
+    """Technician troubleshooting check execution event associated with a case revision."""
+
+    __tablename__ = "case_check_executions"
+    __table_args__ = (
+        UniqueConstraint(
+            "case_id",
+            "resulting_revision_number",
+            name="uq_case_check_executions_case_id_rev",
+        ),
+        CheckConstraint(
+            "resulting_revision_number > 1",
+            name="ck_case_check_executions_rev_gt_1",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("cases.case_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    check_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Troubleshooting check identifier (e.g. ACT_INSPECT_NOZZLE)",
+    )
+    status: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Execution status (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE)",
+    )
+    finding: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Finding (SUPPORTS, CONTRADICTS, INCONCLUSIVE, UNKNOWN, NOT_APPLICABLE)",
+    )
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional technician notes or observations during check",
+    )
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timezone-aware check execution timestamp",
+    )
+    resulting_revision_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Analysis revision number produced by this check (> 1)",
+    )
+
+    case: Mapped[CaseModel] = relationship(
+        "CaseModel",
+        back_populates="check_executions",
     )

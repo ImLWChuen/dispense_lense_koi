@@ -1,12 +1,15 @@
 """
 DispenseIQ — Core Backend Configuration
 
-Provides lazy access to application settings and environment variables.
+Provides centralized, configurable access to application settings,
+environment variables, and database connections with zero-dependency .env support.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import os
+from pathlib import Path
 from typing import Final
 
 # Supported PostgreSQL schemes for SQLAlchemy with psycopg 3
@@ -15,6 +18,113 @@ POSTGRES_SCHEMES: Final[tuple[str, ...]] = (
     "postgresql://",
     "postgres://",
 )
+
+DEFAULT_CORS_ORIGINS: Final[list[str]] = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+
+def _load_env_file() -> None:
+    """Zero-dependency .env loader for developer onboarding convenience.
+
+    Searches common workspace locations for a .env file and populates os.environ
+    for any keys not already explicitly set in the shell environment.
+    """
+    cwd = Path.cwd()
+    this_dir = Path(__file__).resolve().parent
+    candidates = [
+        cwd / ".env",
+        cwd / "backend" / ".env",
+        this_dir.parents[1] / ".env",  # backend/.env
+        this_dir.parents[2] / ".env",  # repo root .env
+    ]
+
+    for candidate in candidates:
+        if candidate.is_file():
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        key, _, val = line.partition("=")
+                        key = key.strip()
+                        val = val.strip()
+                        # Strip outer matching quotes
+                        if len(val) >= 2 and (
+                            (val[0] == '"' and val[-1] == '"')
+                            or (val[0] == "'" and val[-1] == "'")
+                        ):
+                            val = val[1:-1]
+                        if key and key not in os.environ:
+                            os.environ[key] = val
+                break
+            except Exception:
+                pass
+
+
+# Execute eager environment resolution on module load
+_load_env_file()
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Application settings resolved from environment variables."""
+
+    project_name: str = "DispenseLens API"
+    project_version: str = "0.1.0"
+    api_v1_prefix: str = "/api/v1"
+    cors_origins: list[str] = field(default_factory=lambda: list(DEFAULT_CORS_ORIGINS))
+
+    # Bounded LLM Configuration
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-1.5-flash"
+    gemini_api_base: str = "https://generativelanguage.googleapis.com/v1beta"
+    llm_timeout_seconds: float = 10.0
+
+    @classmethod
+    def load(cls) -> Settings:
+        """Construct Settings instance from current environment variables."""
+        _load_env_file()
+
+        raw_cors = os.environ.get("CORS_ORIGINS", "").strip()
+        if raw_cors:
+            if raw_cors == "*":
+                cors_origins = ["*"]
+            else:
+                cors_origins = [orig.strip() for orig in raw_cors.split(",") if orig.strip()]
+        else:
+            cors_origins = list(DEFAULT_CORS_ORIGINS)
+
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY")
+        model = os.environ.get("GEMINI_MODEL") or os.environ.get("LLM_MODEL") or "gemini-1.5-flash"
+        api_base = (
+            os.environ.get("GEMINI_API_BASE")
+            or os.environ.get("LLM_API_BASE")
+            or "https://generativelanguage.googleapis.com/v1beta"
+        ).rstrip("/")
+
+        raw_timeout = os.environ.get("LLM_TIMEOUT_SECONDS", "10.0")
+        try:
+            timeout = float(raw_timeout)
+        except ValueError:
+            timeout = 10.0
+
+        return cls(
+            cors_origins=cors_origins,
+            gemini_api_key=api_key,
+            gemini_model=model,
+            gemini_api_base=api_base,
+            llm_timeout_seconds=timeout,
+        )
+
+
+def get_settings() -> Settings:
+    """Retrieve application settings."""
+    return Settings.load()
 
 
 def get_database_url() -> str:
@@ -26,6 +136,7 @@ def get_database_url() -> str:
     Returns:
         A SQLAlchemy-compatible PostgreSQL connection string using psycopg 3.
     """
+    _load_env_file()
     url = os.environ.get("DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError(

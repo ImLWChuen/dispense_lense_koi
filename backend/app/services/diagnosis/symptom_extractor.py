@@ -150,15 +150,27 @@ _HYPOTHESIS_PATTERNS: list[tuple[re.Pattern, str]] = [
 class SymptomExtractor:
     """Extracts structured observations from natural-language descriptions.
 
-    Uses deterministic keyword matching. LLM-assisted extraction is
-    added in Phase 9 as a bounded supplement, not a replacement.
+    Uses deterministic keyword matching first. If deterministic rules yield
+    no observations or if enhanced interpretation is needed, safely falls back
+    to bounded LLM-assisted extraction.
     """
 
-    def extract(self, description: str) -> ExtractionResult:
+    def __init__(self, llm_service: Any = None) -> None:
+        if llm_service is not None:
+            self.llm = llm_service
+        else:
+            try:
+                from app.services.ai.llm_service import LLMService
+                self.llm = LLMService()
+            except ImportError:
+                self.llm = None
+
+    def extract(self, description: str, use_llm: bool = True) -> ExtractionResult:
         """Extract observations from a free-text problem description.
 
         Args:
             description: The technician's natural-language description.
+            use_llm: Whether to attempt bounded LLM fallback if deterministic rules find no observations.
 
         Returns:
             ExtractionResult containing the original text, extracted
@@ -180,7 +192,7 @@ class SymptomExtractor:
             match = pattern.search(description)
             if match:
                 hypothesis_text = match.group(1).strip()
-                if hypothesis_text:
+                if hypothesis_text and hypothesis_text not in user_hypotheses:
                     user_hypotheses.append(hypothesis_text)
 
         # --- 2. Extract structured observations via keyword rules ---
@@ -197,7 +209,47 @@ class SymptomExtractor:
                         source=EvidenceSource.USER,
                     ))
 
-        # --- 3. Warn if no observations could be extracted ---
+        method = "deterministic"
+
+        # --- 3. Bounded LLM fallback when deterministic extraction finds nothing ---
+        if not observations and use_llm and self.llm and getattr(self.llm, "is_available", False):
+            llm_result = self.llm.extract_symptoms(description)
+            if llm_result and isinstance(llm_result, dict):
+                llm_obs = llm_result.get("observations", [])
+                llm_hyps = llm_result.get("user_hypotheses", [])
+
+                for hyp in llm_hyps:
+                    hyp_str = str(hyp).strip()
+                    if hyp_str and hyp_str not in user_hypotheses:
+                        user_hypotheses.append(hyp_str)
+
+                for raw_obs in llm_obs:
+                    raw_type = str(raw_obs.get("type", "")).strip().lower()
+                    raw_val = str(raw_obs.get("value", "")).strip().lower()
+
+                    # Find matching ObservationType
+                    matched_type = None
+                    for ot in ObservationType:
+                        if ot.value.lower() == raw_type:
+                            matched_type = ot
+                            break
+
+                    if matched_type and raw_val:
+                        key = (matched_type.value, raw_val)
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            observations.append(Observation(
+                                observation_type=matched_type,
+                                value=raw_val,
+                                original_text=description,
+                                statement_type=StatementType.USER_OBSERVATION,
+                                source=EvidenceSource.USER,
+                            ))
+
+                if observations:
+                    method = "llm"
+
+        # --- 4. Warn if no observations could be extracted ---
         if not observations:
             warnings.append(
                 "No structured observations could be extracted from the "
@@ -209,6 +261,6 @@ class SymptomExtractor:
             original_description=description,
             observations=observations,
             user_hypotheses=user_hypotheses,
-            extraction_method="deterministic",
+            extraction_method=method,
             warnings=warnings,
         )

@@ -12,13 +12,19 @@ from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_db
 from app.schemas.case import (
     CaseAnswerResponse,
+    CaseCheckResponse,
     CaseObservationResponse,
+    CheckExecutionRecord,
     CreateCaseRequest,
     DurableCaseResponse,
     QuestionAnswerRecord,
     SubmitAnswerRequest,
+    SubmitCheckRequest,
 )
 from app.schemas.diagnosis import (
+    CheckExecutionStatus,
+    CheckFinding,
+    CheckResult,
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
@@ -440,4 +446,220 @@ def submit_case_answer(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while submitting the question answer.",
+        )
+
+
+@router.post(
+    "/{case_id}/checks",
+    response_model=CaseCheckResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_409_CONFLICT: {"description": "Stale expected revision"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Validation error or invalid check/status/finding"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Submit a technician troubleshooting check execution result",
+    description=(
+        "Submits an executed troubleshooting check result for an active durable case, "
+        "executes Member 2's check result handler, evaluates the next immutable analysis revision, "
+        "and atomically persists the check execution, any new observations, and the revision snapshot."
+    ),
+)
+def submit_case_check(
+    case_id: str,
+    request: SubmitCheckRequest,
+    engine: DiagnosticEngine = Depends(get_diagnosis_engine),
+    repository: CaseRepository = Depends(get_case_repository),
+    session: Session = Depends(get_db),
+) -> CaseCheckResponse:
+    """Process a troubleshooting check execution, re-evaluate diagnosis, and persist Revision N+1."""
+    try:
+        # 1. Parse execution status and finding
+        try:
+            status_enum = CheckExecutionStatus(request.status.upper())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid check execution status: '{request.status}'.",
+            )
+
+        try:
+            finding_enum = CheckFinding(request.finding.upper())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid check finding: '{request.finding}'.",
+            )
+
+        # 2. Acquire locked case snapshot
+        case = repository.load_structured_case(case_id, for_update=True)
+        if case is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Diagnostic case '{case_id}' was not found.",
+            )
+
+        # 3. Execute domain check submission workflow
+        try:
+            result = engine.submit_check_result(
+                case=case,
+                check_id=request.check_id,
+                status=status_enum,
+                finding=finding_enum,
+                notes=request.notes,
+                source=EvidenceSource.USER_CHECK_RESULT,
+            )
+        except ValueError as ve:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(ve),
+            )
+
+        if result.analysis_revision is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Check execution evaluation did not produce a valid analysis revision.",
+            )
+
+        # 4. Atomically persist check revision
+        check_record = CheckResult(
+            check_id=request.check_id,
+            status=status_enum,
+            finding=finding_enum,
+            notes=request.notes,
+        )
+
+        try:
+            target_revision = request.expected_revision + 1
+            repository.append_check_result_revision(
+                case=case,
+                check_result=check_record,
+                result=result,
+                expected_revision=request.expected_revision,
+            )
+
+            # 5. Build response
+            case_model = repository.get_case(case_id)
+            if case_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Case '{case_id}' was not found.",
+                )
+
+            initial_rev = repository.get_analysis_revision(case_id, revision_number=1)
+            if initial_rev is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Initial diagnostic assessment revision (rev 1) not found.",
+                )
+            initial_diagnosis = DiagnosisResult.model_validate(initial_rev.result_snapshot)
+
+            obs_models = repository.get_case_observations(case_id, max_revision=target_revision)
+            check_models = repository.get_case_check_executions(case_id, max_revision=target_revision)
+
+            observations = [
+                CaseObservationResponse(
+                    id=obs.observation_id,
+                    observation_id=obs.observation_id,
+                    observation_type=(
+                        ObservationType(obs.observation_type)
+                        if obs.observation_type in ObservationType._value2member_map_
+                        else obs.observation_type
+                    ),
+                    value=obs.value,
+                    original_text=obs.original_text,
+                    statement_type=(
+                        StatementType(obs.statement_type)
+                        if obs.statement_type in StatementType._value2member_map_
+                        else obs.statement_type
+                    ),
+                    source=(
+                        EvidenceSource(obs.source)
+                        if obs.source in EvidenceSource._value2member_map_
+                        else obs.source
+                    ),
+                    confidence=obs.confidence,
+                    timestamp=obs.created_at,
+                    created_at=obs.created_at,
+                    first_seen_revision=obs.first_seen_revision,
+                )
+                for obs in obs_models
+                if obs.first_seen_revision <= target_revision
+            ]
+
+            previous_checks = [
+                CheckExecutionRecord(
+                    check_id=cm.check_id,
+                    status=cm.status,
+                    finding=cm.finding,
+                    notes=cm.notes,
+                    executed_at=cm.executed_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                )
+                for cm in check_models
+                if cm.resulting_revision_number <= target_revision
+            ]
+
+            matching_submitted = [
+                c for c in previous_checks if c.resulting_revision_number == target_revision
+            ]
+            if not matching_submitted:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Submitted check record not found for the resulting revision.",
+                )
+            submitted_check = matching_submitted[-1]
+
+            issue_cond = (
+                IssueCondition(case_model.issue_condition)
+                if case_model.issue_condition in IssueCondition._value2member_map_
+                else case_model.issue_condition
+            )
+
+            response = CaseCheckResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=case_model.defect_name,
+                issue_condition=issue_cond,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=result,
+                current_revision=target_revision,
+                submitted_check=submitted_check,
+                previous_checks=previous_checks,
+                next_question=result.next_question,
+                next_check=result.next_check,
+            )
+
+            session.commit()
+            return response
+        except StaleRevisionError as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            )
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception:
+            session.rollback()
+            logger.exception("Unexpected error during check execution persistence")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred while persisting the check execution revision.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during check execution submission")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while submitting the troubleshooting check.",
         )

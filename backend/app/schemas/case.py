@@ -189,3 +189,69 @@ class CaseAnswerResponse(DurableCaseResponse):
     previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None
+
+
+class SubmitCheckRequest(BaseModel):
+    """Transport schema for submitting a technician troubleshooting check result.
+
+    Enforces optimistic concurrency via expected_revision and validates that
+    the required check ID, status, and finding are valid domain values.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    check_id: str = Field(
+        ...,
+        description="Identifier of the troubleshooting check executed (e.g. 'ACT_INSPECT_NOZZLE').",
+    )
+    status: str = Field(
+        default="COMPLETED",
+        description="Execution status (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE).",
+    )
+    finding: str = Field(
+        default="UNKNOWN",
+        description="Observed check finding (SUPPORTS, CONTRADICTS, INCONCLUSIVE, UNKNOWN, NOT_APPLICABLE).",
+    )
+    expected_revision: int = Field(
+        ...,
+        description="Expected current revision number of the case for optimistic locking.",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Optional technician notes or observations recorded during check.",
+    )
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> SubmitCheckRequest:
+        if not self.check_id or not self.check_id.strip():
+            raise ValueError("check_id must be a non-empty string.")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be >= 1.")
+        return self
+
+
+class CheckExecutionRecord(BaseModel):
+    """Persisted record of a technician troubleshooting check execution."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    check_id: str
+    status: str
+    finding: str
+    notes: str | None = None
+    executed_at: datetime
+    resulting_revision_number: int
+
+
+class CaseCheckResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after troubleshooting check submission.
+
+    Extends DurableCaseResponse with current revision, the newly submitted check execution record,
+    full check history, and recommended next steps.
+    """
+
+    current_revision: int
+    submitted_check: CheckExecutionRecord
+    previous_checks: list[CheckExecutionRecord] = Field(default_factory=list)
+    next_question: Question | None = None
+    next_check: TroubleshootingCheck | None = None

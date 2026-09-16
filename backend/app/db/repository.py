@@ -16,11 +16,15 @@ from app.db.session import get_session_factory
 from app.models.case import (
     AnalysisRevisionModel,
     CaseModel,
+    CheckExecutionModel,
     ObservationModel,
     QuestionAnswerModel,
 )
 from app.schemas.diagnosis import (
     AnalysisRevision,
+    CheckExecutionStatus,
+    CheckFinding,
+    CheckResult,
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
@@ -300,6 +304,7 @@ class CaseRepository:
             rev_models: list[AnalysisRevisionModel] = []
             obs_models: list[ObservationModel] = []
             qa_models: list[QuestionAnswerModel] = []
+            check_models: list[CheckExecutionModel] = []
             verified_snapshot = False
 
             max_retries = 3
@@ -357,6 +362,21 @@ class CaseRepository:
                         .order_by(
                             QuestionAnswerModel.resulting_revision_number,
                             QuestionAnswerModel.id,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+
+                check_models = list(
+                    session.scalars(
+                        select(CheckExecutionModel)
+                        .where(
+                            CheckExecutionModel.case_id == case_id,
+                            CheckExecutionModel.resulting_revision_number <= target_revision,
+                        )
+                        .order_by(
+                            CheckExecutionModel.resulting_revision_number,
+                            CheckExecutionModel.id,
                         )
                         .execution_options(populate_existing=True)
                     ).all()
@@ -434,18 +454,35 @@ class CaseRepository:
                 )
                 previous_answers.append(qa)
 
+            previous_check_results: list[CheckResult] = []
+            for cm in check_models:
+                try:
+                    c_status = CheckExecutionStatus(cm.status)
+                except ValueError:
+                    c_status = CheckExecutionStatus.UNKNOWN
+
+                try:
+                    c_finding = CheckFinding(cm.finding)
+                except ValueError:
+                    c_finding = CheckFinding.UNKNOWN
+
+                cr = CheckResult(
+                    check_id=cm.check_id,
+                    status=c_status,
+                    finding=c_finding,
+                    notes=cm.notes,
+                    timestamp=cm.executed_at,
+                )
+                previous_check_results.append(cr)
+
             analysis_revisions: list[AnalysisRevision] = []
             for rm in rev_models:
                 rev_snapshot = rm.result_snapshot.get("analysis_revision")
                 if rev_snapshot is not None:
-                    rev = AnalysisRevision.model_validate(rev_snapshot)
-                else:
-                    rev = AnalysisRevision(
-                        revision_number=rm.revision_number,
-                        timestamp=rm.analyzed_at,
-                        defect_code=rm.defect_code,
-                    )
-                analysis_revisions.append(rev)
+                    try:
+                        analysis_revisions.append(AnalysisRevision.model_validate(rev_snapshot))
+                    except Exception:
+                        pass
 
             # 5. Issue condition
             try:
@@ -463,7 +500,7 @@ class CaseRepository:
                 defect_name=case_model.defect_name,
                 observations=observations,
                 previous_answers=previous_answers,
-                previous_check_results=[],
+                previous_check_results=previous_check_results,
                 analysis_revisions=analysis_revisions,
                 issue_condition=issue_cond,
                 created_at=case_model.created_at,
@@ -673,6 +710,232 @@ class CaseRepository:
                     existing_obs_ids.add(obs.id)
 
             # 6. Append immutable AnalysisRevisionModel
+            rev_issue_cond_val = (
+                result.issue_condition.value
+                if hasattr(result.issue_condition, "value")
+                else str(result.issue_condition)
+            )
+            snapshot_dict = result.model_dump(mode="json")
+            rev_model = AnalysisRevisionModel(
+                case_id=case.case_id,
+                revision_number=new_revision_number,
+                analyzed_at=result.analysis_revision.timestamp,
+                defect_code=result.defect,
+                issue_condition=rev_issue_cond_val,
+                result_snapshot=snapshot_dict,
+            )
+            session.add(rev_model)
+
+            # 7. Update top-level case state if evolved
+            if result.issue_condition:
+                db_case.issue_condition = rev_issue_cond_val
+            if result.defect and not db_case.defect_code:
+                db_case.defect_code = result.defect
+                db_case.defect_name = result.defect_name
+
+            if should_close:
+                session.commit()
+            else:
+                session.flush()
+
+            return rev_model
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            if should_close:
+                session.close()
+
+    def get_case_check_executions(
+        self,
+        case_id: str,
+        max_revision: int | None = None,
+    ) -> list[CheckExecutionModel]:
+        """Retrieve persisted check execution records for a case up to an optional max revision."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CheckExecutionModel)
+                .where(CheckExecutionModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CheckExecutionModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(CheckExecutionModel.resulting_revision_number, CheckExecutionModel.id)
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
+    def append_check_result_revision(
+        self,
+        case: StructuredCase,
+        check_result: CheckResult,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a check execution, new observations, and resulting analysis revision.
+
+        Enforces optimistic concurrency via expected_revision and locks the case row
+        against concurrent updates. Validates that the input case reflects a consistent
+        snapshot of persisted state.
+
+        Args:
+            case: StructuredCase containing updated observations and previous check results.
+            check_result: The CheckResult submitted by the technician.
+            result: DiagnosisResult resulting from the check result and re-ranking.
+            expected_revision: The latest revision expected by the caller before appending.
+
+        Returns:
+            The newly created AnalysisRevisionModel.
+
+        Raises:
+            ValueError: On identity mismatch, contract violations, or inconsistent case state.
+            StaleRevisionError: If expected_revision does not match latest persisted revision.
+        """
+        if case.case_id != result.case_id:
+            raise ValueError(
+                f"Mismatched case IDs: case.case_id='{case.case_id}' != "
+                f"result.case_id='{result.case_id}'"
+            )
+
+        if result.analysis_revision is None:
+            raise ValueError(
+                "DiagnosisResult must include an analysis_revision for append."
+            )
+
+        session, should_close = self._get_active_session()
+        try:
+            # 1. Lock the case row in PostgreSQL
+            stmt = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case.case_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            db_case = session.scalars(stmt).first()
+            if db_case is None:
+                raise ValueError(f"Case '{case.case_id}' not found.")
+
+            # 2. Get latest revision while holding row lock
+            stmt_rev = (
+                select(AnalysisRevisionModel.revision_number)
+                .where(AnalysisRevisionModel.case_id == case.case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            latest_revision = session.scalars(stmt_rev).first()
+            if latest_revision is None:
+                raise ValueError(f"Case '{case.case_id}' has no existing revisions.")
+
+            # 3. Optimistic concurrency check
+            if expected_revision != latest_revision:
+                raise StaleRevisionError(
+                    case_id=case.case_id,
+                    expected_revision=expected_revision,
+                    current_revision=latest_revision,
+                )
+
+            new_revision_number = latest_revision + 1
+            if result.analysis_revision.revision_number != new_revision_number:
+                raise ValueError(
+                    f"Contract mismatch: result.analysis_revision.revision_number is "
+                    f"{result.analysis_revision.revision_number}, but expected next revision {new_revision_number}."
+                )
+
+            # 3b. Consistency check: ensure case is not built on a torn or stale snapshot
+            persisted_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id)
+                    .where(
+                        ObservationModel.case_id == case.case_id,
+                        ObservationModel.first_seen_revision <= latest_revision,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            case_obs_ids = {o.id for o in case.observations}
+            missing_obs = persisted_obs_ids - case_obs_ids
+            if missing_obs:
+                raise ValueError(
+                    f"Inconsistent case state: case is missing persisted observations "
+                    f"{sorted(missing_obs)} from revision {latest_revision} or earlier."
+                )
+
+            persisted_checks = list(
+                session.scalars(
+                    select(CheckExecutionModel)
+                    .where(
+                        CheckExecutionModel.case_id == case.case_id,
+                        CheckExecutionModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        CheckExecutionModel.resulting_revision_number,
+                        CheckExecutionModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(persisted_checks) > len(case.previous_check_results):
+                raise ValueError(
+                    f"Inconsistent case state: case has {len(case.previous_check_results)} check results, "
+                    f"but database has {len(persisted_checks)} check executions persisted up to revision {latest_revision}."
+                )
+
+            # 4. Insert new observations
+            for obs in case.observations:
+                if obs.id not in persisted_obs_ids:
+                    obs_type_val = (
+                        obs.observation_type.value
+                        if hasattr(obs.observation_type, "value")
+                        else str(obs.observation_type)
+                    )
+                    stmt_type_val = (
+                        obs.statement_type.value
+                        if hasattr(obs.statement_type, "value")
+                        else str(obs.statement_type)
+                    )
+                    source_val = (
+                        obs.source.value
+                        if hasattr(obs.source, "value")
+                        else str(obs.source)
+                    )
+                    obs_model = ObservationModel(
+                        case_id=case.case_id,
+                        observation_id=obs.id,
+                        observation_type=obs_type_val,
+                        value=obs.value,
+                        original_text=obs.original_text,
+                        statement_type=stmt_type_val,
+                        source=source_val,
+                        confidence=obs.confidence,
+                        created_at=obs.timestamp,
+                        first_seen_revision=new_revision_number,
+                    )
+                    session.add(obs_model)
+
+            # 5. Insert the check execution record
+            status_val = (
+                check_result.status.value
+                if hasattr(check_result.status, "value")
+                else str(check_result.status)
+            )
+            finding_val = (
+                check_result.finding.value
+                if hasattr(check_result.finding, "value")
+                else str(check_result.finding)
+            )
+            check_model = CheckExecutionModel(
+                case_id=case.case_id,
+                check_id=check_result.check_id,
+                status=status_val,
+                finding=finding_val,
+                notes=check_result.notes,
+                executed_at=check_result.timestamp,
+                resulting_revision_number=new_revision_number,
+            )
+            session.add(check_model)
+
+            # 6. Insert the immutable AnalysisRevisionModel
             rev_issue_cond_val = (
                 result.issue_condition.value
                 if hasattr(result.issue_condition, "value")

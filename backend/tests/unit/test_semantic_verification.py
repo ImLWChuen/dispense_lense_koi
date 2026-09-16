@@ -33,7 +33,7 @@ if sys.platform == "win32":
 
 import pytest
 
-from backend.app.schemas.diagnosis import (
+from app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     CauseEvidence,
@@ -49,7 +49,7 @@ from backend.app.schemas.diagnosis import (
     QuestionAnswer,
     StructuredCase,
 )
-from backend.app.services.diagnosis.engine import (
+from app.services.diagnosis.engine import (
     CheckResultHandler,
     DiagnosticEngine,
     StateManager,
