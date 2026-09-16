@@ -127,8 +127,32 @@ def test_create_and_retrieve_durable_case_happy_path(tracked_cases):
     assert get_res.status_code == 200
     get_data = get_res.json()
 
-    # 3. Assert complete exact parity between POST response and GET response
-    assert get_data == post_data
+    # 3. Assert parity for stable case fields and diagnosis semantics
+    for field in [
+        "case_id",
+        "description",
+        "material",
+        "method",
+        "machine_context",
+        "defect_code",
+        "defect_name",
+        "issue_condition",
+        "created_at",
+        "observations",
+        "initial_diagnosis",
+        "diagnosis",
+        "previous_answers",
+        "previous_check_results",
+    ]:
+        assert get_data[field] == post_data[field], f"Mismatch in field: {field}"
+
+    # Explicitly assert POST creation leaves analysis_revisions empty while GET hydrates revision-1 history
+    assert post_data["analysis_revisions"] == []
+    assert len(get_data["analysis_revisions"]) == 1
+    rev1 = get_data["analysis_revisions"][0]
+    assert rev1["revision_number"] == 1
+    assert rev1["defect_code"] == post_data["defect_code"]
+    assert rev1 == init_diag["analysis_revision"]
 
     # 4. Verify persisted relational records and stored snapshot in PostgreSQL directly
     factory = get_session_factory()

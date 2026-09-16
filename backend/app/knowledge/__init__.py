@@ -126,10 +126,26 @@ def get_actions_for_causes(cause_ids: list[str]) -> list[CheckDefinition]:
     ]
 
 
+# Semantic check/action aliases mapping alternate or teammate identifiers to canonical IDs
+ACTION_ALIASES: dict[str, str] = {
+    "ACT_INSPECT_NOZZLE": "ACT01",
+    "ACT_CHECK_MATERIAL": "ACT02",
+    "ACT_TEST_SHOTS": "ACT03",
+    "ACT_CHECK_PRESSURE": "ACT04",
+    "ACT_PURGE_CYCLE": "ACT05",
+    "ACT_VERIFY_PARAMS": "ACT06",
+    "ACT_INSPECT_VALVE": "ACT07",
+    "ACT_CHECK_TEMPERATURE": "ACT08",
+    "ACT_INSPECT_SUBSTRATE": "ACT09",
+    "ACT_CHECK_CALIBRATION": "ACT10",
+}
+
+
 def get_action_by_id(action_id: str) -> CheckDefinition | None:
-    """Retrieve a specific check definition by its ID."""
+    """Retrieve a specific check definition by its ID or known alias."""
+    target_id = ACTION_ALIASES.get(action_id, action_id)
     for action in load_actions():
-        if action.id == action_id:
+        if action.id == target_id or action.id == action_id:
             return action
     return None
 

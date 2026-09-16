@@ -324,6 +324,64 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_case_check_executions(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CheckExecutionModel]:
+        """Retrieve all check executions associated with a case ordered by resulting_revision_number.
+
+        To prevent conflicting sources of truth or silent check loss across migrations,
+        this method queries CheckExecutionModel and unifies with any canonical
+        CaseCheckResultModel entries for the case.
+        """
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CheckExecutionModel)
+                .where(CheckExecutionModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CheckExecutionModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CheckExecutionModel.resulting_revision_number,
+                CheckExecutionModel.id,
+            ).execution_options(populate_existing=True)
+            ce_rows = list(session.scalars(stmt).all())
+            existing_revs = {ce.resulting_revision_number for ce in ce_rows}
+
+            # Map from canonical check results if any revision is missing from CheckExecutionModel
+            cr_stmt = (
+                select(CaseCheckResultModel)
+                .where(CaseCheckResultModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                cr_stmt = cr_stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
+            cr_stmt = cr_stmt.order_by(
+                CaseCheckResultModel.resulting_revision_number,
+                CaseCheckResultModel.id,
+            ).execution_options(populate_existing=True)
+            cr_rows = list(session.scalars(cr_stmt).all())
+
+            for cr in cr_rows:
+                if cr.resulting_revision_number not in existing_revs:
+                    synced_ce = CheckExecutionModel(
+                        id=cr.id,
+                        case_id=cr.case_id,
+                        check_id=cr.check_id,
+                        status=cr.execution_status,
+                        finding=cr.finding,
+                        notes=cr.finding_details,
+                        executed_at=cr.checked_at,
+                        resulting_revision_number=cr.resulting_revision_number,
+                    )
+                    ce_rows.append(synced_ce)
+                    existing_revs.add(cr.resulting_revision_number)
+
+            ce_rows.sort(key=lambda x: (x.resulting_revision_number, x.id or 0))
+            return ce_rows
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_cause_confirmations(
         self, case_id: str, max_revision: int | None = None
     ) -> list[CaseCauseConfirmationModel]:
@@ -402,7 +460,8 @@ class CaseRepository:
             rev_models: list[AnalysisRevisionModel] = []
             obs_models: list[ObservationModel] = []
             qa_models: list[QuestionAnswerModel] = []
-            check_models: list[CheckExecutionModel] = []
+            cr_models: list[CaseCheckResultModel] = []
+            conf_models: list[CaseCauseConfirmationModel] = []
             verified_snapshot = False
 
             max_retries = 3
@@ -465,16 +524,31 @@ class CaseRepository:
                     ).all()
                 )
 
-                check_models = list(
+                cr_models = list(
                     session.scalars(
-                        select(CheckExecutionModel)
+                        select(CaseCheckResultModel)
                         .where(
-                            CheckExecutionModel.case_id == case_id,
-                            CheckExecutionModel.resulting_revision_number <= target_revision,
+                            CaseCheckResultModel.case_id == case_id,
+                            CaseCheckResultModel.resulting_revision_number <= target_revision,
                         )
                         .order_by(
-                            CheckExecutionModel.resulting_revision_number,
-                            CheckExecutionModel.id,
+                            CaseCheckResultModel.resulting_revision_number,
+                            CaseCheckResultModel.id,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+
+                conf_models = list(
+                    session.scalars(
+                        select(CaseCauseConfirmationModel)
+                        .where(
+                            CaseCauseConfirmationModel.case_id == case_id,
+                            CaseCauseConfirmationModel.resulting_revision_number <= target_revision,
+                        )
+                        .order_by(
+                            CaseCauseConfirmationModel.resulting_revision_number,
+                            CaseCauseConfirmationModel.id,
                         )
                         .execution_options(populate_existing=True)
                     ).all()
@@ -553,23 +627,36 @@ class CaseRepository:
                 previous_answers.append(qa)
 
             previous_check_results: list[CheckResult] = []
-            for cm in check_models:
+            for cm in cr_models:
                 try:
-                    c_status = CheckExecutionStatus(cm.status)
+                    exec_status = CheckExecutionStatus(cm.execution_status)
                 except ValueError:
-                    c_status = CheckExecutionStatus.UNKNOWN
+                    try:
+                        exec_status = CheckExecutionStatus(cm.execution_status.upper())
+                    except ValueError:
+                        exec_status = CheckExecutionStatus.COMPLETED
 
                 try:
-                    c_finding = CheckFinding(cm.finding)
+                    finding = CheckFinding(cm.finding)
                 except ValueError:
-                    c_finding = CheckFinding.UNKNOWN
+                    try:
+                        finding = CheckFinding(cm.finding.upper())
+                    except ValueError:
+                        finding = CheckFinding.INCONCLUSIVE
+
+                try:
+                    cr_src = EvidenceSource(cm.source)
+                except ValueError:
+                    cr_src = EvidenceSource.USER_CHECK_RESULT
 
                 cr = CheckResult(
                     check_id=cm.check_id,
-                    status=c_status,
-                    finding=c_finding,
-                    notes=cm.notes,
-                    timestamp=cm.executed_at,
+                    execution_status=exec_status,
+                    finding=finding,
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=cr_src,
+                    timestamp=cm.checked_at,
                 )
                 previous_check_results.append(cr)
 
@@ -577,10 +664,14 @@ class CaseRepository:
             for rm in rev_models:
                 rev_snapshot = rm.result_snapshot.get("analysis_revision")
                 if rev_snapshot is not None:
-                    try:
-                        analysis_revisions.append(AnalysisRevision.model_validate(rev_snapshot))
-                    except Exception:
-                        pass
+                    rev = AnalysisRevision.model_validate(rev_snapshot)
+                else:
+                    rev = AnalysisRevision(
+                        revision_number=rm.revision_number,
+                        timestamp=rm.analyzed_at,
+                        defect_code=rm.defect_code,
+                    )
+                analysis_revisions.append(rev)
 
             # 5. Issue condition
             try:
@@ -873,26 +964,6 @@ class CaseRepository:
             if should_close:
                 session.close()
 
-    def get_case_check_executions(
-        self,
-        case_id: str,
-        max_revision: int | None = None,
-    ) -> list[CheckExecutionModel]:
-        """Retrieve persisted check execution records for a case up to an optional max revision."""
-        session, should_close = self._get_active_session()
-        try:
-            stmt = (
-                select(CheckExecutionModel)
-                .where(CheckExecutionModel.case_id == case_id)
-            )
-            if max_revision is not None:
-                stmt = stmt.where(CheckExecutionModel.resulting_revision_number <= max_revision)
-            stmt = stmt.order_by(CheckExecutionModel.resulting_revision_number, CheckExecutionModel.id)
-            return list(session.scalars(stmt).all())
-        finally:
-            if should_close:
-                session.close()
-
     def append_check_result_revision(
         self,
         case: StructuredCase,
@@ -900,11 +971,11 @@ class CaseRepository:
         result: DiagnosisResult,
         expected_revision: int,
     ) -> AnalysisRevisionModel:
-        """Atomically append a check execution, new observations, and resulting analysis revision.
+        """Atomically append a check result, new observations, and the resulting analysis revision.
 
         Enforces optimistic concurrency via expected_revision and locks the case row
         against concurrent updates. Validates that the input case reflects a consistent
-        snapshot of persisted state.
+        snapshot of persisted state and rejects torn or stale case state.
 
         Args:
             case: StructuredCase containing updated observations and previous check results.
@@ -917,7 +988,299 @@ class CaseRepository:
 
         Raises:
             ValueError: On identity mismatch, contract violations, or inconsistent case state.
-            StaleRevisionError: If expected_revision does not match latest persisted revision.
+            StaleRevisionError: If expected_revision does not match the latest persisted revision.
+        """
+        if case.case_id != result.case_id:
+            raise ValueError(
+                f"Mismatched case IDs: case.case_id='{case.case_id}' != "
+                f"result.case_id='{result.case_id}'"
+            )
+
+        if result.analysis_revision is None:
+            raise ValueError(
+                "DiagnosisResult must include an analysis_revision for append."
+            )
+
+        session, should_close = self._get_active_session()
+        try:
+            # 1. Lock the case row in PostgreSQL
+            stmt = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case.case_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            db_case = session.scalars(stmt).first()
+            if db_case is None:
+                raise ValueError(f"Case '{case.case_id}' not found.")
+
+            # 2. Get latest revision while holding row lock
+            stmt_rev = (
+                select(AnalysisRevisionModel.revision_number)
+                .where(AnalysisRevisionModel.case_id == case.case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            latest_revision = session.scalars(stmt_rev).first()
+            if latest_revision is None:
+                raise ValueError(f"Case '{case.case_id}' has no existing revisions.")
+
+            # 3. Optimistic concurrency check
+            if expected_revision != latest_revision:
+                raise StaleRevisionError(
+                    case_id=case.case_id,
+                    expected_revision=expected_revision,
+                    current_revision=latest_revision,
+                )
+
+            new_revision_number = latest_revision + 1
+            if result.analysis_revision.revision_number != new_revision_number:
+                raise ValueError(
+                    f"Contract mismatch: result.analysis_revision.revision_number is "
+                    f"{result.analysis_revision.revision_number}, but expected next revision {new_revision_number}."
+                )
+
+            # 3b. Consistency check: ensure case is not built on a torn or stale snapshot
+            # All observations persisted up to latest_revision must be present in case.observations
+            persisted_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id)
+                    .where(
+                        ObservationModel.case_id == case.case_id,
+                        ObservationModel.first_seen_revision <= latest_revision,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            case_obs_ids = {o.id for o in case.observations}
+            missing_obs = persisted_obs_ids - case_obs_ids
+            if missing_obs:
+                raise ValueError(
+                    f"Inconsistent case state: case is missing persisted observations "
+                    f"{sorted(missing_obs)} from revision {latest_revision} or earlier."
+                )
+
+            # All question answers persisted up to latest_revision must be represented in case.previous_answers
+            persisted_qas = list(
+                session.scalars(
+                    select(QuestionAnswerModel)
+                    .where(
+                        QuestionAnswerModel.case_id == case.case_id,
+                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        QuestionAnswerModel.resulting_revision_number,
+                        QuestionAnswerModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_answers) < len(persisted_qas):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_answers has {len(case.previous_answers)} "
+                    f"entries, but {len(persisted_qas)} answers are persisted up to revision {latest_revision}."
+                )
+            case_q_ids = [q.question_id for q in case.previous_answers]
+            for pq in persisted_qas:
+                if pq.question_id not in case_q_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_answers is missing "
+                        f"persisted question '{pq.question_id}' from revision {latest_revision} or earlier."
+                    )
+
+            # All check results persisted up to latest_revision must be represented in case.previous_check_results
+            persisted_crs = list(
+                session.scalars(
+                    select(CaseCheckResultModel)
+                    .where(
+                        CaseCheckResultModel.case_id == case.case_id,
+                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        CaseCheckResultModel.resulting_revision_number,
+                        CaseCheckResultModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_check_results) < len(persisted_crs):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_check_results has {len(case.previous_check_results)} "
+                    f"entries, but {len(persisted_crs)} check results are persisted up to revision {latest_revision}."
+                )
+            case_cr_ids = [c.check_id for c in case.previous_check_results]
+            for pcr in persisted_crs:
+                if pcr.check_id not in case_cr_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_check_results is missing "
+                        f"persisted check '{pcr.check_id}' from revision {latest_revision} or earlier."
+                    )
+
+            if case.analysis_revisions:
+                case_rev_nums = {r.revision_number for r in case.analysis_revisions}
+                persisted_rev_nums = set(
+                    session.scalars(
+                        select(AnalysisRevisionModel.revision_number)
+                        .where(
+                            AnalysisRevisionModel.case_id == case.case_id,
+                            AnalysisRevisionModel.revision_number <= latest_revision,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+                missing_revs = persisted_rev_nums - case_rev_nums
+                if missing_revs:
+                    raise ValueError(
+                        f"Inconsistent case state: case analysis_revisions is missing "
+                        f"persisted revisions {sorted(missing_revs)}."
+                    )
+
+            # 4. Persist the CaseCheckResultModel linked to new_revision_number
+            cr_status_val = (
+                check_result.execution_status.value
+                if hasattr(check_result.execution_status, "value")
+                else str(check_result.execution_status)
+            )
+            cr_finding_val = (
+                check_result.finding.value
+                if hasattr(check_result.finding, "value")
+                else str(check_result.finding)
+            )
+            cr_source_val = (
+                check_result.source.value
+                if hasattr(check_result.source, "value")
+                else str(check_result.source)
+            )
+            cr_model = CaseCheckResultModel(
+                case_id=case.case_id,
+                check_id=check_result.check_id,
+                execution_status=cr_status_val,
+                finding=cr_finding_val,
+                finding_details=check_result.finding_details,
+                outcome=check_result.outcome,
+                source=cr_source_val,
+                checked_at=check_result.timestamp,
+                resulting_revision_number=new_revision_number,
+            )
+            session.add(cr_model)
+
+            ce_model = CheckExecutionModel(
+                case_id=case.case_id,
+                check_id=check_result.check_id,
+                status=cr_status_val,
+                finding=cr_finding_val,
+                notes=check_result.finding_details,
+                executed_at=check_result.timestamp,
+                resulting_revision_number=new_revision_number,
+            )
+            session.add(ce_model)
+
+            # 5. Insert only observations not already persisted for this case
+            existing_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id).where(
+                        ObservationModel.case_id == case.case_id
+                    ).execution_options(populate_existing=True)
+                ).all()
+            )
+            for obs in case.observations:
+                if obs.id not in existing_obs_ids:
+                    obs_type = (
+                        obs.observation_type.value
+                        if hasattr(obs.observation_type, "value")
+                        else str(obs.observation_type)
+                    )
+                    stmt_type = (
+                        obs.statement_type.value
+                        if hasattr(obs.statement_type, "value")
+                        else str(obs.statement_type)
+                    )
+                    src = (
+                        obs.source.value
+                        if hasattr(obs.source, "value")
+                        else str(obs.source)
+                    )
+                    obs_model = ObservationModel(
+                        case_id=case.case_id,
+                        observation_id=obs.id,
+                        observation_type=obs_type,
+                        value=obs.value,
+                        original_text=obs.original_text,
+                        statement_type=stmt_type,
+                        source=src,
+                        confidence=obs.confidence,
+                        created_at=obs.timestamp,
+                        first_seen_revision=new_revision_number,
+                    )
+                    session.add(obs_model)
+                    existing_obs_ids.add(obs.id)
+
+            # 6. Append immutable AnalysisRevisionModel
+            rev_issue_cond_val = (
+                result.issue_condition.value
+                if hasattr(result.issue_condition, "value")
+                else str(result.issue_condition)
+            )
+            snapshot_dict = result.model_dump(mode="json")
+            rev_model = AnalysisRevisionModel(
+                case_id=case.case_id,
+                revision_number=new_revision_number,
+                analyzed_at=result.analysis_revision.timestamp,
+                defect_code=result.defect,
+                issue_condition=rev_issue_cond_val,
+                result_snapshot=snapshot_dict,
+            )
+            session.add(rev_model)
+
+            # 7. Update top-level case state if evolved
+            if result.issue_condition:
+                db_case.issue_condition = rev_issue_cond_val
+            if result.defect and not db_case.defect_code:
+                db_case.defect_code = result.defect
+                db_case.defect_name = result.defect_name
+
+            if should_close:
+                session.commit()
+            else:
+                session.flush()
+
+            return rev_model
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            if should_close:
+                session.close()
+
+    def append_cause_confirmation_revision(
+        self,
+        case: StructuredCase,
+        cause_id: str,
+        confirmed_by: str,
+        notes: str | None,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a root-cause confirmation event and the resulting analysis revision.
+
+        Enforces optimistic concurrency via expected_revision and locks the case row
+        against concurrent updates. Validates that the input case reflects a consistent
+        snapshot of persisted state and rejects torn or stale case state.
+
+        Args:
+            case: StructuredCase containing confirmed causes and prior case history.
+            cause_id: The cause identifier confirmed by the technician.
+            confirmed_by: Identifier or role of the technician confirming the cause.
+            notes: Optional technician notes or observations.
+            result: DiagnosisResult resulting from explicit cause confirmation.
+            expected_revision: The latest revision expected by the caller before appending.
+
+        Returns:
+            The newly created AnalysisRevisionModel.
+
+        Raises:
+            ValueError: On identity mismatch, contract violations, or inconsistent case state.
+            StaleRevisionError: If expected_revision does not match the latest persisted revision.
         """
         if case.case_id != result.case_id:
             raise ValueError(
@@ -988,40 +1351,111 @@ class CaseRepository:
                     f"{sorted(missing_obs)} from revision {latest_revision} or earlier."
                 )
 
-            persisted_checks = list(
+            persisted_qas = list(
                 session.scalars(
-                    select(CheckExecutionModel)
+                    select(QuestionAnswerModel)
                     .where(
-                        CheckExecutionModel.case_id == case.case_id,
-                        CheckExecutionModel.resulting_revision_number <= latest_revision,
+                        QuestionAnswerModel.case_id == case.case_id,
+                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
                     )
                     .order_by(
-                        CheckExecutionModel.resulting_revision_number,
-                        CheckExecutionModel.id,
+                        QuestionAnswerModel.resulting_revision_number,
+                        QuestionAnswerModel.id,
                     )
                     .execution_options(populate_existing=True)
                 ).all()
             )
-            if len(persisted_checks) > len(case.previous_check_results):
+            if len(case.previous_answers) < len(persisted_qas):
                 raise ValueError(
-                    f"Inconsistent case state: case has {len(case.previous_check_results)} check results, "
-                    f"but database has {len(persisted_checks)} check executions persisted up to revision {latest_revision}."
+                    f"Inconsistent case state: case previous_answers has {len(case.previous_answers)} "
+                    f"entries, but {len(persisted_qas)} answers are persisted up to revision {latest_revision}."
                 )
+            case_q_ids = [q.question_id for q in case.previous_answers]
+            for pq in persisted_qas:
+                if pq.question_id not in case_q_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_answers is missing "
+                        f"persisted question '{pq.question_id}' from revision {latest_revision} or earlier."
+                    )
 
-            # 4. Insert new observations
+            persisted_crs = list(
+                session.scalars(
+                    select(CaseCheckResultModel)
+                    .where(
+                        CaseCheckResultModel.case_id == case.case_id,
+                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        CaseCheckResultModel.resulting_revision_number,
+                        CaseCheckResultModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_check_results) < len(persisted_crs):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_check_results has {len(case.previous_check_results)} "
+                    f"entries, but {len(persisted_crs)} check results are persisted up to revision {latest_revision}."
+                )
+            case_cr_ids = [c.check_id for c in case.previous_check_results]
+            for pcr in persisted_crs:
+                if pcr.check_id not in case_cr_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_check_results is missing "
+                        f"persisted check '{pcr.check_id}' from revision {latest_revision} or earlier."
+                    )
+
+            if case.analysis_revisions:
+                case_rev_nums = {r.revision_number for r in case.analysis_revisions}
+                persisted_rev_nums = set(
+                    session.scalars(
+                        select(AnalysisRevisionModel.revision_number)
+                        .where(
+                            AnalysisRevisionModel.case_id == case.case_id,
+                            AnalysisRevisionModel.revision_number <= latest_revision,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+                missing_revs = persisted_rev_nums - case_rev_nums
+                if missing_revs:
+                    raise ValueError(
+                        f"Inconsistent case state: case analysis_revisions is missing "
+                        f"persisted revisions {sorted(missing_revs)}."
+                    )
+
+            # 4. Persist the CaseCauseConfirmationModel linked to new_revision_number
+            conf_model = CaseCauseConfirmationModel(
+                case_id=case.case_id,
+                cause_id=cause_id,
+                confirmed_by=confirmed_by or "technician",
+                notes=notes,
+                confirmed_at=result.analysis_revision.timestamp,
+                resulting_revision_number=new_revision_number,
+            )
+            session.add(conf_model)
+
+            # 5. Insert only observations not already persisted for this case (if any)
+            existing_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id).where(
+                        ObservationModel.case_id == case.case_id
+                    ).execution_options(populate_existing=True)
+                ).all()
+            )
             for obs in case.observations:
-                if obs.id not in persisted_obs_ids:
-                    obs_type_val = (
+                if obs.id not in existing_obs_ids:
+                    obs_type = (
                         obs.observation_type.value
                         if hasattr(obs.observation_type, "value")
                         else str(obs.observation_type)
                     )
-                    stmt_type_val = (
+                    stmt_type = (
                         obs.statement_type.value
                         if hasattr(obs.statement_type, "value")
                         else str(obs.statement_type)
                     )
-                    source_val = (
+                    src = (
                         obs.source.value
                         if hasattr(obs.source, "value")
                         else str(obs.source)
@@ -1029,40 +1463,19 @@ class CaseRepository:
                     obs_model = ObservationModel(
                         case_id=case.case_id,
                         observation_id=obs.id,
-                        observation_type=obs_type_val,
+                        observation_type=obs_type,
                         value=obs.value,
                         original_text=obs.original_text,
-                        statement_type=stmt_type_val,
-                        source=source_val,
+                        statement_type=stmt_type,
+                        source=src,
                         confidence=obs.confidence,
                         created_at=obs.timestamp,
                         first_seen_revision=new_revision_number,
                     )
                     session.add(obs_model)
+                    existing_obs_ids.add(obs.id)
 
-            # 5. Insert the check execution record
-            status_val = (
-                check_result.status.value
-                if hasattr(check_result.status, "value")
-                else str(check_result.status)
-            )
-            finding_val = (
-                check_result.finding.value
-                if hasattr(check_result.finding, "value")
-                else str(check_result.finding)
-            )
-            check_model = CheckExecutionModel(
-                case_id=case.case_id,
-                check_id=check_result.check_id,
-                status=status_val,
-                finding=finding_val,
-                notes=check_result.notes,
-                executed_at=check_result.timestamp,
-                resulting_revision_number=new_revision_number,
-            )
-            session.add(check_model)
-
-            # 6. Insert the immutable AnalysisRevisionModel
+            # 6. Append immutable AnalysisRevisionModel
             rev_issue_cond_val = (
                 result.issue_condition.value
                 if hasattr(result.issue_condition, "value")
@@ -1098,3 +1511,366 @@ class CaseRepository:
         finally:
             if should_close:
                 session.close()
+
+    def append_lifecycle_event_revision(
+        self,
+        case: StructuredCase,
+        event_type: str,
+        prior_issue_condition: str,
+        resulting_issue_condition: str,
+        actor: str,
+        details: str,
+        verification_passed: bool | None,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append an issue lifecycle event and the resulting analysis revision.
+
+        Enforces optimistic concurrency via expected_revision and locks the case row
+        against concurrent updates. Validates that the input case reflects a consistent
+        snapshot of persisted state and rejects torn or stale case state.
+
+        Args:
+            case: StructuredCase containing current case state.
+            event_type: "RECOVERY_ACTION" or "RECOVERY_VERIFICATION".
+            prior_issue_condition: Condition before transition.
+            resulting_issue_condition: Condition after transition.
+            actor: Performer or verifier role/name.
+            details: Details or notes.
+            verification_passed: Verification boolean or None.
+            result: DiagnosisResult from diagnostic engine.
+            expected_revision: Expected current revision for optimistic locking.
+
+        Returns:
+            The newly created AnalysisRevisionModel.
+
+        Raises:
+            ValueError: On identity mismatch, contract violations, or inconsistent case state.
+            StaleRevisionError: If expected_revision does not match the latest persisted revision.
+        """
+        if case.case_id != result.case_id:
+            raise ValueError(
+                f"Mismatched case IDs: case.case_id='{case.case_id}' != "
+                f"result.case_id='{result.case_id}'"
+            )
+
+        if result.analysis_revision is None:
+            raise ValueError(
+                "DiagnosisResult must include an analysis_revision for append."
+            )
+
+        session, should_close = self._get_active_session()
+        try:
+            # 1. Lock the case row in PostgreSQL
+            stmt = (
+                select(CaseModel)
+                .where(CaseModel.case_id == case.case_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            db_case = session.scalars(stmt).first()
+            if db_case is None:
+                raise ValueError(f"Case '{case.case_id}' not found.")
+
+            # 2. Get latest revision while holding row lock
+            stmt_rev = (
+                select(AnalysisRevisionModel.revision_number)
+                .where(AnalysisRevisionModel.case_id == case.case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            latest_revision = session.scalars(stmt_rev).first()
+            if latest_revision is None:
+                raise ValueError(f"Case '{case.case_id}' has no existing revisions.")
+
+            # 3. Optimistic concurrency check
+            if expected_revision != latest_revision:
+                raise StaleRevisionError(
+                    case_id=case.case_id,
+                    expected_revision=expected_revision,
+                    current_revision=latest_revision,
+                )
+
+            new_revision_number = latest_revision + 1
+            if result.analysis_revision.revision_number != new_revision_number:
+                raise ValueError(
+                    f"Contract mismatch: result.analysis_revision.revision_number is "
+                    f"{result.analysis_revision.revision_number}, but expected next revision {new_revision_number}."
+                )
+
+            # 3b. Consistency checks (observations, answers, check results, revisions)
+            persisted_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id)
+                    .where(
+                        ObservationModel.case_id == case.case_id,
+                        ObservationModel.first_seen_revision <= latest_revision,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            case_obs_ids = {o.id for o in case.observations}
+            missing_obs = persisted_obs_ids - case_obs_ids
+            if missing_obs:
+                raise ValueError(
+                    f"Inconsistent case state: case is missing persisted observations "
+                    f"{sorted(missing_obs)} from revision {latest_revision} or earlier."
+                )
+
+            persisted_qas = list(
+                session.scalars(
+                    select(QuestionAnswerModel)
+                    .where(
+                        QuestionAnswerModel.case_id == case.case_id,
+                        QuestionAnswerModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        QuestionAnswerModel.resulting_revision_number,
+                        QuestionAnswerModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_answers) < len(persisted_qas):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_answers has {len(case.previous_answers)} "
+                    f"entries, but {len(persisted_qas)} answers are persisted up to revision {latest_revision}."
+                )
+            case_q_ids = [q.question_id for q in case.previous_answers]
+            for pq in persisted_qas:
+                if pq.question_id not in case_q_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_answers is missing "
+                        f"persisted question '{pq.question_id}' from revision {latest_revision} or earlier."
+                    )
+
+            persisted_crs = list(
+                session.scalars(
+                    select(CaseCheckResultModel)
+                    .where(
+                        CaseCheckResultModel.case_id == case.case_id,
+                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        CaseCheckResultModel.resulting_revision_number,
+                        CaseCheckResultModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_check_results) < len(persisted_crs):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_check_results has {len(case.previous_check_results)} "
+                    f"entries, but {len(persisted_crs)} check results are persisted up to revision {latest_revision}."
+                )
+            case_cr_ids = [c.check_id for c in case.previous_check_results]
+            for pcr in persisted_crs:
+                if pcr.check_id not in case_cr_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_check_results is missing "
+                        f"persisted check '{pcr.check_id}' from revision {latest_revision} or earlier."
+                    )
+
+            if case.analysis_revisions:
+                case_rev_nums = {r.revision_number for r in case.analysis_revisions}
+                persisted_rev_nums = set(
+                    session.scalars(
+                        select(AnalysisRevisionModel.revision_number)
+                        .where(
+                            AnalysisRevisionModel.case_id == case.case_id,
+                            AnalysisRevisionModel.revision_number <= latest_revision,
+                        )
+                        .execution_options(populate_existing=True)
+                    ).all()
+                )
+                missing_revs = persisted_rev_nums - case_rev_nums
+                if missing_revs:
+                    raise ValueError(
+                        f"Inconsistent case state: case analysis_revisions is missing "
+                        f"persisted revisions {sorted(missing_revs)}."
+                    )
+
+            # 4. Persist the CaseLifecycleEventModel linked to new_revision_number
+            resolved_prior_condition = db_case.issue_condition or prior_issue_condition
+            event_model = CaseLifecycleEventModel(
+                case_id=case.case_id,
+                event_type=event_type,
+                prior_issue_condition=resolved_prior_condition,
+                resulting_issue_condition=resulting_issue_condition,
+                resulting_revision_number=new_revision_number,
+                actor=actor or "technician",
+                details=details or "",
+                verification_passed=verification_passed,
+                created_at=result.analysis_revision.timestamp,
+            )
+            session.add(event_model)
+
+            # 5. Insert only observations not already persisted for this case (if any)
+            existing_obs_ids = set(
+                session.scalars(
+                    select(ObservationModel.observation_id).where(
+                        ObservationModel.case_id == case.case_id
+                    ).execution_options(populate_existing=True)
+                ).all()
+            )
+            for obs in case.observations:
+                if obs.id not in existing_obs_ids:
+                    obs_type = (
+                        obs.observation_type.value
+                        if hasattr(obs.observation_type, "value")
+                        else str(obs.observation_type)
+                    )
+                    stmt_type = (
+                        obs.statement_type.value
+                        if hasattr(obs.statement_type, "value")
+                        else str(obs.statement_type)
+                    )
+                    src = (
+                        obs.source.value
+                        if hasattr(obs.source, "value")
+                        else str(obs.source)
+                    )
+                    obs_model = ObservationModel(
+                        case_id=case.case_id,
+                        observation_id=obs.id,
+                        observation_type=obs_type,
+                        value=obs.value,
+                        original_text=obs.original_text,
+                        statement_type=stmt_type,
+                        source=src,
+                        confidence=obs.confidence,
+                        created_at=obs.timestamp,
+                        first_seen_revision=new_revision_number,
+                    )
+                    session.add(obs_model)
+                    existing_obs_ids.add(obs.id)
+
+            # 6. Append immutable AnalysisRevisionModel
+            rev_issue_cond_val = (
+                result.issue_condition.value
+                if hasattr(result.issue_condition, "value")
+                else str(result.issue_condition)
+            )
+            snapshot_dict = result.model_dump(mode="json")
+            rev_model = AnalysisRevisionModel(
+                case_id=case.case_id,
+                revision_number=new_revision_number,
+                analyzed_at=result.analysis_revision.timestamp,
+                defect_code=result.defect,
+                issue_condition=rev_issue_cond_val,
+                result_snapshot=snapshot_dict,
+            )
+            session.add(rev_model)
+
+            # 7. Update top-level case state
+            db_case.issue_condition = resulting_issue_condition
+            if result.defect and not db_case.defect_code:
+                db_case.defect_code = result.defect
+                db_case.defect_name = result.defect_name
+
+            if should_close:
+                session.commit()
+            else:
+                session.flush()
+
+            return rev_model
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            if should_close:
+                session.close()
+
+    def append_recovery_action_revision(
+        self,
+        case: StructuredCase,
+        performed_by: str,
+        recovery_details: str,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a recovery action event and the resulting analysis revision."""
+        prior_cond = (
+            case.issue_condition.value
+            if hasattr(case.issue_condition, "value")
+            else str(case.issue_condition)
+        )
+        resulting_cond = (
+            result.issue_condition.value
+            if hasattr(result.issue_condition, "value")
+            else str(result.issue_condition)
+        )
+        return self.append_lifecycle_event_revision(
+            case=case,
+            event_type="RECOVERY_ACTION",
+            prior_issue_condition=prior_cond,
+            resulting_issue_condition=resulting_cond,
+            actor=performed_by or "technician",
+            details=recovery_details,
+            verification_passed=None,
+            result=result,
+            expected_revision=expected_revision,
+        )
+
+    def append_recovery_verification_revision(
+        self,
+        case: StructuredCase,
+        verified_by: str,
+        verification_passed: bool,
+        verification_details: str,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a recovery verification event and the resulting analysis revision."""
+        prior_cond = (
+            case.issue_condition.value
+            if hasattr(case.issue_condition, "value")
+            else str(case.issue_condition)
+        )
+        resulting_cond = (
+            result.issue_condition.value
+            if hasattr(result.issue_condition, "value")
+            else str(result.issue_condition)
+        )
+        return self.append_lifecycle_event_revision(
+            case=case,
+            event_type="RECOVERY_VERIFICATION",
+            prior_issue_condition=prior_cond,
+            resulting_issue_condition=resulting_cond,
+            actor=verified_by or "technician",
+            details=verification_details,
+            verification_passed=verification_passed,
+            result=result,
+            expected_revision=expected_revision,
+        )
+
+    def append_recurrence_revision(
+        self,
+        case: StructuredCase,
+        reported_by: str,
+        recurrence_details: str,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a recurrence lifecycle event and the resulting analysis revision."""
+        prior_cond = (
+            case.issue_condition.value
+            if hasattr(case.issue_condition, "value")
+            else str(case.issue_condition)
+        )
+        resulting_cond = (
+            result.issue_condition.value
+            if hasattr(result.issue_condition, "value")
+            else str(result.issue_condition)
+        )
+        return self.append_lifecycle_event_revision(
+            case=case,
+            event_type="RECURRENCE",
+            prior_issue_condition=prior_cond,
+            resulting_issue_condition=resulting_cond,
+            actor=reported_by or "technician",
+            details=recurrence_details,
+            verification_passed=None,
+            result=result,
+            expected_revision=expected_revision,
+        )
