@@ -26,6 +26,7 @@ from app.schemas.diagnosis import (
     Question,
     StatementType,
     TroubleshootingCheck,
+    AnalysisRevision,
 )
 
 
@@ -84,6 +85,42 @@ class CreateCaseRequest(BaseModel):
         )
 
 
+class QuestionAnswerRecord(BaseModel):
+    """Persisted record of a technician question answer."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    question_id: str
+    answer_value: str
+    answer_text: str | None = None
+    source: EvidenceSource | str = EvidenceSource.USER
+    answered_at: datetime
+    resulting_revision_number: int
+    text: str | None = None
+    reasoning: str | None = None
+    options: list[Any] | None = None
+
+
+class CheckResultRecord(BaseModel):
+    """Persisted record of a technician troubleshooting check result."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    check_id: str
+    execution_status: CheckExecutionStatus | str
+    finding: CheckFinding | str
+    finding_details: str | None = None
+    outcome: str | None = None
+    source: EvidenceSource | str = EvidenceSource.USER_CHECK_RESULT
+    checked_at: datetime
+    resulting_revision_number: int
+    name: str | None = None
+    description: str | None = None
+    procedure: str | None = None
+    effort_level: str | None = None
+    target_causes: list[str] | None = None
+
+
 class CaseObservationResponse(BaseModel):
     """Observation representation in durable case responses."""
 
@@ -117,6 +154,9 @@ class DurableCaseResponse(BaseModel):
     issue_condition: IssueCondition | str
     created_at: datetime
     observations: list[CaseObservationResponse] = Field(default_factory=list)
+    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
+    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    analysis_revisions: list[AnalysisRevision] = Field(default_factory=list)
     initial_diagnosis: DiagnosisResult
     diagnosis: DiagnosisResult
 
@@ -165,34 +205,6 @@ class SubmitAnswerRequest(BaseModel):
         if self.expected_revision < 1:
             raise ValueError("expected_revision must be >= 1.")
         return self
-
-
-class QuestionAnswerRecord(BaseModel):
-    """Persisted record of a technician question answer."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    question_id: str
-    answer_value: str
-    answer_text: str | None = None
-    source: EvidenceSource | str = EvidenceSource.USER
-    answered_at: datetime
-    resulting_revision_number: int
-
-
-class CheckResultRecord(BaseModel):
-    """Persisted record of a technician troubleshooting check result."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    check_id: str
-    execution_status: CheckExecutionStatus | str
-    finding: CheckFinding | str
-    finding_details: str | None = None
-    outcome: str | None = None
-    source: EvidenceSource | str = EvidenceSource.USER_CHECK_RESULT
-    checked_at: datetime
-    resulting_revision_number: int
 
 
 class CaseAnswerResponse(DurableCaseResponse):
