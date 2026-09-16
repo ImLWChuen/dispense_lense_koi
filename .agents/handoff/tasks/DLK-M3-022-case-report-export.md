@@ -405,7 +405,7 @@ All names in the DLK-M3-021 implementation report now precisely align with produ
 - Endpoint: `GET /api/v1/cases/{case_id}/report`
 - Status Codes: `200 OK`, `404 Not Found`, `422 Unprocessable Entity` (invalid UUID format), `500 Internal Server Error` (sanitized).
 - Response Schema: `CaseReportResponse`
-  - Case Identity & Inception: `case_id`, `current_revision`, `current_defect_code`, `current_issue_condition`, `created_at`.
+  - Case Identity & Inception: `case_id`, `current_revision`, `defect_code`, `issue_condition`, `created_at`.
   - Latest Analysis Snapshot: `diagnosis` (alias: `current_diagnosis`), representing the latest persisted `AnalysisRevision` (or initial diagnosis if no subsequent revisions exist).
   - Audit Revision Histories (each strictly sorted in ascending revision order):
     - `question_answers` (alias: `question_answer_history`)
@@ -418,8 +418,8 @@ All names in the DLK-M3-021 implementation report now precisely align with produ
 - Report assembly relies entirely on persistent PostgreSQL reads via `CaseRepository`.
 - No calls are made to `DiagnosticEngine.diagnose()` or any symptom extraction / rule evaluation methods.
 - No database write operations (`session.add`, `session.commit`, etc.) are performed; the repository transaction is read-only.
-- **Consistent revision basis (R1):** `build_case_report` resolves the target revision (either explicit `pinned_revision` or latest persisted analysis revision) and pins all derived top-level fields (`current_revision`, `current_defect_code`, `current_issue_condition`), diagnosis snapshot, outcome summary, and all four history collections with `max_revision=effective_revision`. This guarantees that even under concurrent commits, the generated report reflects one coherent revision basis and writes nothing (`test_report_consistency_under_concurrent_update`).
-- **Read-only proof:** Test `test_report_read_only_guarantee_exact_equality` captures complete database state in an independent session before and after invoking `GET /api/v1/cases/{case_id}/report`, asserting 100% exact equality across cases, revisions, and histories.
+- **Consistent revision basis (R1):** `build_case_report` resolves the target revision (either explicit `pinned_revision` or latest persisted analysis revision) and pins all derived top-level fields (`current_revision`, `defect_code`, `issue_condition`), diagnosis snapshot, outcome summary, and all four history collections with `max_revision=effective_revision`. This guarantees that even under concurrent commits, the generated report reflects one coherent revision basis and writes nothing (`test_report_consistency_under_concurrent_update`).
+- **Read-only proof:** Test `test_report_read_only_state_proof` captures complete database state in an independent session before and after invoking `GET /api/v1/cases/{case_id}/report`, asserting 100% exact equality across cases, revisions, and histories.
 - **Sanitized-500 nonmutation proof (R2):** Test `test_report_sanitized_500_on_internal_error` captures complete durable state across independent sessions before and after a failing GET on a rich case, triggering failure after report reads have begun. It asserts HTTP 500, detail is sanitized, sensitive token absent, and before/after database state snapshots are strictly identical.
 - **Zero-recalculation proof:** Test `test_report_no_recalculation_proof` patches `DiagnosticEngine.diagnose` to raise a `RuntimeError` and verifies that `GET /api/v1/cases/{case_id}/report` still returns `200 OK` from persisted data without invoking the engine.
 

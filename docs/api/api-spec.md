@@ -2615,6 +2615,49 @@ Accept: application/json
 
 ---
 
+## 10. Downloadable PDF Case Report Export
+
+### 10.1 `GET /api/v1/cases/{case_id}/report.pdf`
+Renders and downloads a deterministic, printable PDF document of a durable diagnostic case directly from the accepted persisted read model (`CaseReportResponse`).
+
+#### Guarantees and Architecture
+- **Same Report Basis**: Reuses the exact same pinned revision basis and scoping logic as the JSON case report (`build_case_report`).
+- **Zero Recalculation**: `DiagnosticEngine.diagnose()` and inference rules are never rerun.
+- **Zero Mutation**: Generates no database writes, updates no timestamps, creates no revisions or lifecycle events, and leaves durable state strictly identical before and after.
+- **No PDF Persistence**: PDFs are rendered on request in memory and streamed directly; no PDF blobs, tables, or storage buckets are introduced.
+- **Deterministic Presentation**: Sections, audit events, tables, running headers, and "Page X of Y" pagination are assembled deterministically.
+
+#### Request
+```http
+GET /api/v1/cases/514614df-ea4c-4855-be1e-98ea73135a8d/report.pdf HTTP/1.1
+Host: localhost:8000
+Accept: application/pdf
+```
+
+#### Response
+##### Headers
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="dispenseiq-case-514614df-ea4c-4855-be1e-98ea73135a8d-r6.pdf"`
+
+##### Status and Error Codes
+- `200 OK` — Complete PDF document rendered and streamed.
+- `404 Not Found` — Case ID does not exist in persistent storage.
+- `422 Unprocessable Entity` — Case ID is not a valid UUID format.
+- `500 Internal Server Error` — Unexpected rendering failure; returns sanitized JSON without leaking internal traces or credentials.
+
+##### Rendered Document Structure
+1. **Document Header**: Title, Case Identifier, Report Revision, Generation Timestamp.
+2. **Case Identity & Process Context**: Case ID, Current Revision, Defect Category, Defect Name, Issue Condition, Created Timestamp, Fluid Material, Dispense Method, Problem Description, Machine Context.
+3. **Current Outcome Summary**: Issue Condition, Revision Basis, Confirmed Root Causes, Resolution Status (`RESOLVED` / `UNRESOLVED`).
+4. **Current Diagnosis Snapshot**: Latest persisted analysis revision snapshot, ranked causes with scores, conclusion status, and confirmed indicators.
+5. **Technician Question-Answer History**: Ascending revision/timestamp table of question IDs, answers, answerer source, and timestamps (or `None recorded.`).
+6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps (or `None recorded.`).
+7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps (or `None recorded.`).
+8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps (or `None recorded.`).
+9. **Page Footer**: Running confidential notice and dynamic `Page X of Y` numbering on all pages.
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found

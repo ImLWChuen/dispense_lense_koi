@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-022
-reviewed_commit: c445855a03ee165db2a05540931c72bb801b014f
-decision: changes_requested
+reviewed_commit: e68015c4587b5f5afe7b14e78b2fe161dd3bf40c
+decision: accepted
 reviewed_by: ChatGPT planner
 ---
 
@@ -9,7 +9,15 @@ reviewed_by: ChatGPT planner
 
 ## Decision
 
-Changes requested. The persisted report projection, explicit ordering, canonical history mappings, and no-engine design are present. Correct the consistency defect and complete the verification evidence before acceptance.
+Accepted after correction commit e68015c4587b5f5afe7b14e78b2fe161dd3bf40c. The original findings below are retained as review history and superseded by this closeout.
+
+## Correction review
+
+- R1 resolved: the assembler selects an immutable revision, reads issue condition and defect basis from that revision, and scopes all four histories with max_revision. The integration test commits a valid R7 recurrence through an independent writer session after the report has selected R6; it asserts a coherent R6 report and confirms the database has advanced to R7. A unit test separately checks pinned state against a differing mutable case condition.
+- R2 resolved: the sanitized-error test now uses a rich case, injects failure in get_case_check_results after earlier report reads, and compares complete state snapshots from independent sessions before and after the failed GET.
+- R3 verification counts corrected: implementer reports recurrence 9, recovery verification 23, cause confirmation 17, report integration 9, report unit 8, and full backend 283 passed with 0 skipped. Reviewer did not rerun database tests. Committed whitespace check passed and task validation returned VALID.
+- Remaining nonblocking report-text cleanup: task report still calls the top-level fields current_defect_code/current_issue_condition; actual schema fields are defect_code/issue_condition. Its successful nonmutation test name should be test_report_read_only_state_proof. Carry these documentation corrections into the next authorized task; do not change API fields to match prose.
+- No new blocking defect identified in the supported durable workflow. Review and queue edits remain local; no implementation changes, commit, push, or merge performed.
 
 ## Findings
 
@@ -39,4 +47,4 @@ Also correct the report API description at task line 408 onward: fields such as 
 
 ## Follow-up
 
-Carry R1-R3 into the next planner-authorized correction work and provide the same feedback to Gemini in chat. Keep dependent report/PDF/frontend work unreleased until this review is resolved.
+R1-R3 correction work is accepted at e68015c4587b5f5afe7b14e78b2fe161dd3bf40c. Future work still requires a separately authorized task; no next task generated during this review.

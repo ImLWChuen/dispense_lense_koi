@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.repository import CaseRepository, StaleRevisionError
@@ -47,7 +47,7 @@ from app.schemas.diagnosis import (
 from app.knowledge import get_causes_for_defect
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
-from app.services.reporting.report_generator import build_case_report
+from app.services.reporting import build_case_report, render_case_report_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -2022,4 +2022,72 @@ def get_case_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while generating the case report.",
+        )
+
+
+@router.get(
+    "/{case_id}/report.pdf",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/pdf": {}},
+            "description": "Deterministic downloadable PDF case report",
+        },
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid case ID format"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Download deterministic PDF case report",
+    description=(
+        "Renders and downloads a deterministic PDF report of a durable case from the "
+        "same accepted persisted report model as the JSON report. Performs zero diagnostic "
+        "recalculation, reads no independent secondary paths, and creates no database mutations."
+    ),
+)
+def get_case_report_pdf(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> Response:
+    """Render and download a deterministic PDF case report from persisted storage."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        report = build_case_report(canonical_id, repository)
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+
+        try:
+            pdf_bytes = render_case_report_pdf(report)
+        except Exception:
+            logger.exception("Unexpected error during PDF rendering for case '%s'", case_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred while generating the PDF case report.",
+            )
+
+        filename = f"dispenseiq-case-{canonical_id}-r{report.current_revision}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during case report PDF export for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the PDF case report.",
         )

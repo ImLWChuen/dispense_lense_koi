@@ -2,31 +2,30 @@
 
 ## Current milestone
 
-Durable case report/export
+Downloadable case report rendering
 
 ## Accepted prerequisite
 
-- `DLK-M3-021` — Durable resolved-issue recurrence reporting workflow — **accepted**
-  - reviewed commit: `ff8a4d9ccaef2f7be2dc539c77cf4c46d963739f`
+- `DLK-M3-022` — Deterministic durable case report export API — **accepted**
+  - reviewed commit: `e68015c4587b5f5afe7b14e78b2fe161dd3bf40c`
 
 ## Ready
 
-- `DLK-M3-022` — Deterministic durable case report export API — **implemented**
-  - reviewed commit: `c445855a03ee165db2a05540931c72bb801b014f`
-  - review: `.agents/handoff/reviews/DLK-M3-022-review.md`
-  - corrections: consistent report revision basis, failure-path nonmutation proof, and accurate verification/report documentation.
-  - task: `.agents/handoff/tasks/DLK-M3-022-case-report-export.md`
-  - branch: `backend-database`
-  - depends on: `DLK-M3-021`
+- `DLK-M3-023` — Deterministic downloadable PDF case report — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
+  - depends on: `DLK-M3-022`
+  - dependency authorization:
+    - `reportlab==5.0.1` — production renderer
+    - `pypdf==6.18.1` — parser/text-validation dependency
+  - no other PDF dependency or native renderer is authorized
 
 ## Not released
 
-Blocked until DLK-M3-022 is accepted:
+Blocked until DLK-M3-023 is implemented and accepted:
 
-- PDF/document rendering
 - historical-case retrieval / similarity
 - LLM explanation/report narration
 - image/CV integration
 - frontend report integration
 
-Only DLK-M3-022 is authorized for implementation.
+Only DLK-M3-023 may resume.
