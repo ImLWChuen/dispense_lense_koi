@@ -475,180 +475,67 @@ class CaseRecoveryActionResponse(DurableCaseResponse):
     next_check: TroubleshootingCheck | None = None
 
 
-class CaseRecoveryVerificationResponse(DurableCaseResponse):
-    """Canonical representation of a durable case after recovery verification submission.
+class SubmitCheckRequest(BaseModel):
+    """Transport schema for submitting a technician troubleshooting check result.
 
-    Extends DurableCaseResponse with current revision, the submitted verification record,
-    lifecycle event history, confirmation history, check result history, answer history,
-    and recommended next steps.
-    """
-
-    current_revision: int
-    submitted_verification: LifecycleEventRecord
-    submitted_event: LifecycleEventRecord
-    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
-    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
-    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
-    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
-    confirmed_cause: str | None = None
-    next_question: Question | None = None
-    next_check: TroubleshootingCheck | None = None
-
-
-class SubmitRecurrenceRequest(BaseModel):
-    """Transport schema for reporting a recurred issue on a previously resolved case.
-
-    Transitions issue condition from RESOLVED to RECURRED.
     Enforces optimistic concurrency via expected_revision and validates that
-    recurrence_details is a non-empty string, expected_revision is >= 1, and
-    reported_by is at most 64 characters.
+    the required check ID, status, and finding are valid domain values.
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
+    check_id: str = Field(
+        ...,
+        description="Identifier of the troubleshooting check executed (e.g. 'ACT_INSPECT_NOZZLE').",
+    )
+    status: str = Field(
+        default="COMPLETED",
+        description="Execution status (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE).",
+    )
+    finding: str = Field(
+        default="UNKNOWN",
+        description="Observed check finding (SUPPORTS, CONTRADICTS, INCONCLUSIVE, UNKNOWN, NOT_APPLICABLE).",
+    )
     expected_revision: int = Field(
         ...,
         description="Expected current revision number of the case for optimistic locking.",
     )
-    recurrence_details: str = Field(
-        ...,
-        description="Description of the recurred defect observations or symptoms.",
-    )
-    reported_by: str = Field(
-        default="technician",
-        max_length=64,
-        description="Identifier or role of the person reporting the recurrence.",
+    notes: str | None = Field(
+        default=None,
+        description="Optional technician notes or observations recorded during check.",
     )
 
     @model_validator(mode="after")
-    def validate_payload(self) -> SubmitRecurrenceRequest:
-        if not self.recurrence_details or not self.recurrence_details.strip():
-            raise ValueError("recurrence_details must be a non-empty string.")
+    def validate_payload(self) -> SubmitCheckRequest:
+        if not self.check_id or not self.check_id.strip():
+            raise ValueError("check_id must be a non-empty string.")
         if self.expected_revision < 1:
             raise ValueError("expected_revision must be >= 1.")
-        if self.reported_by is not None and len(self.reported_by) > 64:
-            raise ValueError("reported_by must be at most 64 characters.")
         return self
 
 
-class CaseRecurrenceResponse(DurableCaseResponse):
-    """Canonical representation of a durable case after recurrence submission.
+class CheckExecutionRecord(BaseModel):
+    """Persisted record of a technician troubleshooting check execution."""
 
-    Extends DurableCaseResponse with current revision, the submitted recurrence record,
-    lifecycle event history, confirmation history, check result history, answer history,
-    and recommended next steps.
+    model_config = ConfigDict(extra="ignore")
+
+    check_id: str
+    status: str
+    finding: str
+    notes: str | None = None
+    executed_at: datetime
+    resulting_revision_number: int
+
+
+class CaseCheckResponse(DurableCaseResponse):
+    """Canonical representation of a durable case after troubleshooting check submission.
+
+    Extends DurableCaseResponse with current revision, the newly submitted check execution record,
+    full check history, and recommended next steps.
     """
 
     current_revision: int
-    submitted_recurrence: LifecycleEventRecord
-    submitted_event: LifecycleEventRecord
-    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
-    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
-    previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
-    previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
-    confirmed_cause: str | None = None
+    submitted_check: CheckExecutionRecord
+    previous_checks: list[CheckExecutionRecord] = Field(default_factory=list)
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None
-
-
-class CaseOutcomeSummary(BaseModel):
-    """Compact direct projection of current persisted case outcome."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    issue_condition: IssueCondition | str = Field(
-        ...,
-        description="Current issue condition (e.g. UNRESOLVED, RECOVERY_PENDING_VERIFICATION, RESOLVED, RECURRED).",
-    )
-    current_revision: int = Field(
-        ...,
-        description="Current 1-based revision sequence number.",
-    )
-    confirmed_causes: list[str] = Field(
-        default_factory=list,
-        description="List of cause IDs that are currently confirmed based on persisted cause conclusions.",
-    )
-    currently_confirmed_causes: list[str] = Field(
-        default_factory=list,
-        description="Alias for confirmed_causes.",
-    )
-    is_resolved: bool = Field(
-        ...,
-        description="True if the issue_condition is currently RESOLVED, False otherwise.",
-    )
-    resolved: bool = Field(
-        ...,
-        description="Alias for is_resolved.",
-    )
-
-
-class CaseReportResponse(BaseModel):
-    """Deterministic read model of a durable case and its full audit history."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    # Case / report basis
-    case_id: str = Field(..., description="Unique case identifier.")
-    current_revision: int = Field(..., description="Current revision number of the case.")
-    defect_code: str | None = Field(default=None, description="Persisted defect code identifier.")
-    defect_name: str | None = Field(default=None, description="Persisted human-readable defect title.")
-    description: str = Field(default="", description="Technician problem description.")
-    material: str | None = Field(default=None, description="Fluid material name or category.")
-    method: str | None = Field(default=None, description="Dispensing method.")
-    machine_context: dict[str, Any] | None = Field(default=None, description="Equipment/process parameters.")
-    issue_condition: IssueCondition | str = Field(..., description="Current issue condition.")
-    created_at: datetime = Field(..., description="Case creation timestamp.")
-
-    # Current diagnosis snapshot (latest persisted analysis)
-    current_diagnosis: DiagnosisResult = Field(
-        ...,
-        description="Latest persisted diagnostic analysis snapshot.",
-    )
-    diagnosis: DiagnosisResult = Field(
-        ...,
-        description="Latest persisted diagnostic analysis snapshot (alias).",
-    )
-
-    # Audit histories in deterministic ascending order
-    question_answers: list[QuestionAnswerRecord] = Field(
-        default_factory=list,
-        description="Chronological history of technician question-answer events.",
-    )
-    question_answer_history: list[QuestionAnswerRecord] = Field(
-        default_factory=list,
-        description="Chronological history of technician question-answer events (alias).",
-    )
-    check_results: list[CheckResultRecord] = Field(
-        default_factory=list,
-        description="Chronological history of technician troubleshooting-check events.",
-    )
-    troubleshooting_check_history: list[CheckResultRecord] = Field(
-        default_factory=list,
-        description="Chronological history of technician troubleshooting-check events (alias).",
-    )
-    cause_confirmations: list[CauseConfirmationRecord] = Field(
-        default_factory=list,
-        description="Chronological history of explicit root-cause confirmations.",
-    )
-    cause_confirmation_history: list[CauseConfirmationRecord] = Field(
-        default_factory=list,
-        description="Chronological history of explicit root-cause confirmations (alias).",
-    )
-    lifecycle_events: list[LifecycleEventRecord] = Field(
-        default_factory=list,
-        description="Chronological history of issue lifecycle events (recovery, verification, recurrence).",
-    )
-    issue_lifecycle_history: list[LifecycleEventRecord] = Field(
-        default_factory=list,
-        description="Chronological history of issue lifecycle events (alias).",
-    )
-
-    # Current outcome summary
-    outcome_summary: CaseOutcomeSummary = Field(
-        ...,
-        description="Compact direct projection of current persisted outcome state.",
-    )
-    current_outcome_summary: CaseOutcomeSummary = Field(
-        ...,
-        description="Compact direct projection of current persisted outcome state (alias).",
-    )
