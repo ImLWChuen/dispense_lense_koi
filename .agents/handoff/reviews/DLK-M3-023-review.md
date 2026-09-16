@@ -1,11 +1,26 @@
 ---
 task_id: DLK-M3-023
-reviewed_commit: 32a9a2137d42bf9dcfbbb5b6305463c730da74f1
-decision: changes_requested
+reviewed_commit: 53cc609ad136628a811d6291522ae64c7ff70f72
+decision: accepted
 reviewed_by: ChatGPT planner
 ---
 
 # Review: DLK-M3-023
+
+## Acceptance review
+
+**Decision: accepted.** Correction commit `53cc609ad136628a811d6291522ae64c7ff70f72` resolves the remaining R3 verification gap. The earlier findings and re-review are retained below as review history and are superseded by this decision.
+
+- History assertions are now scoped to the text of Sections 4–7, so values elsewhere in the PDF cannot satisfy a history check.
+- Both unit and real API fixtures contain multiple distinguishable rows in every history collection, including repeated question, check, cause, and lifecycle identifiers with different associated values and revisions.
+- Positive checks compare section content and order with the report arrays. Negative checks demonstrate that reversed arrays and mismatched answer, finding, confirmer, or actor values fail.
+- The renderer change is limited to lifecycle-table wrapping and column sizing; the accepted read model, endpoint, persistence behavior, and diagnostic contracts are unchanged.
+- The commit contains no secrets, generated PDF/PNG artifacts, dependency changes, database changes, or unrelated files. Committed diff whitespace validation passed.
+- Gemini reports 5 PDF unit tests, 9 PDF integration tests, and all 297 backend tests passing with zero failures or skips. These tests remain implementer-reported; the reviewer inspected the committed tests and diff but did not rerun the PostgreSQL suite under the planner/implementer role split.
+
+Nonblocking documentation cleanup for the next authorized task: the implementation report says the verifier checks “complete row values,” although timestamps and full detail strings are not compared; it verifies the row-identifying values required for order proof. It also labels 1224 x 1584 US Letter output as 150 DPI, while those dimensions correspond to 144 DPI. Correct the prose when the report is next edited; no production or acceptance criterion depends on these labels.
+
+No next task was generated, and no commit, push, PR, or merge was performed by the reviewer.
 
 ## Latest re-review (supersedes the decision and findings below)
 

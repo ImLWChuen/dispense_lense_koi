@@ -9,12 +9,12 @@ Downloadable case report rendering
 - `DLK-M3-022` — Deterministic durable case report export API — **accepted**
   - reviewed commit: `e68015c4587b5f5afe7b14e78b2fe161dd3bf40c`
 
-## Ready
+## Accepted
 
-- `DLK-M3-023` — Deterministic downloadable PDF case report — **implemented**
-  - reviewed commit: `32a9a2137d42bf9dcfbbb5b6305463c730da74f1`
+- `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
+  - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
   - review: `.agents/handoff/reviews/DLK-M3-023-review.md`
-  - corrections: section-scoped multi-row history order and value verification, negative proof for reversed rows and mismatched values, deterministic persisted timestamps, complete diagnosis evidence, visual layout verification, and neutral provenance text.
+  - accepted evidence: section-scoped multi-row history verification, negative reversed/mismatched-row proof, deterministic persisted timestamps, complete diagnosis evidence, visual layout report, and neutral provenance text.
   - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
   - branch: `backend-database`
   - depends on: `DLK-M3-022`
@@ -25,11 +25,11 @@ Downloadable case report rendering
 
 ## Not released
 
-Blocked until DLK-M3-023 is accepted:
+No follow-on task is currently authorized. Remaining roadmap areas include:
 
 - historical-case retrieval / similarity
 - LLM explanation/report narration
 - image/CV integration
 - frontend report integration
 
-Only DLK-M3-023 is authorized for implementation.
+DLK-M3-023 is complete. A new bounded task must be authorized before further implementation.
