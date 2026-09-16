@@ -1,7 +1,7 @@
 """Add troubleshooting check execution history persistence table
 
-Revision ID: 0004_check_execution_history
-Revises: 0003_question_answer_history
+Revision ID: 0007_check_execution_history
+Revises: 0006_lifecycle_event_history
 Create Date: 2026-09-16 10:20:00.000000+00:00
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "0004_check_execution_history"
-down_revision: Union[str, None] = "0003_question_answer_history"
+revision: str = "0007_check_execution_history"
+down_revision: Union[str, None] = "0006_lifecycle_event_history"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

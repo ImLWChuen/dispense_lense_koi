@@ -18,6 +18,7 @@ from app.models.case import (
     CaseCheckResultModel,
     CaseLifecycleEventModel,
     CaseModel,
+    CheckExecutionModel,
     ObservationModel,
     QuestionAnswerModel,
 )
@@ -120,6 +121,27 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
         for c in cr_rows
     ]
 
+    ce_rows = session.scalars(
+        select(CheckExecutionModel)
+        .where(CheckExecutionModel.case_id == case_id)
+        .order_by(
+            CheckExecutionModel.resulting_revision_number.asc(),
+            CheckExecutionModel.check_id.asc(),
+        )
+        .execution_options(populate_existing=True)
+    ).all()
+    ce_data = [
+        {
+            "check_id": str(c.check_id),
+            "status": str(c.status) if c.status is not None else None,
+            "finding": str(c.finding) if c.finding is not None else None,
+            "notes": str(c.notes) if c.notes is not None else None,
+            "executed_at": c.executed_at.isoformat() if c.executed_at is not None else None,
+            "resulting_revision_number": int(c.resulting_revision_number),
+        }
+        for c in ce_rows
+    ]
+
     conf_rows = session.scalars(
         select(CaseCauseConfirmationModel)
         .where(CaseCauseConfirmationModel.case_id == case_id)
@@ -185,6 +207,7 @@ def capture_complete_case_state(session: Session, case_id: str) -> dict[str, Any
         "observations": obs_data,
         "question_answers": qa_data,
         "check_results": cr_data,
+        "check_executions": ce_data,
         "cause_confirmations": conf_data,
         "lifecycle_events": lifecycle_data,
         "analysis_revisions": rev_data,

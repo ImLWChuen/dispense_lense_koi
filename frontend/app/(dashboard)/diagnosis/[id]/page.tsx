@@ -167,7 +167,7 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                             {evidenceList.length > 0 && topCause && (
                                 <EvidencePanel
                                     evidence={evidenceList}
-                                    causeLabel={topCause.name}
+                                    causeLabel={topCause.cause_name}
                                 />
                             )}
                         </div>

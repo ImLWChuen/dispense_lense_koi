@@ -662,7 +662,21 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
-#### 3.3 Representative Execution Example
+#### 3.3 List Durable Cases
+
+- **Method / Path:** `GET /api/v1/cases`
+- **Description:** Retrieves all persisted diagnostic cases with their initial analysis and latest diagnosis snapshots.
+- **Status Code:** `200 OK`
+- **Response Schema:** `list[DurableCaseResponse]`
+- **Guarantees:**
+  - **Zero Recalculation:** Loads stored relational records and serialized diagnosis snapshots; `DiagnosticEngine.diagnose()` is never invoked.
+  - **Idempotent & Read-Only:** Repeated requests produce identical responses and commit zero mutations.
+  - **Empty Result:** Returns `200 OK` with an empty JSON array `[]` when no cases exist.
+  - **Ordering & Pagination:** Unspecified in core MVP contract; callers should not rely on implicit order.
+
+---
+
+#### 3.4 Representative Execution Example
 
 > [!NOTE]
 > The following payloads demonstrate a real executable run against PostgreSQL 16. The case was created via `POST /api/v1/cases` and subsequently fetched via `GET /api/v1/cases/{case_id}`.

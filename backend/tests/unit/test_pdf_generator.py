@@ -309,7 +309,7 @@ def extract_pdf_history_sections(pdf_bytes: bytes) -> dict[str, str]:
     }
 
 
-def verify_question_answers_section(section_text: str, qas: list[dict | Any]) -> None:
+def verify_question_answers_section(section_text: str, qas: list[Any]) -> None:
     """Verify complete row values and order against question_answers report array."""
     norm_text = " ".join(section_text.split())
     expected_header = f"Question Answers ({len(qas)})"
@@ -345,7 +345,7 @@ def verify_question_answers_section(section_text: str, qas: list[dict | Any]) ->
         last_pos = pos_qid
 
 
-def verify_check_results_section(section_text: str, crs: list[dict | Any]) -> None:
+def verify_check_results_section(section_text: str, crs: list[Any]) -> None:
     """Verify complete row values and order against check_results report array."""
     norm_text = " ".join(section_text.split())
     expected_header = f"Troubleshooting Checks ({len(crs)})"
@@ -386,7 +386,7 @@ def verify_check_results_section(section_text: str, crs: list[dict | Any]) -> No
         last_pos = pos_cid
 
 
-def verify_cause_confirmations_section(section_text: str, ccs: list[dict | Any]) -> None:
+def verify_cause_confirmations_section(section_text: str, ccs: list[Any]) -> None:
     """Verify complete row values and order against cause_confirmations report array."""
     norm_text = " ".join(section_text.split())
     expected_header = f"Cause Confirmations ({len(ccs)})"
@@ -418,7 +418,7 @@ def verify_cause_confirmations_section(section_text: str, ccs: list[dict | Any])
         last_pos = pos_cause
 
 
-def verify_lifecycle_events_section(section_text: str, lcs: list[dict | Any]) -> None:
+def verify_lifecycle_events_section(section_text: str, lcs: list[Any]) -> None:
     """Verify complete row values and order against lifecycle_events report array."""
     norm_text = " ".join(section_text.split())
     expected_header = f"Lifecycle Events ({len(lcs)})"
@@ -498,7 +498,7 @@ def test_render_case_report_pdf_valid_bytes_and_structure():
     # Assert specific content values
     assert "D03_INCONSISTENT_SIZE" in extracted_text
     assert "Inconsistent Dot Size" in extracted_text
-    assert report.issue_condition.value in extracted_text
+    assert report.issue_condition in extracted_text
     assert "nozzle_restriction" in extracted_text
     assert "Nozzle Restriction / Clog" in extracted_text
     assert "Q01" in extracted_text

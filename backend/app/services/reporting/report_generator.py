@@ -109,7 +109,7 @@ def _map_lifecycle_event(model: CaseLifecycleEventModel) -> LifecycleEventRecord
     )
     return LifecycleEventRecord(
         id=model.id,
-        case_id=str(model.case_id),
+        case_id=model.case_id,
         event_type=model.event_type,
         prior_issue_condition=prior_cond,
         resulting_issue_condition=resulting_cond,
@@ -167,7 +167,7 @@ def build_case_report(
         pinned_condition = pinned_condition_raw
     else:
         try:
-            pinned_condition = IssueCondition(str(pinned_condition_raw))
+            pinned_condition = IssueCondition(pinned_condition_raw)
         except ValueError:
             pinned_condition = pinned_condition_raw
 
@@ -228,11 +228,11 @@ def build_case_report(
         resolved=is_resolved,
     )
 
-    defect_code = target_rev.defect_code or latest_diagnosis.defect_category or case_model.defect_code
+    defect_code = target_rev.defect_code or latest_diagnosis.defect or case_model.defect_code
     defect_name = latest_diagnosis.defect_name or case_model.defect_name
 
     return CaseReportResponse(
-        case_id=str(case_model.case_id),
+        case_id=case_model.case_id,
         current_revision=effective_revision,
         defect_code=defect_code,
         defect_name=defect_name,
