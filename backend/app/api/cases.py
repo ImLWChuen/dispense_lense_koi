@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.repository import CaseRepository, StaleRevisionError
@@ -17,6 +17,8 @@ from app.schemas.case import (
     CaseObservationResponse,
     CaseRecoveryActionResponse,
     CaseRecoveryVerificationResponse,
+    CaseRecurrenceResponse,
+    CaseReportResponse,
     CauseConfirmationRecord,
     CheckResultRecord,
     CreateCaseRequest,
@@ -28,6 +30,7 @@ from app.schemas.case import (
     SubmitCheckResultRequest,
     SubmitRecoveryActionRequest,
     SubmitRecoveryVerificationRequest,
+    SubmitRecurrenceRequest,
 )
 from app.schemas.diagnosis import (
     CauseConclusion,
@@ -44,6 +47,7 @@ from app.schemas.diagnosis import (
 from app.knowledge import get_causes_for_defect
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
+from app.services.reporting import build_case_report, render_case_report_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -1733,4 +1737,441 @@ def submit_case_recovery_verification(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while submitting the recovery verification.",
+        )
+
+
+@router.post(
+    "/{case_id}/recurrences",
+    response_model=CaseRecurrenceResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_409_CONFLICT: {"description": "Stale expected revision"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Illegal lifecycle transition or validation error"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Report recurrence of a resolved issue",
+    description=(
+        "Records that a previously RESOLVED issue has recurred, transitioning condition "
+        "from RESOLVED to RECURRED, appending a RECURRENCE lifecycle event and immutable "
+        "revision snapshot, preserving cause conclusions, and enforcing optimistic concurrency."
+    ),
+)
+def submit_case_recurrence(
+    case_id: str,
+    request: SubmitRecurrenceRequest,
+    engine: DiagnosticEngine = Depends(get_diagnosis_engine),
+    repository: CaseRepository = Depends(get_case_repository),
+    session: Session = Depends(get_db),
+) -> CaseRecurrenceResponse:
+    """Record that a previously RESOLVED issue has recurred and transition to RECURRED."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+
+        case = repository.load_structured_case(canonical_id)
+        if case is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+
+        current_rev = (
+            case.analysis_revisions[-1].revision_number
+            if case.analysis_revisions
+            else 1
+        )
+        if request.expected_revision != current_rev:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Stale revision for case '{canonical_id}': expected revision "
+                    f"{request.expected_revision}, but current revision is {current_rev}."
+                ),
+            )
+
+        # Operation-specific precondition: recurrence requires RESOLVED
+        current_condition = (
+            case.issue_condition
+            if isinstance(case.issue_condition, IssueCondition)
+            else IssueCondition(case.issue_condition)
+        )
+        if current_condition != IssueCondition.RESOLVED:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Illegal issue condition transition: cannot report recurrence for case '{canonical_id}' from condition "
+                    f"'{current_condition.value}': issue recurrence requires "
+                    f"'{IssueCondition.RESOLVED.value}'."
+                ),
+            )
+
+        target_condition = IssueCondition.RECURRED
+
+        # Enforce legal state machine transition via StateManager
+        valid_targets = StateManager._VALID_ISSUE_TRANSITIONS.get(current_condition, set())
+        if target_condition not in valid_targets:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Illegal issue condition transition: cannot report recurrence from condition "
+                    f"'{current_condition.value}' to '{target_condition.value}'."
+                ),
+            )
+
+        new_condition, transition_explanation = StateManager.transition_issue_condition(
+            current_condition=current_condition,
+            target_condition=target_condition,
+            verification_passed=False,
+            verification_details=request.recurrence_details,
+        )
+
+        # Transition issue condition on structured case
+        case.issue_condition = new_condition
+
+        # Evaluate diagnosis for next revision
+        result = engine.diagnose(case)
+        result.issue_condition = new_condition
+
+        summary_note = f"Defect recurrence reported by {request.reported_by}."
+        if request.recurrence_details:
+            summary_note += f" Details: {request.recurrence_details}"
+        if result.analysis_revision:
+            result.analysis_revision.new_evidence_summary = summary_note
+        if case.analysis_revisions:
+            case.analysis_revisions[-1].new_evidence_summary = summary_note
+
+        try:
+            rev_model = repository.append_recurrence_revision(
+                case=case,
+                reported_by=request.reported_by,
+                recurrence_details=request.recurrence_details,
+                result=result,
+                expected_revision=request.expected_revision,
+            )
+
+            target_revision = rev_model.revision_number
+
+            case_model = repository.get_case(canonical_id)
+            if case_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Case '{canonical_id}' not found.",
+                )
+
+            obs_models = repository.get_case_observations(canonical_id, max_revision=target_revision)
+            rev1_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+            if rev1_model is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Initial diagnosis revision for case '{canonical_id}' not found.",
+                )
+
+            initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
+            qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
+            conf_models = repository.get_case_cause_confirmations(canonical_id, max_revision=target_revision)
+            le_models = repository.get_case_lifecycle_events(canonical_id, max_revision=target_revision)
+
+            observations = [
+                CaseObservationResponse(
+                    id=obs.observation_id,
+                    observation_id=obs.observation_id,
+                    observation_type=(
+                        ObservationType(obs.observation_type)
+                        if obs.observation_type in ObservationType._value2member_map_
+                        else obs.observation_type
+                    ),
+                    value=obs.value,
+                    original_text=obs.original_text,
+                    statement_type=(
+                        StatementType(obs.statement_type)
+                        if obs.statement_type in StatementType._value2member_map_
+                        else obs.statement_type
+                    ),
+                    source=(
+                        EvidenceSource(obs.source)
+                        if obs.source in EvidenceSource._value2member_map_
+                        else obs.source
+                    ),
+                    confidence=obs.confidence,
+                    timestamp=obs.created_at,
+                    created_at=obs.created_at,
+                    first_seen_revision=obs.first_seen_revision,
+                )
+                for obs in obs_models
+                if obs.first_seen_revision <= target_revision
+            ]
+
+            previous_answers = [
+                QuestionAnswerRecord(
+                    question_id=qm.question_id,
+                    answer_value=qm.answer_value,
+                    answer_text=qm.answer_text,
+                    source=(
+                        EvidenceSource(qm.source)
+                        if qm.source in EvidenceSource._value2member_map_
+                        else qm.source
+                    ),
+                    answered_at=qm.answered_at,
+                    resulting_revision_number=qm.resulting_revision_number,
+                )
+                for qm in qa_models
+                if qm.resulting_revision_number <= target_revision
+            ]
+
+            previous_check_results = [
+                CheckResultRecord(
+                    check_id=cm.check_id,
+                    execution_status=(
+                        CheckExecutionStatus(cm.execution_status)
+                        if cm.execution_status in CheckExecutionStatus._value2member_map_
+                        else cm.execution_status
+                    ),
+                    finding=(
+                        CheckFinding(cm.finding)
+                        if cm.finding in CheckFinding._value2member_map_
+                        else cm.finding
+                    ),
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=(
+                        EvidenceSource(cm.source)
+                        if cm.source in EvidenceSource._value2member_map_
+                        else cm.source
+                    ),
+                    checked_at=cm.checked_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                )
+                for cm in cr_models
+                if cm.resulting_revision_number <= target_revision
+            ]
+
+            previous_confirmations = [
+                CauseConfirmationRecord(
+                    cause_id=cfm.cause_id,
+                    confirmed_by=cfm.confirmed_by,
+                    notes=cfm.notes,
+                    confirmed_at=cfm.confirmed_at,
+                    resulting_revision_number=cfm.resulting_revision_number,
+                )
+                for cfm in conf_models
+                if cfm.resulting_revision_number <= target_revision
+            ]
+
+            lifecycle_events = [
+                LifecycleEventRecord(
+                    id=lem.id,
+                    case_id=lem.case_id,
+                    event_type=lem.event_type,
+                    prior_issue_condition=(
+                        IssueCondition(lem.prior_issue_condition)
+                        if lem.prior_issue_condition in IssueCondition._value2member_map_
+                        else lem.prior_issue_condition
+                    ),
+                    resulting_issue_condition=(
+                        IssueCondition(lem.resulting_issue_condition)
+                        if lem.resulting_issue_condition in IssueCondition._value2member_map_
+                        else lem.resulting_issue_condition
+                    ),
+                    resulting_revision_number=lem.resulting_revision_number,
+                    actor=lem.actor,
+                    details=lem.details,
+                    verification_passed=lem.verification_passed,
+                    created_at=lem.created_at,
+                )
+                for lem in le_models
+                if lem.resulting_revision_number <= target_revision
+            ]
+
+            matching_submitted = [
+                e for e in lifecycle_events if e.resulting_revision_number == target_revision
+            ]
+            if not matching_submitted:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Submitted recurrence event record not found for the resulting revision.",
+                )
+            submitted_event = matching_submitted[-1]
+
+            issue_cond = (
+                IssueCondition(case_model.issue_condition)
+                if case_model.issue_condition in IssueCondition._value2member_map_
+                else case_model.issue_condition
+            )
+
+            confirmed_cause_id = case.confirmed_causes[-1] if case.confirmed_causes else None
+
+            response = CaseRecurrenceResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=case_model.defect_name,
+                issue_condition=issue_cond,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=result,
+                current_revision=target_revision,
+                submitted_recurrence=submitted_event,
+                submitted_event=submitted_event,
+                lifecycle_events=lifecycle_events,
+                previous_confirmations=previous_confirmations,
+                previous_check_results=previous_check_results,
+                previous_answers=previous_answers,
+                confirmed_cause=confirmed_cause_id,
+                next_question=result.next_question,
+                next_check=result.next_check,
+            )
+
+            session.commit()
+            return response
+        except StaleRevisionError as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            )
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception:
+            session.rollback()
+            logger.exception("Unexpected error during issue recurrence persistence")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred while persisting the issue recurrence revision.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during issue recurrence submission")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while submitting the issue recurrence.",
+        )
+
+
+@router.get(
+    "/{case_id}/report",
+    response_model=CaseReportResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid case ID format"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Export deterministic durable case report",
+    description=(
+        "Assembles a deterministic read-only report of a durable case from persisted state "
+        "and audit history. Performs no diagnostic recalculation and creates no database mutations."
+    ),
+)
+def get_case_report(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> CaseReportResponse:
+    """Export a deterministic read-only case report from persisted storage."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        report = build_case_report(canonical_id, repository)
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+        return report
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during case report export for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the case report.",
+        )
+
+
+@router.get(
+    "/{case_id}/report.pdf",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/pdf": {}},
+            "description": "Deterministic downloadable PDF case report",
+        },
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid case ID format"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Download deterministic PDF case report",
+    description=(
+        "Renders and downloads a deterministic PDF report of a durable case from the "
+        "same accepted persisted report model as the JSON report. Performs zero diagnostic "
+        "recalculation, reads no independent secondary paths, and creates no database mutations."
+    ),
+)
+def get_case_report_pdf(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> Response:
+    """Render and download a deterministic PDF case report from persisted storage."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        report = build_case_report(canonical_id, repository)
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+
+        try:
+            pdf_bytes = render_case_report_pdf(report)
+        except Exception:
+            logger.exception("Unexpected error during PDF rendering for case '%s'", case_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred while generating the PDF case report.",
+            )
+
+        filename = f"dispenseiq-case-{canonical_id}-r{report.current_revision}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error during case report PDF export for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the PDF case report.",
         )

@@ -263,6 +263,24 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_latest_analysis_revision(
+        self,
+        case_id: str,
+    ) -> AnalysisRevisionModel | None:
+        """Retrieve the latest analysis revision for a case ordered by revision_number descending."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(AnalysisRevisionModel)
+                .where(AnalysisRevisionModel.case_id == case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            return session.scalars(stmt).first()
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_question_answers(
         self, case_id: str, max_revision: int | None = None
     ) -> list[QuestionAnswerModel]:
@@ -1752,6 +1770,37 @@ class CaseRepository:
             actor=verified_by or "technician",
             details=verification_details,
             verification_passed=verification_passed,
+            result=result,
+            expected_revision=expected_revision,
+        )
+
+    def append_recurrence_revision(
+        self,
+        case: StructuredCase,
+        reported_by: str,
+        recurrence_details: str,
+        result: DiagnosisResult,
+        expected_revision: int,
+    ) -> AnalysisRevisionModel:
+        """Atomically append a recurrence lifecycle event and the resulting analysis revision."""
+        prior_cond = (
+            case.issue_condition.value
+            if hasattr(case.issue_condition, "value")
+            else str(case.issue_condition)
+        )
+        resulting_cond = (
+            result.issue_condition.value
+            if hasattr(result.issue_condition, "value")
+            else str(result.issue_condition)
+        )
+        return self.append_lifecycle_event_revision(
+            case=case,
+            event_type="RECURRENCE",
+            prior_issue_condition=prior_cond,
+            resulting_issue_condition=resulting_cond,
+            actor=reported_by or "technician",
+            details=recurrence_details,
+            verification_passed=None,
             result=result,
             expected_revision=expected_revision,
         )

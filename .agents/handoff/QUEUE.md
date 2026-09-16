@@ -2,37 +2,34 @@
 
 ## Current milestone
 
-Recovery-verification workflow closeout — complete
+Downloadable case report rendering
 
-## Review state
+## Accepted prerequisite
 
-- `DLK-M3-019` — Durable recovery action and post-correction verification workflow — **changes_requested**
-  - reviewed commit: `d881b44b59a80bbefd173d180541ae884fbf87ed`
-  - historical decision at the earlier commit; all three findings resolved by accepted DLK-M3-020
-  - resolved findings:
-    - require `RECOVERY_PENDING_VERIFICATION` before any verification submission
-    - sanitize unexpected state-manager `ValueError`s as HTTP 500
-    - prove rollback preserves prior confirmation and lifecycle audit history
+- `DLK-M3-022` — Deterministic durable case report export API — **accepted**
+  - reviewed commit: `e68015c4587b5f5afe7b14e78b2fe161dd3bf40c`
 
-## Latest accepted task
+## Accepted
 
-- `DLK-M3-020` — Recovery-verification workflow closeout — **accepted**
-  - reviewed commit: `78a9a2bbf3a14329a26b42b333cdce492c4eee96`
-  - review: `.agents/handoff/reviews/DLK-M3-020-review.md`
-  - closes the DLK-M3-019 correction chain
-  - task: `.agents/handoff/tasks/DLK-M3-020-recovery-verification-closeout.md`
+- `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
+  - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
+  - review: `.agents/handoff/reviews/DLK-M3-023-review.md`
+  - accepted evidence: section-scoped multi-row history verification, negative reversed/mismatched-row proof, deterministic persisted timestamps, complete diagnosis evidence, visual layout report, and neutral provenance text.
+  - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-019`
+  - depends on: `DLK-M3-022`
+  - dependency authorization:
+    - `reportlab==5.0.1` — production renderer
+    - `pypdf==6.18.1` — parser/text-validation dependency
+    - no other PDF dependency or native renderer is authorized
 
 ## Not released
 
-The recovery-verification prerequisite is cleared. These areas still require planning and a released task:
+No follow-on task is currently authorized. Remaining roadmap areas include:
 
-- resolved-issue recurrence reporting (`RECURRED`)
-- report generation
+- historical-case retrieval / similarity
+- LLM explanation/report narration
 - image/CV integration
-- LLM integration
-- historical-case retrieval
-- frontend recovery/verification integration
+- frontend report integration
 
-No new task is currently released for implementation.
+DLK-M3-023 is complete. A new bounded task must be authorized before further implementation.

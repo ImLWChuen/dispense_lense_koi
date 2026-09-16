@@ -2993,3 +2993,397 @@ def test_interleaved_mixed_revisions_all_five_event_types(case_repo, db_session)
     assert lifecycle_events[1].resulting_revision_number == 6
     assert lifecycle_events[1].actor == "lead_engineer_alice"
     assert lifecycle_events[1].verification_passed is True
+
+
+def test_append_recurrence_revision_rollback_on_failure(db_session, case_repo):
+    """Verify transaction rollback during append_recurrence_revision leaves database intact.
+
+    1. Create control case (unrelated baseline).
+    2. Create target case and advance through full lifecycle to RESOLVED (Rev 6):
+       Rev 1: initial
+       Rev 2: question answer
+       Rev 3: check result
+       Rev 4: cause confirmation
+       Rev 5: recovery action -> RECOVERY_PENDING_VERIFICATION
+       Rev 6: recovery verification -> RESOLVED
+    3. Capture target_baseline and control_baseline in an independent session.
+    4. Inject failure before commit on append_recurrence_revision.
+    5. Verify in a fresh independent session that target and control baselines are perfectly preserved.
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+
+    control_id = str(uuid.uuid4())
+    target_id = str(uuid.uuid4())
+    tracked_ids.extend([control_id, target_id])
+
+    # 1. Setup control case
+    ctrl_case = engine.prepare_case(
+        StructuredCase(
+            case_id=control_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Control baseline case",
+        )
+    )
+    ctrl_res = engine.diagnose(ctrl_case)
+    repo.save_initial_case(ctrl_case, ctrl_res)
+    db_session.commit()
+
+    # 2. Setup target case up to recovery verification (Rev 6, RESOLVED)
+    tgt_case = engine.prepare_case(
+        StructuredCase(
+            case_id=target_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Target case for recurrence rollback",
+        )
+    )
+    tgt_res = engine.diagnose(tgt_case)
+    repo.save_initial_case(tgt_case, tgt_res)
+    db_session.commit()
+
+    # Rev 2: QA
+    tgt_loaded1 = repo.load_structured_case(target_id)
+    assert tgt_loaded1 is not None
+    tgt_ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation", source=EvidenceSource.USER)
+    t_case2, t_res2 = engine.submit_question_answer(tgt_loaded1, tgt_ans)
+    repo.append_question_answer_revision(t_case2, tgt_ans, t_res2, expected_revision=1)
+    db_session.commit()
+
+    # Rev 3: Check
+    tgt_loaded2 = repo.load_structured_case(target_id)
+    assert tgt_loaded2 is not None
+    tgt_chk = CheckResult(
+        check_id="ACT02",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.SUPPORTS,
+        outcome="air_bubbles_found",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    t_case3, t_res3 = engine.submit_check_result(tgt_loaded2, tgt_chk)
+    repo.append_check_result_revision(t_case3, tgt_chk, t_res3, expected_revision=2)
+    db_session.commit()
+
+    # Rev 4: Cause Confirmation
+    tgt_loaded3 = repo.load_structured_case(target_id)
+    assert tgt_loaded3 is not None
+    t_case4, t_res4 = engine.confirm_cause(
+        tgt_loaded3,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        confirmation_details="Microscope confirmed restriction",
+    )
+    repo.append_cause_confirmation_revision(
+        t_case4,
+        cause_id="nozzle_restriction",
+        confirmed_by="technician",
+        notes="Microscope confirmed restriction",
+        result=t_res4,
+        expected_revision=3,
+    )
+    db_session.commit()
+
+    # Rev 5: Recovery Action
+    tgt_loaded4 = repo.load_structured_case(target_id)
+    assert tgt_loaded4 is not None
+    new_cond, _ = StateManager.transition_issue_condition(
+        current_condition=tgt_loaded4.issue_condition,
+        target_condition=IssueCondition.RECOVERY_PENDING_VERIFICATION,
+        verification_passed=False,
+        verification_details="Replaced fluid syringe",
+    )
+    tgt_loaded4.issue_condition = new_cond
+    res_rec = engine.diagnose(tgt_loaded4)
+    res_rec.issue_condition = new_cond
+    repo.append_recovery_action_revision(
+        case=tgt_loaded4,
+        performed_by="technician",
+        recovery_details="Replaced fluid syringe",
+        result=res_rec,
+        expected_revision=4,
+    )
+    db_session.commit()
+
+    # Rev 6: Recovery Verification (passed -> RESOLVED)
+    tgt_loaded5 = repo.load_structured_case(target_id)
+    assert tgt_loaded5 is not None
+    resolved_cond, _ = StateManager.transition_issue_condition(
+        current_condition=tgt_loaded5.issue_condition,
+        target_condition=IssueCondition.RESOLVED,
+        verification_passed=True,
+        verification_details="Test shots nominal",
+    )
+    tgt_loaded5.issue_condition = resolved_cond
+    res_ver = engine.diagnose(tgt_loaded5)
+    res_ver.issue_condition = resolved_cond
+    repo.append_recovery_verification_revision(
+        case=tgt_loaded5,
+        verified_by="qa_engineer",
+        verification_passed=True,
+        verification_details="Test shots nominal",
+        result=res_ver,
+        expected_revision=5,
+    )
+    db_session.commit()
+
+    factory = get_session_factory()
+    with factory() as session:
+        control_baseline = capture_complete_case_state(session, control_id)
+        target_baseline = capture_complete_case_state(session, target_id)
+
+    assert len(target_baseline["question_answers"]) == 1
+    assert len(target_baseline["check_results"]) == 1
+    assert len(target_baseline["cause_confirmations"]) == 1
+    assert len(target_baseline["lifecycle_events"]) == 2
+    assert target_baseline["case"]["issue_condition"] == "RESOLVED"
+    baseline_rev = target_baseline["analysis_revisions"][-1]["revision_number"]
+    assert baseline_rev == 6
+    attempted_rev = baseline_rev + 1
+
+    # 3. Prepare recurrence transition (RESOLVED -> RECURRED)
+    tgt_loaded6 = repo.load_structured_case(target_id)
+    assert tgt_loaded6 is not None
+    recurred_cond, _ = StateManager.transition_issue_condition(
+        current_condition=tgt_loaded6.issue_condition,
+        target_condition=IssueCondition.RECURRED,
+        verification_passed=False,
+        verification_details="Defect returned during run",
+    )
+    tgt_loaded6.issue_condition = recurred_cond
+    res_recur = engine.diagnose(tgt_loaded6)
+    res_recur.issue_condition = recurred_cond
+
+    # 4. Use self-managed repository to test repository's own rollback
+    self_managed_repo = CaseRepository()
+    fault_reached = False
+
+    def fail_after_flush_before_commit(session: Session) -> None:
+        nonlocal fault_reached
+        target_events = session.scalars(
+            select(CaseLifecycleEventModel).where(
+                CaseLifecycleEventModel.case_id == target_id,
+                CaseLifecycleEventModel.resulting_revision_number == attempted_rev,
+            )
+        ).all()
+        if not target_events:
+            return
+
+        fault_reached = True
+        raise RuntimeError("Simulated repository flush boundary fault during recurrence")
+
+    event.listen(Session, "before_commit", fail_after_flush_before_commit)
+    try:
+        with pytest.raises(RuntimeError, match="Simulated repository flush boundary fault during recurrence"):
+            self_managed_repo.append_recurrence_revision(
+                case=tgt_loaded6,
+                reported_by="technician",
+                recurrence_details="Defect returned during run",
+                result=res_recur,
+                expected_revision=baseline_rev,
+            )
+    finally:
+        event.remove(Session, "before_commit", fail_after_flush_before_commit)
+
+    assert fault_reached is True
+
+    # 5. Verify fresh session proves baseline preservation and no phantom writes
+    with factory() as fresh_session:
+        target_after = capture_complete_case_state(fresh_session, target_id)
+        control_after = capture_complete_case_state(fresh_session, control_id)
+
+        assert target_after == target_baseline
+        assert control_after == control_baseline
+        assert len(target_after["cause_confirmations"]) == 1
+        assert len(target_after["question_answers"]) == 1
+        assert len(target_after["check_results"]) == 1
+        assert len(target_after["lifecycle_events"]) == 2
+        assert len(target_after["analysis_revisions"]) == 6
+
+        all_events = list(fresh_session.scalars(
+            select(CaseLifecycleEventModel).where(CaseLifecycleEventModel.case_id == target_id)
+        ).all())
+        assert len(all_events) == 2
+        assert all(e.event_type != "RECURRENCE" for e in all_events)
+
+        rev7_events = list(fresh_session.scalars(
+            select(CaseLifecycleEventModel).where(
+                CaseLifecycleEventModel.case_id == target_id,
+                CaseLifecycleEventModel.resulting_revision_number == attempted_rev,
+            )
+        ).all())
+        assert len(rev7_events) == 0
+        assert target_after["case"]["issue_condition"] == "RESOLVED"
+
+
+def test_interleaved_mixed_revisions_all_six_event_types(case_repo, db_session):
+    """Verify monotonic global revision ordering across all six event types:
+    Rev 1: Initial diagnosis (INITIAL)
+    Rev 2: Question answer (QUESTION_ANSWER)
+    Rev 3: Troubleshooting check result (CHECK_RESULT)
+    Rev 4: Root cause confirmation (CAUSE_CONFIRMATION)
+    Rev 5: Recovery action applied (RECOVERY_ACTION -> RECOVERY_PENDING_VERIFICATION)
+    Rev 6: Recovery verification passed (RECOVERY_VERIFICATION -> RESOLVED)
+    Rev 7: Recurrence reported (RECURRENCE -> RECURRED)
+
+    Proves:
+    - Exactly 7 revisions with monotonic numbers 1..7.
+    - Reconstructed StructuredCase preserves all answers, check results, confirmed causes, and final issue condition.
+    - Lifecycle event history records all three lifecycle transitions with correct prior/resulting states.
+    - Cause confirmation state is preserved even after resolution and recurrence.
+    """
+    repo, tracked_ids = case_repo
+    engine = DiagnosticEngine()
+    case_id = str(uuid.uuid4())
+    tracked_ids.append(case_id)
+
+    # Rev 1: Initial case
+    case = engine.prepare_case(
+        StructuredCase(
+            case_id=case_id,
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size",
+            description="Dots shrinking over time",
+        )
+    )
+    res1 = engine.diagnose(case)
+    repo.save_initial_case(case, res1)
+    db_session.commit()
+
+    # Rev 2: Question Answer (Q01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    ans1 = QuestionAnswer(
+        question_id="Q01",
+        answer_value="after_prolonged_operation",
+        source=EvidenceSource.USER,
+    )
+    c2, res2 = engine.submit_question_answer(loaded, ans1)
+    repo.append_question_answer_revision(c2, ans1, res2, expected_revision=1)
+    db_session.commit()
+
+    # Rev 3: Check Result (ACT01)
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    check1 = CheckResult(
+        check_id="ACT01",
+        execution_status=CheckExecutionStatus.COMPLETED,
+        finding=CheckFinding.CONTRADICTS,
+        outcome="no_blockage",
+        source=EvidenceSource.USER_CHECK_RESULT,
+    )
+    c3, res3 = engine.submit_check_result(loaded, check1)
+    repo.append_check_result_revision(c3, check1, res3, expected_revision=2)
+    db_session.commit()
+
+    # Rev 4: Cause Confirmation
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    c4, res4 = engine.confirm_cause(loaded, cause_id="pressure_instability", confirmed_by="technician", confirmation_details="Confirmed by pressure log")
+    repo.append_cause_confirmation_revision(c4, cause_id="pressure_instability", confirmed_by="technician", notes="Confirmed by pressure log", result=res4, expected_revision=3)
+    db_session.commit()
+
+    # Rev 5: Recovery Action applied
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    new_cond, _ = StateManager.transition_issue_condition(
+        current_condition=loaded.issue_condition,
+        target_condition=IssueCondition.RECOVERY_PENDING_VERIFICATION,
+        verification_passed=False,
+        verification_details="Replaced pressure regulator valve",
+    )
+    loaded.issue_condition = new_cond
+    res5 = engine.diagnose(loaded)
+    res5.issue_condition = new_cond
+    repo.append_recovery_action_revision(
+        case=loaded,
+        performed_by="technician_bob",
+        recovery_details="Replaced pressure regulator valve",
+        result=res5,
+        expected_revision=4,
+    )
+    db_session.commit()
+
+    # Rev 6: Recovery Verification passed
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    resolved_cond, _ = StateManager.transition_issue_condition(
+        current_condition=loaded.issue_condition,
+        target_condition=IssueCondition.RESOLVED,
+        verification_passed=True,
+        verification_details="Pressure stability confirmed across 50 continuous cycles",
+    )
+    loaded.issue_condition = resolved_cond
+    res6 = engine.diagnose(loaded)
+    res6.issue_condition = resolved_cond
+    repo.append_recovery_verification_revision(
+        case=loaded,
+        verified_by="lead_engineer_alice",
+        verification_passed=True,
+        verification_details="Pressure stability confirmed across 50 continuous cycles",
+        result=res6,
+        expected_revision=5,
+    )
+    db_session.commit()
+
+    # Rev 7: Recurrence reported
+    loaded = repo.load_structured_case(case_id)
+    assert loaded is not None
+    recurred_cond, _ = StateManager.transition_issue_condition(
+        current_condition=loaded.issue_condition,
+        target_condition=IssueCondition.RECURRED,
+        verification_passed=False,
+        verification_details="Pressure drop recurred on shift start",
+    )
+    loaded.issue_condition = recurred_cond
+    res7 = engine.diagnose(loaded)
+    res7.issue_condition = recurred_cond
+    repo.append_recurrence_revision(
+        case=loaded,
+        reported_by="operator_sam",
+        recurrence_details="Pressure drop recurred on shift start",
+        result=res7,
+        expected_revision=6,
+    )
+    db_session.commit()
+
+    # Final reconstruction verification
+    final_case = repo.load_structured_case(case_id)
+    assert final_case is not None
+    assert len(final_case.analysis_revisions) == 7
+    assert [r.revision_number for r in final_case.analysis_revisions] == [1, 2, 3, 4, 5, 6, 7]
+    assert len(final_case.previous_answers) == 1
+    assert [a.question_id for a in final_case.previous_answers] == ["Q01"]
+    assert len(final_case.previous_check_results) == 1
+    assert [c.check_id for c in final_case.previous_check_results] == ["ACT01"]
+    assert final_case.confirmed_causes == ["pressure_instability"]
+    assert final_case.issue_condition == IssueCondition.RECURRED
+
+    # Latest revision preserves confirmed cause
+    confirmed = next((c for c in final_case.analysis_revisions[-1].ranked_causes if c.cause_id == "pressure_instability"), None)
+    assert confirmed is not None
+    assert confirmed.conclusion == CauseConclusion.CONFIRMED
+
+    # Lifecycle event query verification
+    lifecycle_events = repo.get_case_lifecycle_events(case_id)
+    assert len(lifecycle_events) == 3
+    assert lifecycle_events[0].event_type == "RECOVERY_ACTION"
+    assert lifecycle_events[0].prior_issue_condition == "UNRESOLVED"
+    assert lifecycle_events[0].resulting_issue_condition == "RECOVERY_PENDING_VERIFICATION"
+    assert lifecycle_events[0].resulting_revision_number == 5
+    assert lifecycle_events[0].actor == "technician_bob"
+    assert lifecycle_events[0].verification_passed is None
+
+    assert lifecycle_events[1].event_type == "RECOVERY_VERIFICATION"
+    assert lifecycle_events[1].prior_issue_condition == "RECOVERY_PENDING_VERIFICATION"
+    assert lifecycle_events[1].resulting_issue_condition == "RESOLVED"
+    assert lifecycle_events[1].resulting_revision_number == 6
+    assert lifecycle_events[1].actor == "lead_engineer_alice"
+    assert lifecycle_events[1].verification_passed is True
+
+    assert lifecycle_events[2].event_type == "RECURRENCE"
+    assert lifecycle_events[2].prior_issue_condition == "RESOLVED"
+    assert lifecycle_events[2].resulting_issue_condition == "RECURRED"
+    assert lifecycle_events[2].resulting_revision_number == 7
+    assert lifecycle_events[2].actor == "operator_sam"
+    assert lifecycle_events[2].verification_passed is None
