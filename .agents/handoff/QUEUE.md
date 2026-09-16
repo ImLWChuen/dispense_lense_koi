@@ -12,10 +12,10 @@ Final backend MVP acceptance and contract hardening
   - PDF unit verification: 5 passed
   - PDF integration verification: 9 passed
 
-## Implemented (Awaiting Review)
+## Accepted
 
-- `DLK-M3-024` — Final backend MVP contract and end-to-end acceptance — **implemented**
-  - reviewed commit: `288df23d22433fab7b534303d2be03ce84ec0ad5`
+- `DLK-M3-024` — Final backend MVP contract and end-to-end acceptance — **accepted**
+  - reviewed commit: `2f60f9292b07edfe6982996e1d10cdfe84d48d66`
   - review: `.agents/handoff/reviews/DLK-M3-024-review.md`
   - corrections: genuine empty-list integration proof with transactional isolation and rollback, failure-path and asserted revision 7 rich-state nonmutation proof, accurate Member 1 contract documentation.
   - task: `.agents/handoff/tasks/DLK-M3-024-backend-mvp-acceptance.md`
@@ -34,4 +34,4 @@ Do not release these within DLK-M3-024:
 - authentication/authorization
 - frontend implementation
 
-After DLK-M3-024 is accepted, the competition-critical Member 3 backend may be declared complete unless a new reviewed integration defect is identified.
+The scoped competition-critical Member 3 backend milestone is accepted. No task is currently ready. Member 1 integration follow-up remains documented in `docs/api/frontend-backend-contract.md`; any new backend integration defect requires a bounded follow-up task.

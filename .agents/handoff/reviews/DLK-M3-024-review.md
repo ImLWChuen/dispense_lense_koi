@@ -1,11 +1,25 @@
 ---
 task_id: DLK-M3-024
-reviewed_commit: 288df23d22433fab7b534303d2be03ce84ec0ad5
-decision: changes_requested
+reviewed_commit: 2f60f9292b07edfe6982996e1d10cdfe84d48d66
+decision: accepted
 reviewed_by: ChatGPT planner
 ---
 
 # Review: DLK-M3-024
+
+## Acceptance review
+
+Accepted at correction commit `2f60f9292b07edfe6982996e1d10cdfe84d48d66`. This decision supersedes the historical findings below. No blocking findings remain for the scoped backend acceptance milestone.
+
+- R1 resolved: the empty-list test binds the real repository to a dedicated PostgreSQL connection and uncommitted transaction, removes rows only within that transaction, asserts an exact empty array, and rolls back in finally. The dependency override is removed during cleanup. No permanent deletion is performed by this test.
+- R2 resolved: the failing list request now compares complete tracked-case state using independent sessions and asserts the exact sanitized response. The combined read test asserts every setup mutation and verifies revision 7 / RECURRED, seven revisions, and populated histories before capturing its baseline. Failure injection remains at get_all_cases; the previously suggested later injection point was a preference, not an unmet requirement.
+- R3 resolved: the handoff documents HTTP 422 for extra finding_text, the 64-character actor limits, and the actual verifyCase method and response-wrapper mismatch. Member 1 owns the corresponding frontend corrections.
+- Reviewed the correction diff and session/dependency plumbing; no production code, schema, dependency, frontend, or diagnostic-semantic changes were introduced by this correction.
+- Reviewer verification: committed whitespace check passed and task validator returned VALID. Gemini reports 15 focused acceptance tests passed in 5.02s and 312 backend tests passed with zero failures/skips in 48.07s. PostgreSQL tests were not rerun by the reviewer under the project role split.
+
+The scoped Member 3 competition-MVP backend milestone is accepted. This is not acceptance of the full integrated frontend application: documented Member 1 wiring/type/request corrections and final team demonstration remain separate work. Optional deferred features remain deferred. No next task, commit, push, or merge was performed by the reviewer.
+
+## Original review (historical)
 
 ## Decision
 
