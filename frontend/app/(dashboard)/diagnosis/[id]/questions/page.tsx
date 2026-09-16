@@ -20,7 +20,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Track previously answered questions to display them in the history
-    const [history, setHistory] = useState<any[]>([]);
+    const history = caseData?.previous_answers || [];
 
     const fetchCase = useCallback(async () => {
         try {
@@ -49,14 +49,6 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                 value, 
                 caseData.diagnosis.analysis_revision.revision_number
             );
-            
-            // Add current question to history before refreshing
-            if (caseData.diagnosis.next_question) {
-                setHistory(prev => [...prev, {
-                    ...caseData.diagnosis.next_question,
-                    selectedValue: value
-                }]);
-            }
             
             // Refresh to get the next question
             await fetchCase();
@@ -151,10 +143,10 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                                 <DiagnosticQuestion
                                     key={`hist-${q.question_id}-${index}`}
                                     questionId={q.question_id}
-                                    text={q.text}
-                                    purpose={q.reasoning}
-                                    options={normalizeOptions(q.options)}
-                                    selectedValue={q.selectedValue}
+                                    text={q.text || q.answer_text || `Question ${q.question_id}`}
+                                    purpose={q.reasoning || "Historical answer retrieved from diagnostic engine."}
+                                    options={q.options ? normalizeOptions(q.options) : [{ value: q.answer_value, label: q.answer_value.charAt(0).toUpperCase() + q.answer_value.slice(1).toLowerCase().replace(/_/g, ' ') }]}
+                                    selectedValue={q.answer_value}
                                     onAnswer={() => {}}
                                     isAnswered={true}
                                 />

@@ -19,23 +19,14 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Maintain a list of historical/pending checks.
-    const [checks, setChecks] = useState<any[]>([]);
+
 
     const fetchCase = useCallback(async () => {
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
             
-            const nextCheck = data.diagnosis?.next_check;
-            
-            // Only add nextCheck if it's not already in the list
-            setChecks(prev => {
-                if (!nextCheck) return prev;
-                if (prev.some(c => c.check_id === nextCheck.check_id)) return prev;
-                return [...prev, nextCheck];
-            });
-            
+
         } catch (err: any) {
             console.error("Failed to fetch case", err);
             setError(err.message || "Failed to load case data.");
@@ -93,14 +84,34 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     const nextCheck = diagnosis?.next_check;
     const isDone = !nextCheck && !isLoading;
 
+    const checks = caseData?.previous_check_results?.map(c => ({
+        check_id: c.check_id,
+        name: c.name || `Check ${c.check_id}`,
+        description: c.description || `Finding: ${c.finding}`,
+        procedure: c.procedure || "Historical check record.",
+        effort_level: c.effort_level || "low",
+        target_causes: c.target_causes || [],
+        status: (c.execution_status === "COMPLETED" ? "completed" : 
+                 c.execution_status === "BLOCKED" ? "blocked" : 
+                 c.execution_status === "SKIPPED" ? "skipped" : "pending")
+    })) || [];
+    
+    if (nextCheck) {
+        checks.push(nextCheck);
+    }
+
+    // Deduplicate checks by check_id (keep latest)
+    const uniqueChecks = Array.from(new Map(checks.map(c => [c.check_id, c])).values());
+
     // Map checks to the UI component format
-    const checklistActions = checks.map(c => ({
+    const checklistActions = uniqueChecks.map(c => ({
         id: c.check_id,
         name: c.name,
         description: c.description,
         procedure: c.procedure,
         effortLevel: c.effort_level as "low" | "medium" | "high",
         applicableCauses: c.target_causes || [],
+        status: c.status as any,
     }));
 
     return (
