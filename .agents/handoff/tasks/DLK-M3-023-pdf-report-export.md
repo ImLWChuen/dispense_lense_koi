@@ -501,22 +501,22 @@ Do not push, merge, rebase, create/update a pull request, or modify `main`.
 ## Implementation report
 
 ### Summary
-Implemented the deterministic downloadable PDF case report endpoint `GET /api/v1/cases/{case_id}/report.pdf` using authorized libraries `reportlab==5.0.1` and `pypdf==6.18.1`. The PDF report is rendered directly in memory from the accepted, immutable `CaseReportResponse` read model produced by `build_case_report` (DLK-M3-022). The endpoint creates zero database mutations, executes in a read-only transaction, performs zero diagnostic recalculations, reads no secondary unpinned data paths, and introduces no PDF persistence. Includes multi-page flowable formatting, running header and footer with dynamic "Page X of Y" pagination via a two-pass `NumberedCanvas`, table word-wrapping, and neutral notices ("None recorded.") for empty histories. In Phase A, carried forward DLK-M3-022 report documentation corrections.
+Addressed all five review findings (R1–R5) from `.agents/handoff/reviews/DLK-M3-023-review.md` on commit `07abe45aaf56f52fc1bad918277bfb689b17b03b` for `DLK-M3-023 — Deterministic downloadable PDF case report`:
+1. **R1: Removed live clock from visible PDF content:** Replaced live `datetime.now(timezone.utc)` in `backend/app/services/reporting/pdf_generator.py` with the deterministic persisted timestamp `Case Created: {_escape(report.created_at)}`. Added `test_render_case_report_pdf_logical_repeatability` unit test asserting identical extracted text/order across repeated renders of the same unchanged case.
+2. **R2: Rendered persisted diagnostic evidence and explanation:** Section 3 now renders `Diagnostic Explanation` (`diag.explanation` or "None recorded."), evaluated evidence per candidate cause (supporting, neutral, contradicting) with relation badge, strength, source, score, observation ID, and details, as well as `Recommended Next Question` (`diag.next_question`) and `Recommended Next Troubleshooting Check` (`diag.next_check`) (or neutral "None recorded.").
+3. **R3: Proved history counts and ordering against JSON report:** Added testable count headers to PDF history sections (`Question Answers (N)`, `Troubleshooting Checks (N)`, `Cause Confirmations (N)`, `Lifecycle Events (N)`). Updated `test_pdf_report_same_basis_as_json_report` to assert exact counts match the JSON report arrays and verified strict ordering of item IDs and timestamps across all four collections.
+4. **R4: Visual layout verification:** Generated representative PDFs for rich-history (2 pages), empty-history (1 page), long-text wrapping & HTML escaping (3 pages), and multi-page audit history (4 pages). Rendered all 10 pages to PNG images via Windows built-in `Windows.Data.Pdf.PdfDocument`. Verified page geometry (1224x1584 px), symmetrical margins (L=71px, R=71px, T=60px, B=69px), zero clipping, zero table overflow, clean word-wrapping, and running header/footer pagination (`Page X of Y`). Adjusted Section 7 table column widths (`[18, 112, 126, 28, 62, 88, 106]`) and font styles (`cell_small_bold`, `cell_small_normal`) so long identifiers (`RECOVERY_VERIFICATION`, `UNRESOLVED → RECOVERY_PENDING_VERIFICATION`, `Rev`) do not break awkwardly.
+5. **R5: Removed unsupported confidentiality label:** Replaced `"Confidential — Generated from persisted diagnostic records"` with neutral provenance text `"Generated from persisted diagnostic records"`.
+
+The PDF report continues to be rendered directly in memory from the accepted, immutable `CaseReportResponse` read model produced by `build_case_report` (DLK-M3-022). The endpoint creates zero database mutations, executes in a read-only transaction, performs zero diagnostic recalculations, reads no secondary unpinned data paths, and introduces no PDF persistence.
 
 ### Files changed
 - `.agents/handoff/QUEUE.md`: Updated DLK-M3-023 status to `implemented`.
-- `.agents/handoff/tasks/DLK-M3-022-case-report-export.md`: Completed Phase A documentation corrections (`defect_code`, `issue_condition`, `test_report_read_only_state_proof`).
-- `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`: Updated status to `implemented`, checked off all acceptance criteria, and recorded full implementation report.
-- `backend/pyproject.toml`: Added `reportlab==5.0.1` to runtime dependencies and `pypdf==6.18.1` to dev dependencies per planner authorization.
-- `backend/app/services/reporting/pdf_generator.py`: PDF rendering service using ReportLab flowables, tables, and custom `NumberedCanvas`.
-- `backend/app/services/reporting/__init__.py`: Exported `render_case_report_pdf`.
-- `backend/app/api/cases.py`: Added `GET /api/v1/cases/{case_id}/report.pdf` endpoint with 200, 404, 422, and sanitized 500.
-- `backend/tests/unit/test_pdf_generator.py`: 4 unit tests covering rich PDF structure, empty history, long text wrapping, and multi-page pagination.
-- `backend/tests/integration/test_case_report_pdf_api.py`: 9 integration tests covering OpenAPI, empty history, 7-revision rich history, same-basis proof, no-recalculation proof, read-only proof, concurrent update consistency, 404/422 handling, and sanitized 500 nonmutation proof.
-- `docs/api/api-spec.md`: Documented Section 10 (Downloadable PDF Case Report Export).
-
-### Phase A DLK-M3-022 documentation corrections
-Updated `.agents/handoff/tasks/DLK-M3-022-case-report-export.md` to use the canonical schema field names `defect_code` and `issue_condition` (instead of `current_defect_code` and `current_issue_condition`) and corrected the read-only proof test name to `test_report_read_only_state_proof`. No production API contracts or code were altered.
+- `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`: Updated status to `implemented`, documented resolution of review findings R1–R5, visual layout verification, and updated verification results.
+- `backend/app/services/reporting/pdf_generator.py`: Addressed R1 (persisted timestamp), R2 (explanation, evidence, next steps), R3 (section count headers), R4 (column widths and wrap styles), and R5 (neutral provenance text).
+- `backend/tests/unit/test_pdf_generator.py`: Expanded fixtures with evidence and next steps, verified neutral notices on empty history, and added `test_render_case_report_pdf_logical_repeatability` (5 tests total).
+- `backend/tests/integration/test_case_report_pdf_api.py`: Updated assertions for explanation, evidence, neutral provenance text, deterministic timestamp, count headers, and strict item ordering against JSON report (9 tests total).
+- `docs/api/api-spec.md`: Documented Section 10 rendered document structure and confirmed deterministic PDF export support.
 
 ### Dependency gate result
 - **Dependencies authorized**: `reportlab==5.0.1` (production runtime renderer) and `pypdf==6.18.1` (dev test dependency) per `.agents/handoff/tasks/DLK-M3-023-dependency-authorization.md`.
@@ -527,18 +527,31 @@ Updated `.agents/handoff/tasks/DLK-M3-022-case-report-export.md` to use the cano
 - Status codes: `200 OK`, `404 Not Found`, `422 Unprocessable Entity` (invalid UUID), `500 Internal Server Error` (sanitized).
 - Flow: Validates case ID -> calls `build_case_report(case_id, repository)` -> calls `render_case_report_pdf(report)` -> returns `Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="dispenseiq-case-{case_id}-r{current_revision}.pdf"'})`.
 - Rendering layout:
-  - Document header with title, case ID, revision, generated timestamp.
+  - Document header with title, case ID, revision, and persisted `Case Created` timestamp (zero live clocks).
   - Section 1: Case Identity & Process Context (case ID, revision, defect category, defect name, issue condition, material, method, problem description, machine context).
   - Section 2: Current Outcome Summary (condition, revision basis, confirmed causes, resolved status).
-  - Section 3: Current Diagnosis Snapshot (analysis revision, ranked causes with scores and conclusions).
-  - Section 4: Technician Question-Answer History (ascending revision/timestamp table or "None recorded.").
-  - Section 5: Troubleshooting-Check History (ascending revision/timestamp table or "None recorded.").
-  - Section 6: Cause-Confirmation History (ascending revision/timestamp table or "None recorded.").
-  - Section 7: Issue Lifecycle History (ascending revision/timestamp table or "None recorded.").
-  - Two-pass `NumberedCanvas` renders running header line and running footer with dynamic "Page X of Y" pagination.
+  - Section 3: Current Diagnosis Snapshot (analysis revision, diagnostic explanation, ranked causes with scores and conclusions, evaluated evidence per candidate cause, recommended next question, and recommended next troubleshooting check).
+  - Section 4: Technician Question-Answer History with count header (`Question Answers (N)` or "None recorded.").
+  - Section 5: Troubleshooting-Check History with count header (`Troubleshooting Checks (N)` or "None recorded.").
+  - Section 6: Cause-Confirmation History with count header (`Cause Confirmations (N)` or "None recorded.").
+  - Section 7: Issue Lifecycle History with count header (`Lifecycle Events (N)` or "None recorded.").
+  - Two-pass `NumberedCanvas` renders running header line and running footer with neutral provenance text ("Generated from persisted diagnostic records") and dynamic "Page X of Y" pagination.
 
-### Same-basis and read-only proof
-- **Same-basis proof**: `test_pdf_report_same_basis_as_json_report` asserts that for an unchanged case, the PDF filename and extracted document text describe the identical case ID, current revision, defect code, issue condition, confirmed causes, and history counts as `GET /api/v1/cases/{case_id}/report`.
+### Visual layout verification
+Generated 4 representative PDF fixtures (10 pages total) and rendered each page to PNG at 150 DPI using Windows built-in `Windows.Data.Pdf.PdfDocument`:
+1. `1_rich_history.pdf` (2 pages): Verified two-pass layout, 7-revision case identity, outcome summary, diagnosis snapshot with ranked causes and evidence, all four history tables with count headers, running header line, and running footer (`Page 1 of 2`, `Page 2 of 2`).
+2. `2_empty_history.pdf` (1 page): Verified clean 1-page presentation with neutral notices (`None recorded.`) under empty history sections, no table overflow, and running footer (`Page 1 of 1`).
+3. `3_long_text.pdf` (3 pages): Verified word wrapping of long multi-sentence descriptions, problem statements, and HTML escaping (`&`, `<`, `>`, quotes) without tag injection or cell clipping across page breaks (`Page 1 of 3` through `Page 3 of 3`).
+4. `4_multi_page.pdf` (4 pages): Verified large audit history safely breaking across pages, stable running header, correct page numbering (`Page 1 of 4` through `Page 4 of 4`), and Section 7 lifecycle table fitting cleanly without awkward mid-word breaks.
+
+Inspection using image bounding box analysis confirmed:
+- Page dimensions: uniform 1224 × 1584 px (US Letter at 150 DPI).
+- Margins: Left = 71 px (0.47 in), Right = 71 px (0.47 in), Top = 60 px (0.40 in), Bottom = 69 px (0.46 in).
+- Zero text clipping, zero horizontal overflow beyond page boundaries, and full vertical balance.
+
+### Same-basis, read-only, and determinism proof
+- **Same-basis proof**: `test_pdf_report_same_basis_as_json_report` asserts that for an unchanged case, the PDF filename and extracted document text describe the identical case ID, current revision, defect code, issue condition, confirmed causes, and exact history counts (`Question Answers (1)`, `Troubleshooting Checks (1)`, `Cause Confirmations (1)`, `Lifecycle Events (4)`) as `GET /api/v1/cases/{case_id}/report`, and strictly ordered item identifiers and timestamps.
+- **Logical repeatability**: `test_render_case_report_pdf_logical_repeatability` proves that rendering the same unchanged `CaseReportResponse` twice yields identical logical extracted text and section order.
 - **Zero-recalculation proof**: `test_pdf_report_no_recalculation_proof` patches `DiagnosticEngine.diagnose` to raise a `RuntimeError` and proves that `GET /report.pdf` succeeds with 200 without invoking diagnostic calculation.
 - **Read-only proof**: `test_pdf_report_read_only_state_proof` captures full database state before and after GET in fresh independent sessions, asserting 100% exact equality across cases, revisions, and histories.
 - **Concurrent-write consistency**: `test_pdf_report_consistency_under_concurrent_update` interleaves a recurrence commit (rev 7 `RECURRED`) via independent session while PDF assembly is in flight. Asserts returned PDF is named `dispenseiq-case-{case_id}-r6.pdf` and describes rev 6 (`RESOLVED`) consistently, excludes rev 7 recurrence event, and proves PDF generation wrote nothing.
@@ -546,17 +559,17 @@ Updated `.agents/handoff/tasks/DLK-M3-022-case-report-export.md` to use the cano
 
 ### Verification results
 Ran verified test suites against local PostgreSQL (`dispenselens-postgres`):
-1. `tests/integration/test_case_report_pdf_api.py`: 9 passed in 6.17s
-2. `tests/unit/test_pdf_generator.py`: 4 passed in 0.91s
-3. `tests/integration/test_case_report_api.py`: 9 passed in 5.23s
-4. `tests/unit/test_report_generator.py`: 8 passed in 0.70s
-5. `tests/integration/test_recurrence_api.py`: 9 passed in 5.16s
-6. `tests/integration/test_recovery_verification_api.py`: 23 passed in 5.86s
-7. `tests/integration/test_cause_confirmation_api.py`: 17 passed in 4.79s
-8. Check result & semantic suites: 78 passed in 5.34s
-9. Question answer suites: 34 passed in 3.59s
-10. Persistence & core API suites: 80 passed in 9.88s
-11. Full backend test suite (`pytest -q`): **296 passed**, 31 warnings, **0 failed**, **0 skipped** in 44.82s.
+1. `tests/integration/test_case_report_pdf_api.py`: **9 passed** in 6.07s
+2. `tests/unit/test_pdf_generator.py`: **5 passed** in 0.96s
+3. `tests/integration/test_case_report_api.py`: **9 passed** in 5.18s
+4. `tests/unit/test_report_generator.py`: **8 passed** in 0.69s
+5. `tests/integration/test_recurrence_api.py`: **9 passed** in 5.12s
+6. `tests/integration/test_recovery_verification_api.py`: **23 passed** in 5.81s
+7. `tests/integration/test_cause_confirmation_api.py`: **17 passed** in 4.75s
+8. Check result & semantic suites: **78 passed** in 5.30s
+9. Question answer suites: **34 passed** in 3.55s
+10. Persistence & core API suites: **80 passed** in 9.74s
+11. Full backend test suite (`pytest -q`): **297 passed**, 31 warnings, **0 failed**, **0 skipped** in 47.74s.
 12. OpenAPI schema verified: `GET /api/v1/cases/{case_id}/report.pdf` registered with 200, 404, 422, 500 status codes.
 13. Packet validation: `python .agents/skills/implementation-handoff/scripts/validate_task.py` passed with `VALID`.
 14. Diff hygiene: `git diff --check` passed cleanly with no whitespace or EOF errors.
@@ -566,4 +579,4 @@ Ran verified test suites against local PostgreSQL (`dispenselens-postgres`):
 - Historical case similarity and LLM narration remain deferred to future authorized tasks.
 
 ### Proposed commit message
-`feat(api): add downloadable PDF case report`
+`fix(api): address DLK-M3-023 review findings for deterministic PDF case report`

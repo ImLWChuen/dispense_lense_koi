@@ -2646,15 +2646,15 @@ Accept: application/pdf
 - `500 Internal Server Error` — Unexpected rendering failure; returns sanitized JSON without leaking internal traces or credentials.
 
 ##### Rendered Document Structure
-1. **Document Header**: Title, Case Identifier, Report Revision, Generation Timestamp.
+1. **Document Header**: Title, Case Identifier, Report Revision, Case Created Timestamp.
 2. **Case Identity & Process Context**: Case ID, Current Revision, Defect Category, Defect Name, Issue Condition, Created Timestamp, Fluid Material, Dispense Method, Problem Description, Machine Context.
 3. **Current Outcome Summary**: Issue Condition, Revision Basis, Confirmed Root Causes, Resolution Status (`RESOLVED` / `UNRESOLVED`).
-4. **Current Diagnosis Snapshot**: Latest persisted analysis revision snapshot, ranked causes with scores, conclusion status, and confirmed indicators.
-5. **Technician Question-Answer History**: Ascending revision/timestamp table of question IDs, answers, answerer source, and timestamps (or `None recorded.`).
-6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps (or `None recorded.`).
-7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps (or `None recorded.`).
-8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps (or `None recorded.`).
-9. **Page Footer**: Running confidential notice and dynamic `Page X of Y` numbering on all pages.
+4. **Current Diagnosis Snapshot**: Latest persisted analysis revision snapshot, ranked causes with scores, conclusion status, confirmed indicators, diagnostic explanation, supporting/contradicting/neutral evidence per candidate cause, and recommended next steps.
+5. **Technician Question-Answer History**: Ascending revision/timestamp table of question IDs, answers, answerer source, and timestamps with item count header (`Question Answers (N)` or `None recorded.`).
+6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps with item count header (`Troubleshooting Checks (N)` or `None recorded.`).
+7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps with item count header (`Cause Confirmations (N)` or `None recorded.`).
+8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps with item count header (`Lifecycle Events (N)` or `None recorded.`).
+9. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
 
 ---
 
@@ -2841,4 +2841,4 @@ Example response (case report generation failure):
    - Use `GET /api/v1/cases/{case_id}/report` to retrieve the comprehensive, deterministic read-model for a case.
    - The report contains the complete case profile, latest diagnosis snapshot, complete audit history (`question_answers`, `check_results`, `cause_confirmations`, `lifecycle_events`) in strict ascending revision order, and a compact `outcome_summary`.
    - The endpoint performs zero diagnostic recalculation and commits zero mutations.
-   - Note that binary document export (PDF, Word/DOCX) is not performed by the backend in this increment; the frontend should format or render the returned JSON report as needed for display or client-side print/export.
+   - Note that deterministic binary PDF document export is supported via `GET /api/v1/cases/{case_id}/report.pdf`, rendering directly from this read model with zero mutations and zero PDF persistence.

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import html
 import io
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from reportlab.lib import colors
@@ -71,7 +71,7 @@ class NumberedCanvas(canvas.Canvas):
 
         # Running Footer (on all pages)
         self.line(36, 48, 576, 48)
-        self.drawString(36, 36, "Confidential — Generated from persisted diagnostic records")
+        self.drawString(36, 36, "Generated from persisted diagnostic records")
         page_text = f"Page {self._pageNumber} of {page_count}"
         self.drawRightString(576, 36, page_text)
 
@@ -171,6 +171,22 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         textColor=colors.HexColor("#64748b"),  # slate-500
         leftIndent=8,
     )
+    cell_small_bold = ParagraphStyle(
+        "CellSmallBold",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    cell_small_normal = ParagraphStyle(
+        "CellSmallNormal",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=9,
+        textColor=colors.HexColor("#334155"),
+    )
 
     story: list[Any] = []
 
@@ -182,7 +198,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         Paragraph(
             f"Case Identifier: <b>{_escape(report.case_id)}</b> &nbsp;|&nbsp; "
             f"Report Revision: <b>{_escape(report.current_revision)}</b> &nbsp;|&nbsp; "
-            f"Generated: <b>{_escape(datetime.now(timezone.utc))}</b>",
+            f"Case Created: <b>{_escape(report.created_at)}</b>",
             subtitle_style,
         )
     )
@@ -299,6 +315,19 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         )
     )
 
+    # Diagnostic Explanation
+    explanation_text = diag.explanation.strip() if diag.explanation else ""
+    if explanation_text:
+        story.append(
+            Paragraph(
+                f"<b>Diagnostic Explanation:</b> {_escape(explanation_text)}",
+                cell_normal,
+            )
+        )
+    else:
+        story.append(Paragraph("<b>Diagnostic Explanation:</b> None recorded.", cell_normal))
+    story.append(Spacer(1, 6))
+
     if diag.ranked_causes:
         diag_headers = [
             Paragraph("#", cell_header),
@@ -343,15 +372,126 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
             )
         )
         story.append(diag_table)
+        story.append(Spacer(1, 6))
+
+        # Evaluated evidence per candidate cause
+        for cause in diag.ranked_causes:
+            ev_items: list[tuple[str, Any]] = []
+            for ev in getattr(cause, "supporting_evidence", []):
+                ev_items.append(("SUPPORTS", ev))
+            for ev in getattr(cause, "contradicting_evidence", []):
+                ev_items.append(("CONTRADICTS", ev))
+            for ev in getattr(cause, "neutral_evidence", []):
+                ev_items.append(("NEUTRAL", ev))
+
+            c_name = getattr(cause, "cause_name", getattr(cause, "name", cause.cause_id))
+            story.append(
+                Paragraph(
+                    f"<b>Evaluated Evidence &mdash; {_escape(c_name)}</b> (<code>{_escape(cause.cause_id)}</code>):",
+                    cell_bold,
+                )
+            )
+
+            if ev_items:
+                ev_headers = [
+                    Paragraph("Relation", cell_header),
+                    Paragraph("Strength", cell_header),
+                    Paragraph("Source", cell_header),
+                    Paragraph("Score", cell_header),
+                    Paragraph("Observation / Explanation Details", cell_header),
+                ]
+                ev_rows = [ev_headers]
+                for rel_label, ev in ev_items:
+                    rel_color = (
+                        "#166534"
+                        if rel_label == "SUPPORTS"
+                        else "#991b1b"
+                        if rel_label == "CONTRADICTS"
+                        else "#475569"
+                    )
+                    rel_display = f"<b><font color='{rel_color}'>{_escape(rel_label)}</font></b>"
+                    sc_contrib = getattr(ev, "score_contribution", 0.0)
+                    score_display = f"{sc_contrib:+.1f}" if sc_contrib is not None else "0.0"
+                    ev_src = getattr(ev, "source", "USER")
+                    ev_strength = getattr(ev, "strength", "MODERATE")
+                    ev_expl = getattr(ev, "explanation", "")
+                    obs_id = getattr(ev, "observation_id", "")
+
+                    details_text = _escape(ev_expl) if ev_expl else "—"
+                    if obs_id:
+                        details_text += f" &nbsp;[obs: <code>{_escape(obs_id)}</code>]"
+
+                    ev_rows.append(
+                        [
+                            Paragraph(rel_display, cell_normal),
+                            Paragraph(_escape(ev_strength), cell_normal),
+                            Paragraph(_escape(ev_src), cell_normal),
+                            Paragraph(score_display, cell_normal),
+                            Paragraph(details_text, cell_normal),
+                        ]
+                    )
+                ev_table = Table(ev_rows, colWidths=[70, 55, 95, 45, 275])
+                ev_table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("TOPPADDING", (0, 0), (-1, -1), 3),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                        ]
+                    )
+                )
+                story.append(ev_table)
+            else:
+                story.append(Paragraph("No evaluated evidence recorded for this cause.", empty_notice_style))
+            story.append(Spacer(1, 4))
     else:
         story.append(Paragraph("No ranked causes recorded in this analysis snapshot.", empty_notice_style))
+        story.append(Paragraph("<b>Evaluated Diagnostic Evidence:</b> None recorded.", cell_normal))
+
+    story.append(Spacer(1, 6))
+
+    # Recommended Next Question & Check
+    if diag.next_question:
+        nq = diag.next_question
+        opts_str = f" [Options: {', '.join(_escape(o) for o in nq.options)}]" if getattr(nq, "options", None) else ""
+        purpose_str = f" &mdash; <i>{_escape(nq.purpose)}</i>" if getattr(nq, "purpose", None) else ""
+        story.append(
+            Paragraph(
+                f"<b>Recommended Next Question:</b> [{_escape(nq.question_id)}] {_escape(nq.text)}{opts_str}{purpose_str}",
+                cell_normal,
+            )
+        )
+    else:
+        story.append(Paragraph("<b>Recommended Next Question:</b> None recorded.", cell_normal))
+
+    if diag.next_check:
+        nc = diag.next_check
+        proc = getattr(nc, "procedure", "") or getattr(nc, "description", "")
+        proc_str = f" &mdash; {_escape(proc)}" if proc else ""
+        story.append(
+            Paragraph(
+                f"<b>Recommended Next Troubleshooting Check:</b> [{_escape(nc.check_id)}] {_escape(nc.name)}{proc_str}",
+                cell_normal,
+            )
+        )
+    else:
+        story.append(Paragraph("<b>Recommended Next Troubleshooting Check:</b> None recorded.", cell_normal))
 
     story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------
     # 4. Technician Question-Answer History
     # ---------------------------------------------------------
-    story.append(Paragraph("4. Technician Question-Answer History", section_heading_style))
+    story.append(
+        Paragraph(
+            f"4. Technician Question-Answer History - Question Answers ({len(report.question_answers)})",
+            section_heading_style,
+        )
+    )
     if report.question_answers:
         qa_headers = [
             Paragraph("#", cell_header),
@@ -399,7 +539,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     # ---------------------------------------------------------
     # 5. Troubleshooting-Check History
     # ---------------------------------------------------------
-    story.append(Paragraph("5. Troubleshooting-Check History", section_heading_style))
+    story.append(
+        Paragraph(
+            f"5. Troubleshooting-Check History - Troubleshooting Checks ({len(report.check_results)})",
+            section_heading_style,
+        )
+    )
     if report.check_results:
         cr_headers = [
             Paragraph("#", cell_header),
@@ -449,7 +594,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     # ---------------------------------------------------------
     # 6. Cause-Confirmation History
     # ---------------------------------------------------------
-    story.append(Paragraph("6. Cause-Confirmation History", section_heading_style))
+    story.append(
+        Paragraph(
+            f"6. Cause-Confirmation History - Cause Confirmations ({len(report.cause_confirmations)})",
+            section_heading_style,
+        )
+    )
     if report.cause_confirmations:
         conf_headers = [
             Paragraph("#", cell_header),
@@ -494,7 +644,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     # ---------------------------------------------------------
     # 7. Issue Lifecycle History
     # ---------------------------------------------------------
-    story.append(Paragraph("7. Issue Lifecycle History", section_heading_style))
+    story.append(
+        Paragraph(
+            f"7. Issue Lifecycle History - Lifecycle Events ({len(report.lifecycle_events)})",
+            section_heading_style,
+        )
+    )
     if report.lifecycle_events:
         lc_headers = [
             Paragraph("#", cell_header),
@@ -514,16 +669,16 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                 details_text = f"[{v_res}] {details_text}"
             lc_rows.append(
                 [
-                    Paragraph(str(idx), cell_normal),
-                    Paragraph(_escape(lc.event_type), cell_bold),
-                    Paragraph(transition_text, cell_normal),
-                    Paragraph(_escape(lc.resulting_revision_number), cell_normal),
-                    Paragraph(_escape(lc.actor), cell_normal),
-                    Paragraph(details_text, cell_normal),
-                    Paragraph(_escape(lc.created_at), cell_normal),
+                    Paragraph(str(idx), cell_small_normal),
+                    Paragraph(_escape(lc.event_type), cell_small_bold),
+                    Paragraph(transition_text, cell_small_normal),
+                    Paragraph(_escape(lc.resulting_revision_number), cell_small_normal),
+                    Paragraph(_escape(lc.actor), cell_small_normal),
+                    Paragraph(details_text, cell_small_normal),
+                    Paragraph(_escape(lc.created_at), cell_small_normal),
                 ]
             )
-        lc_table = Table(lc_rows, colWidths=[20, 85, 110, 25, 65, 115, 120])
+        lc_table = Table(lc_rows, colWidths=[18, 112, 126, 28, 62, 88, 106])
         lc_table.setStyle(
             TableStyle(
                 [

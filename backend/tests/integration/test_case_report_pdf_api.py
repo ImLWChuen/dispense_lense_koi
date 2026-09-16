@@ -271,12 +271,18 @@ def test_pdf_report_rich_history_content(tracked_cases: list[str]):
     # Header and identity
     assert "DispenseIQ Diagnostic Case Report" in extracted_text
     assert case_id in extracted_text
-    assert "7" in extracted_text
+    assert "Report Revision: 7" in extracted_text or "Revision 7" in extracted_text
     assert "D03_INCONSISTENT_SIZE" in extracted_text
     assert "RECURRED" in extracted_text
 
     # Outcome summary
     assert "nozzle_restriction" in extracted_text
+
+    # Diagnosis snapshot & evidence
+    assert "3. Current Diagnosis Snapshot" in extracted_text
+    assert "Diagnostic Explanation:" in extracted_text
+    assert "Evaluated Evidence" in extracted_text
+    assert "SUPPORTS" in extracted_text
 
     # Histories
     assert "Q01" in extracted_text
@@ -288,9 +294,17 @@ def test_pdf_report_rich_history_content(tracked_cases: list[str]):
     assert "line_operator" in extracted_text
     assert "RECURRENCE" in extracted_text
 
+    # Provenance notice and absence of unsupported confidentiality label
+    assert "Generated from persisted diagnostic records" in extracted_text
+    assert "Confidential" not in extracted_text
+
+    # Persisted timestamp and absence of live generation clock
+    assert "Case Created:" in extracted_text
+    assert "Generated:" not in extracted_text
+
 
 def test_pdf_report_same_basis_as_json_report(tracked_cases: list[str]):
-    """Verify PDF and JSON reports describe the exact same case basis, revision, and events."""
+    """Verify PDF and JSON reports describe the exact same case basis, revision, and ordered events."""
     case_id, _ = _advance_case_to_rev7_recurred(tracked_cases)
 
     # Fetch JSON report
@@ -312,12 +326,67 @@ def test_pdf_report_same_basis_as_json_report(tracked_cases: list[str]):
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
 
     assert json_data["case_id"] in extracted_text
-    assert str(json_data["current_revision"]) in extracted_text
+    assert f"Revision {json_data['current_revision']}" in extracted_text or f"Report Revision: {json_data['current_revision']}" in extracted_text
     assert json_data["defect_code"] in extracted_text
     assert json_data["issue_condition"] in extracted_text
 
     for cause_id in json_data["outcome_summary"]["confirmed_causes"]:
         assert cause_id in extracted_text
+
+    # Verify exact count headers match JSON array lengths
+    expected_qa_header = f"Question Answers ({len(json_data['question_answers'])})"
+    expected_cr_header = f"Troubleshooting Checks ({len(json_data['check_results'])})"
+    expected_cc_header = f"Cause Confirmations ({len(json_data['cause_confirmations'])})"
+    expected_lc_header = f"Lifecycle Events ({len(json_data['lifecycle_events'])})"
+
+    assert expected_qa_header in extracted_text
+    assert expected_cr_header in extracted_text
+    assert expected_cc_header in extracted_text
+    assert expected_lc_header in extracted_text
+
+    # Verify ordered question answers against JSON
+    last_qa_pos = -1
+    for qa in json_data["question_answers"]:
+        qid = qa["question_id"]
+        aval = qa["answer_value"]
+        assert qid in extracted_text
+        assert aval in extracted_text
+        pos = extracted_text.find(qid, last_qa_pos + 1)
+        assert pos != -1, f"Question ID '{qid}' not found after position {last_qa_pos}"
+        last_qa_pos = pos
+
+    # Verify ordered troubleshooting checks against JSON
+    last_cr_pos = -1
+    for cr in json_data["check_results"]:
+        cid = cr["check_id"]
+        finding = cr["finding"]
+        assert cid in extracted_text
+        assert finding in extracted_text
+        pos = extracted_text.find(cid, last_cr_pos + 1)
+        assert pos != -1, f"Check ID '{cid}' not found after position {last_cr_pos}"
+        last_cr_pos = pos
+
+    # Verify ordered cause confirmations against JSON
+    last_cc_pos = -1
+    for cc in json_data["cause_confirmations"]:
+        cause_id = cc["cause_id"]
+        conf_by = cc["confirmed_by"]
+        assert cause_id in extracted_text
+        assert conf_by in extracted_text
+        pos = extracted_text.find(cause_id, last_cc_pos + 1)
+        assert pos != -1, f"Cause ID '{cause_id}' not found after position {last_cc_pos}"
+        last_cc_pos = pos
+
+    # Verify ordered lifecycle events against JSON
+    last_lc_pos = -1
+    for lc in json_data["lifecycle_events"]:
+        ev_type = lc["event_type"]
+        actor = lc["actor"]
+        assert ev_type in extracted_text
+        assert actor in extracted_text
+        pos = extracted_text.find(ev_type, last_lc_pos + 1)
+        assert pos != -1, f"Lifecycle event '{ev_type}' not found after position {last_lc_pos}"
+        last_lc_pos = pos
 
 
 def test_pdf_report_no_recalculation_proof(tracked_cases: list[str]):
