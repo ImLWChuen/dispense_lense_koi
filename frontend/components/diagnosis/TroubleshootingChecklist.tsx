@@ -17,6 +17,7 @@ interface TroubleshootingAction {
     procedure: string;
     effortLevel: "low" | "medium" | "high";
     applicableCauses: string[];
+    status?: "pending" | "completed" | "blocked" | "skipped";
 }
 
 const effortConfig = {
@@ -49,7 +50,13 @@ export default function TroubleshootingChecklist({
     onSubmit,
     isSubmitting = false
 }: TroubleshootingChecklistProps) {
-    const [statuses, setStatuses] = useState<Record<string, CheckStatus>>({});
+    const [statuses, setStatuses] = useState<Record<string, CheckStatus>>(() => {
+        const initial: Record<string, CheckStatus> = {};
+        actions.forEach(a => {
+            if (a.status) initial[a.id] = a.status;
+        });
+        return initial;
+    });
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [findings, setFindings] = useState<Record<string, string>>({});
     const [outcomes, setOutcomes] = useState<Record<string, string>>({});
