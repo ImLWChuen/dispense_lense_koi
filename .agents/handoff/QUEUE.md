@@ -2,34 +2,33 @@
 
 ## Current milestone
 
-Downloadable case report rendering
+Final backend MVP acceptance and contract hardening
 
 ## Accepted prerequisite
 
-- `DLK-M3-022` — Deterministic durable case report export API — **accepted**
-  - reviewed commit: `e68015c4587b5f5afe7b14e78b2fe161dd3bf40c`
-
-## Accepted
-
 - `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
   - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
-  - review: `.agents/handoff/reviews/DLK-M3-023-review.md`
-  - accepted evidence: section-scoped multi-row history verification, negative reversed/mismatched-row proof, deterministic persisted timestamps, complete diagnosis evidence, visual layout report, and neutral provenance text.
-  - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
+  - recorded full backend verification: 297 passed, 0 failed, 0 skipped
+  - PDF unit verification: 5 passed
+  - PDF integration verification: 9 passed
+
+## Implemented (Awaiting Review)
+
+- `DLK-M3-024` — Final backend MVP contract and end-to-end acceptance — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-024-backend-mvp-acceptance.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-022`
-  - dependency authorization:
-    - `reportlab==5.0.1` — production renderer
-    - `pypdf==6.18.1` — parser/text-validation dependency
-    - no other PDF dependency or native renderer is authorized
+  - depends on: `DLK-M3-023`
+  - primary nature: verification/hardening, not a new diagnostic feature
 
-## Not released
+## Explicitly deferred
 
-No follow-on task is currently authorized. Remaining roadmap areas include:
+Do not release these within DLK-M3-024:
 
-- historical-case retrieval / similarity
-- LLM explanation/report narration
+- vector/semantic historical-case retrieval
+- bounded LLM integration
 - image/CV integration
-- frontend report integration
+- analytics
+- authentication/authorization
+- frontend implementation
 
-DLK-M3-023 is complete. A new bounded task must be authorized before further implementation.
+After DLK-M3-024 is accepted, the competition-critical Member 3 backend may be declared complete unless a new reviewed integration defect is identified.
