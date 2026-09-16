@@ -504,8 +504,17 @@ Do not push, merge, rebase, create/update a pull request, or modify `main`.
 Addressed all five review findings (R1–R5) from `.agents/handoff/reviews/DLK-M3-023-review.md` on commit `07abe45aaf56f52fc1bad918277bfb689b17b03b` for `DLK-M3-023 — Deterministic downloadable PDF case report`:
 1. **R1: Removed live clock from visible PDF content:** Replaced live `datetime.now(timezone.utc)` in `backend/app/services/reporting/pdf_generator.py` with the deterministic persisted timestamp `Case Created: {_escape(report.created_at)}`. Added `test_render_case_report_pdf_logical_repeatability` unit test asserting identical extracted text/order across repeated renders of the same unchanged case.
 2. **R2: Rendered persisted diagnostic evidence and explanation:** Section 3 now renders `Diagnostic Explanation` (`diag.explanation` or "None recorded."), evaluated evidence per candidate cause (supporting, neutral, contradicting) with relation badge, strength, source, score, observation ID, and details, as well as `Recommended Next Question` (`diag.next_question`) and `Recommended Next Troubleshooting Check` (`diag.next_check`) (or neutral "None recorded.").
-3. **R3: Proved history counts and ordering against JSON report:** Added testable count headers to PDF history sections (`Question Answers (N)`, `Troubleshooting Checks (N)`, `Cause Confirmations (N)`, `Lifecycle Events (N)`). Updated `test_pdf_report_same_basis_as_json_report` to assert exact counts match the JSON report arrays and verified strict ordering of item IDs and timestamps across all four collections.
-4. **R4: Visual layout verification:** Generated representative PDFs for rich-history (2 pages), empty-history (1 page), long-text wrapping & HTML escaping (3 pages), and multi-page audit history (4 pages). Rendered all 10 pages to PNG images via Windows built-in `Windows.Data.Pdf.PdfDocument`. Verified page geometry (1224x1584 px), symmetrical margins (L=71px, R=71px, T=60px, B=69px), zero clipping, zero table overflow, clean word-wrapping, and running header/footer pagination (`Page X of Y`). Adjusted Section 7 table column widths (`[18, 112, 126, 28, 62, 88, 106]`) and font styles (`cell_small_bold`, `cell_small_normal`) so long identifiers (`RECOVERY_VERIFICATION`, `UNRESOLVED → RECOVERY_PENDING_VERIFICATION`, `Rev`) do not break awkwardly.
+3. **R3: Section-scoped multi-row history order and value verification:**
+   - Scoped all assertions strictly to each history section (Section 4 Question Answers, Section 5 Troubleshooting Checks, Section 6 Cause Confirmations, Section 7 Lifecycle Events) using `extract_pdf_history_sections` (eliminating whole-document fallback).
+   - Fixtures use multiple distinguishable rows in every history section with repeated IDs and distinct values across 12 revisions:
+     - Question Answers (2 rows): repeated `Q01` across revision 2 and revision 3 with distinct answer values and clarification texts (`after_prolonged_operation` vs `immediately`).
+     - Troubleshooting Checks (2 rows): repeated `ACT02` across revision 4 and revision 5 with distinct findings, outcomes, and details (`SUPPORTS`/`air_bubbles_found` vs `CONTRADICTS`/`material_normal`).
+     - Cause Confirmations (2 rows): repeated `nozzle_restriction` across revision 6 and revision 7 with distinct confirmers and notes (`lead_tech` vs `senior_tech`).
+     - Lifecycle Events (5 rows): distinguishable rows across revisions 8 through 12, including repeated `RECOVERY_ACTION` and `RECOVERY_VERIFICATION` with distinct actors, details, and pass/fail states (`[FAILED]` on rev 9, `[PASSED]` on rev 11), ending in `RECURRENCE` on rev 12.
+   - Verified complete row values (IDs, answers, statuses, findings, confirmers, actors, revisions, and details) and strictly sequential relative ordering against report arrays via `verify_question_answers_section`, `verify_check_results_section`, `verify_cause_confirmations_section`, and `verify_lifecycle_events_section`.
+   - Negative verification: proved that reversing rows in any of the 4 history sections raises `AssertionError`.
+   - Negative verification: proved that mismatched row values (e.g., altered answer value, finding, confirmer, or actor) raise `AssertionError`.
+4. **R4: Visual layout verification:** Generated representative PDFs for rich-history (2 pages), empty-history (1 page), long-text wrapping & HTML escaping (3 pages), and multi-page audit history (4 pages). Rendered all 10 pages to PNG images via Windows built-in `Windows.Data.Pdf.PdfDocument`. Verified page geometry (1224x1584 px), symmetrical margins (L=71px, R=71px, T=60px, B=69px), zero clipping, zero table overflow, clean word-wrapping, and running header/footer pagination (`Page X of Y`). Adjusted Section 7 table column widths (`[18, 108, 132, 28, 60, 88, 106]`) and font styles (`cell_small_bold`, `cell_trans`) so long identifiers (`RECOVERY_VERIFICATION`, `UNRESOLVED → RECOVERY_PENDING_VERIFICATION`, `Rev`) fit cleanly without hyphenless word-breaking.
 5. **R5: Removed unsupported confidentiality label:** Replaced `"Confidential — Generated from persisted diagnostic records"` with neutral provenance text `"Generated from persisted diagnostic records"`.
 
 The PDF report continues to be rendered directly in memory from the accepted, immutable `CaseReportResponse` read model produced by `build_case_report` (DLK-M3-022). The endpoint creates zero database mutations, executes in a read-only transaction, performs zero diagnostic recalculations, reads no secondary unpinned data paths, and introduces no PDF persistence.
@@ -514,8 +523,8 @@ The PDF report continues to be rendered directly in memory from the accepted, im
 - `.agents/handoff/QUEUE.md`: Updated DLK-M3-023 status to `implemented`.
 - `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`: Updated status to `implemented`, documented resolution of review findings R1–R5, visual layout verification, and updated verification results.
 - `backend/app/services/reporting/pdf_generator.py`: Addressed R1 (persisted timestamp), R2 (explanation, evidence, next steps), R3 (section count headers), R4 (column widths and wrap styles), and R5 (neutral provenance text).
-- `backend/tests/unit/test_pdf_generator.py`: Expanded fixtures with evidence and next steps, verified neutral notices on empty history, and added `test_render_case_report_pdf_logical_repeatability` (5 tests total).
-- `backend/tests/integration/test_case_report_pdf_api.py`: Updated assertions for explanation, evidence, neutral provenance text, deterministic timestamp, count headers, and strict item ordering against JSON report (9 tests total).
+- `backend/tests/unit/test_pdf_generator.py`: Expanded fixtures with evidence and next steps, added 12-revision multi-row history fixture with repeated IDs, section extraction, positive complete-row value and order verification, negative proofs for reversed rows and mismatched values, verified neutral notices on empty history, and added `test_render_case_report_pdf_logical_repeatability` (5 tests total).
+- `backend/tests/integration/test_case_report_pdf_api.py`: Added 12-revision multi-row history fixture with repeated IDs (`_advance_case_with_multi_row_history`), verified section-scoped isolation, complete row values and sequential order against JSON report arrays, negative proof that reversed rows and mismatched values fail, alongside explanation, evidence, neutral provenance text, deterministic timestamp, and count headers (9 tests total).
 - `docs/api/api-spec.md`: Documented Section 10 rendered document structure and confirmed deterministic PDF export support.
 
 ### Dependency gate result
@@ -550,7 +559,7 @@ Inspection using image bounding box analysis confirmed:
 - Zero text clipping, zero horizontal overflow beyond page boundaries, and full vertical balance.
 
 ### Same-basis, read-only, and determinism proof
-- **Same-basis proof**: `test_pdf_report_same_basis_as_json_report` asserts that for an unchanged case, the PDF filename and extracted document text describe the identical case ID, current revision, defect code, issue condition, confirmed causes, and exact history counts (`Question Answers (1)`, `Troubleshooting Checks (1)`, `Cause Confirmations (1)`, `Lifecycle Events (4)`) as `GET /api/v1/cases/{case_id}/report`, and strictly ordered item identifiers and timestamps.
+- **Same-basis proof**: `test_pdf_report_same_basis_as_json_report` asserts that for an unchanged case, the PDF filename and extracted document text describe the identical case ID, current revision, defect code, issue condition, confirmed causes, and exact history counts (`Question Answers (2)`, `Troubleshooting Checks (2)`, `Cause Confirmations (2)`, `Lifecycle Events (5)`) as `GET /api/v1/cases/{case_id}/report`. Furthermore, it extracts text strictly bounded to Sections 4, 5, 6, and 7, verifying complete row values and strictly sequential ordering against the report arrays. Negative assertions confirm that reversing rows or injecting mismatched values raises `AssertionError` across all four history sections.
 - **Logical repeatability**: `test_render_case_report_pdf_logical_repeatability` proves that rendering the same unchanged `CaseReportResponse` twice yields identical logical extracted text and section order.
 - **Zero-recalculation proof**: `test_pdf_report_no_recalculation_proof` patches `DiagnosticEngine.diagnose` to raise a `RuntimeError` and proves that `GET /report.pdf` succeeds with 200 without invoking diagnostic calculation.
 - **Read-only proof**: `test_pdf_report_read_only_state_proof` captures full database state before and after GET in fresh independent sessions, asserting 100% exact equality across cases, revisions, and histories.
@@ -559,8 +568,8 @@ Inspection using image bounding box analysis confirmed:
 
 ### Verification results
 Ran verified test suites against local PostgreSQL (`dispenselens-postgres`):
-1. `tests/integration/test_case_report_pdf_api.py`: **9 passed** in 6.07s
-2. `tests/unit/test_pdf_generator.py`: **5 passed** in 0.96s
+1. `tests/integration/test_case_report_pdf_api.py`: **9 passed** in 6.57s
+2. `tests/unit/test_pdf_generator.py`: **5 passed** in 1.20s
 3. `tests/integration/test_case_report_api.py`: **9 passed** in 5.18s
 4. `tests/unit/test_report_generator.py`: **8 passed** in 0.69s
 5. `tests/integration/test_recurrence_api.py`: **9 passed** in 5.12s
@@ -569,7 +578,7 @@ Ran verified test suites against local PostgreSQL (`dispenselens-postgres`):
 8. Check result & semantic suites: **78 passed** in 5.30s
 9. Question answer suites: **34 passed** in 3.55s
 10. Persistence & core API suites: **80 passed** in 9.74s
-11. Full backend test suite (`pytest -q`): **297 passed**, 31 warnings, **0 failed**, **0 skipped** in 47.74s.
+11. Full backend test suite (`pytest -q`): **297 passed**, 31 warnings, **0 failed**, **0 skipped** in 46.57s.
 12. OpenAPI schema verified: `GET /api/v1/cases/{case_id}/report.pdf` registered with 200, 404, 422, 500 status codes.
 13. Packet validation: `python .agents/skills/implementation-handoff/scripts/validate_task.py` passed with `VALID`.
 14. Diff hygiene: `git diff --check` passed cleanly with no whitespace or EOF errors.

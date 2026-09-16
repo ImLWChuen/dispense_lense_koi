@@ -175,8 +175,8 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         "CellSmallBold",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=7.5,
-        leading=9.5,
+        fontSize=7,
+        leading=9,
         textColor=colors.HexColor("#1e293b"),
     )
     cell_small_normal = ParagraphStyle(
@@ -185,6 +185,14 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         fontName="Helvetica",
         fontSize=7,
         leading=9,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_trans = ParagraphStyle(
+        "CellTrans",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=6.5,
+        leading=8.5,
         textColor=colors.HexColor("#334155"),
     )
 
@@ -662,7 +670,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         ]
         lc_rows = [lc_headers]
         for idx, lc in enumerate(report.lifecycle_events, start=1):
-            transition_text = f"{_escape(lc.prior_issue_condition)} &rarr; {_escape(lc.resulting_issue_condition)}"
+            transition_text = f"{_escape(lc.prior_issue_condition)} &rarr;<br/>{_escape(lc.resulting_issue_condition)}"
             details_text = _escape(lc.details)
             if lc.verification_passed is not None:
                 v_res = "PASSED" if lc.verification_passed else "FAILED"
@@ -671,14 +679,14 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                 [
                     Paragraph(str(idx), cell_small_normal),
                     Paragraph(_escape(lc.event_type), cell_small_bold),
-                    Paragraph(transition_text, cell_small_normal),
+                    Paragraph(transition_text, cell_trans),
                     Paragraph(_escape(lc.resulting_revision_number), cell_small_normal),
                     Paragraph(_escape(lc.actor), cell_small_normal),
                     Paragraph(details_text, cell_small_normal),
                     Paragraph(_escape(lc.created_at), cell_small_normal),
                 ]
             )
-        lc_table = Table(lc_rows, colWidths=[18, 112, 126, 28, 62, 88, 106])
+        lc_table = Table(lc_rows, colWidths=[18, 108, 132, 28, 60, 88, 106])
         lc_table.setStyle(
             TableStyle(
                 [

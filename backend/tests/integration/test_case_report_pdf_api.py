@@ -16,6 +16,7 @@ Tests DLK-M3-023:
 
 from __future__ import annotations
 
+import copy
 import io
 import os
 from typing import Any, Generator
@@ -213,6 +214,158 @@ def _advance_case_to_rev7_recurred(tracked_ids: list[str]) -> tuple[str, dict[st
     return case_id, rec_resp.json()
 
 
+def _advance_case_with_multi_row_history(tracked_ids: list[str]) -> tuple[str, dict[str, Any]]:
+    """Advance a case through 12 revisions with multiple distinguishable rows and repeated IDs in each history."""
+    case_data = _create_initial_case(tracked_ids)
+    case_id = case_data["case_id"]
+
+    # Rev 2: Answer question Q01 (first response)
+    qa1 = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "after_prolonged_operation",
+            "answer_text": "Dots shrink after 30 min",
+            "expected_revision": 1,
+        },
+    )
+    assert qa1.status_code == 200
+
+    # Rev 3: Answer question Q01 again (repeated ID, different answer/text/rev)
+    qa2 = client.post(
+        f"/api/v1/cases/{case_id}/answers",
+        json={
+            "question_id": "Q01",
+            "answer": "immediately",
+            "answer_text": "Clarified: shrinking starts immediately on cold startup",
+            "expected_revision": 2,
+        },
+    )
+    assert qa2.status_code == 200
+
+    # Rev 4: Submit check result ACT02 (first check)
+    cr1 = client.post(
+        f"/api/v1/cases/{case_id}/check-results",
+        json={
+            "check_id": "ACT02",
+            "execution_status": "COMPLETED",
+            "finding": "SUPPORTS",
+            "outcome": "air_bubbles_found",
+            "finding_details": "Trapped air bubbles observed in syringe barrel",
+            "expected_revision": 3,
+        },
+    )
+    assert cr1.status_code == 200
+
+    # Rev 5: Submit check result ACT02 again (repeated ID, different finding/outcome/details/rev)
+    cr2 = client.post(
+        f"/api/v1/cases/{case_id}/check-results",
+        json={
+            "check_id": "ACT02",
+            "execution_status": "COMPLETED",
+            "finding": "CONTRADICTS",
+            "outcome": "material_normal",
+            "finding_details": "After fluid purge, syringe material inspected normal",
+            "expected_revision": 4,
+        },
+    )
+    assert cr2.status_code == 200
+
+    # Rev 6: Confirm root cause nozzle_restriction (first confirmation)
+    cc1 = client.post(
+        f"/api/v1/cases/{case_id}/cause-confirmations",
+        json={
+            "cause_id": "nozzle_restriction",
+            "notes": "Initial optical microscope inspection confirmed blockage",
+            "confirmed_by": "lead_tech",
+            "expected_revision": 5,
+        },
+    )
+    assert cc1.status_code == 200
+
+    # Rev 7: Confirm root cause nozzle_restriction again (repeated ID, different confirmed_by/notes/rev)
+    cc2 = client.post(
+        f"/api/v1/cases/{case_id}/cause-confirmations",
+        json={
+            "cause_id": "nozzle_restriction",
+            "notes": "Secondary confirmation via flow meter differential pressure",
+            "confirmed_by": "senior_tech",
+            "expected_revision": 6,
+        },
+    )
+    assert cc2.status_code == 200
+
+    # Rev 8: Recovery action (first action)
+    ra1 = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "recovery_details": "Cleaned nozzle orifice with ultrasonic bath",
+            "performed_by": "tech_dan",
+            "expected_revision": 7,
+        },
+    )
+    assert ra1.status_code == 200
+
+    # Rev 9: Recovery verification (failed)
+    rv1 = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "verification_passed": False,
+            "verification_details": "50 test shots showed persistent dot shrinkage",
+            "verified_by": "qa_sarah",
+            "expected_revision": 8,
+        },
+    )
+    assert rv1.status_code == 200
+    assert rv1.json()["issue_condition"] == "UNRESOLVED"
+
+    # Rev 10: Recovery action again (repeated event_type, different actor/details/rev)
+    ra2 = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "recovery_details": "Replaced entire nozzle assembly and syringe barrel",
+            "performed_by": "tech_alex",
+            "expected_revision": 9,
+        },
+    )
+    assert ra2.status_code == 200
+
+    # Rev 11: Recovery verification again (repeated event_type, passed)
+    rv2 = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "verification_passed": True,
+            "verification_details": "100 test shots verified within nominal dot tolerance",
+            "verified_by": "qa_sarah",
+            "expected_revision": 10,
+        },
+    )
+    assert rv2.status_code == 200
+    assert rv2.json()["issue_condition"] == "RESOLVED"
+
+    # Rev 12: Recurrence
+    rec = client.post(
+        f"/api/v1/cases/{case_id}/recurrences",
+        json={
+            "recurrence_details": "Dot size shrinking re-observed on shift 3 after continuous run",
+            "reported_by": "operator_bob",
+            "expected_revision": 11,
+        },
+    )
+    assert rec.status_code == 200
+    assert rec.json()["issue_condition"] == "RECURRED"
+
+    return case_id, rec.json()
+
+from tests.unit.test_pdf_generator import (
+    extract_pdf_history_sections,
+    verify_cause_confirmations_section,
+    verify_check_results_section,
+    verify_lifecycle_events_section,
+    verify_question_answers_section,
+)
+
+
 def test_pdf_report_openapi_registration():
     """Verify OpenAPI schema registers GET /api/v1/cases/{case_id}/report.pdf with expected responses."""
     resp = client.get("/openapi.json")
@@ -304,8 +457,16 @@ def test_pdf_report_rich_history_content(tracked_cases: list[str]):
 
 
 def test_pdf_report_same_basis_as_json_report(tracked_cases: list[str]):
-    """Verify PDF and JSON reports describe the exact same case basis, revision, and ordered events."""
-    case_id, _ = _advance_case_to_rev7_recurred(tracked_cases)
+    """Verify PDF and JSON reports describe the exact same case basis, revision, and ordered events.
+
+    Proves R3:
+    1. Scopes assertions strictly to each history section (no whole-document fallback).
+    2. Uses multiple distinguishable rows in every history collection, including repeated IDs with different values.
+    3. Verifies complete row values and strict ordering against report arrays.
+    4. Proves reversed rows fail with AssertionError.
+    5. Proves mismatched row values fail with AssertionError.
+    """
+    case_id, _ = _advance_case_with_multi_row_history(tracked_cases)
 
     # Fetch JSON report
     json_resp = client.get(f"/api/v1/cases/{case_id}/report")
@@ -333,60 +494,45 @@ def test_pdf_report_same_basis_as_json_report(tracked_cases: list[str]):
     for cause_id in json_data["outcome_summary"]["confirmed_causes"]:
         assert cause_id in extracted_text
 
-    # Verify exact count headers match JSON array lengths
-    expected_qa_header = f"Question Answers ({len(json_data['question_answers'])})"
-    expected_cr_header = f"Troubleshooting Checks ({len(json_data['check_results'])})"
-    expected_cc_header = f"Cause Confirmations ({len(json_data['cause_confirmations'])})"
-    expected_lc_header = f"Lifecycle Events ({len(json_data['lifecycle_events'])})"
+    # Extract sections strictly scoped to each history table
+    sections = extract_pdf_history_sections(pdf_resp.content)
 
-    assert expected_qa_header in extracted_text
-    assert expected_cr_header in extracted_text
-    assert expected_cc_header in extracted_text
-    assert expected_lc_header in extracted_text
+    # Positive: Verify complete row values and order against JSON report arrays
+    verify_question_answers_section(sections["question_answers"], json_data["question_answers"])
+    verify_check_results_section(sections["check_results"], json_data["check_results"])
+    verify_cause_confirmations_section(sections["cause_confirmations"], json_data["cause_confirmations"])
+    verify_lifecycle_events_section(sections["lifecycle_events"], json_data["lifecycle_events"])
 
-    # Verify ordered question answers against JSON
-    last_qa_pos = -1
-    for qa in json_data["question_answers"]:
-        qid = qa["question_id"]
-        aval = qa["answer_value"]
-        assert qid in extracted_text
-        assert aval in extracted_text
-        pos = extracted_text.find(qid, last_qa_pos + 1)
-        assert pos != -1, f"Question ID '{qid}' not found after position {last_qa_pos}"
-        last_qa_pos = pos
+    # Negative: Ensure reversed rows fail for all history sections
+    with pytest.raises(AssertionError):
+        verify_question_answers_section(sections["question_answers"], list(reversed(json_data["question_answers"])))
+    with pytest.raises(AssertionError):
+        verify_check_results_section(sections["check_results"], list(reversed(json_data["check_results"])))
+    with pytest.raises(AssertionError):
+        verify_cause_confirmations_section(sections["cause_confirmations"], list(reversed(json_data["cause_confirmations"])))
+    with pytest.raises(AssertionError):
+        verify_lifecycle_events_section(sections["lifecycle_events"], list(reversed(json_data["lifecycle_events"])))
 
-    # Verify ordered troubleshooting checks against JSON
-    last_cr_pos = -1
-    for cr in json_data["check_results"]:
-        cid = cr["check_id"]
-        finding = cr["finding"]
-        assert cid in extracted_text
-        assert finding in extracted_text
-        pos = extracted_text.find(cid, last_cr_pos + 1)
-        assert pos != -1, f"Check ID '{cid}' not found after position {last_cr_pos}"
-        last_cr_pos = pos
+    # Negative: Ensure mismatched row values fail for all history sections
+    mismatched_qa = copy.deepcopy(json_data["question_answers"])
+    mismatched_qa[0]["answer_value"] = "BOGUS_ANSWER_VALUE"
+    with pytest.raises(AssertionError):
+        verify_question_answers_section(sections["question_answers"], mismatched_qa)
 
-    # Verify ordered cause confirmations against JSON
-    last_cc_pos = -1
-    for cc in json_data["cause_confirmations"]:
-        cause_id = cc["cause_id"]
-        conf_by = cc["confirmed_by"]
-        assert cause_id in extracted_text
-        assert conf_by in extracted_text
-        pos = extracted_text.find(cause_id, last_cc_pos + 1)
-        assert pos != -1, f"Cause ID '{cause_id}' not found after position {last_cc_pos}"
-        last_cc_pos = pos
+    mismatched_cr = copy.deepcopy(json_data["check_results"])
+    mismatched_cr[0]["finding"] = "BOGUS_FINDING"
+    with pytest.raises(AssertionError):
+        verify_check_results_section(sections["check_results"], mismatched_cr)
 
-    # Verify ordered lifecycle events against JSON
-    last_lc_pos = -1
-    for lc in json_data["lifecycle_events"]:
-        ev_type = lc["event_type"]
-        actor = lc["actor"]
-        assert ev_type in extracted_text
-        assert actor in extracted_text
-        pos = extracted_text.find(ev_type, last_lc_pos + 1)
-        assert pos != -1, f"Lifecycle event '{ev_type}' not found after position {last_lc_pos}"
-        last_lc_pos = pos
+    mismatched_cc = copy.deepcopy(json_data["cause_confirmations"])
+    mismatched_cc[0]["confirmed_by"] = "IMPOSTER_TECHNICIAN"
+    with pytest.raises(AssertionError):
+        verify_cause_confirmations_section(sections["cause_confirmations"], mismatched_cc)
+
+    mismatched_lc = copy.deepcopy(json_data["lifecycle_events"])
+    mismatched_lc[0]["actor"] = "IMPOSTER_ACTOR"
+    with pytest.raises(AssertionError):
+        verify_lifecycle_events_section(sections["lifecycle_events"], mismatched_lc)
 
 
 def test_pdf_report_no_recalculation_proof(tracked_cases: list[str]):

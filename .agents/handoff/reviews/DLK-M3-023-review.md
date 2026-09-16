@@ -1,11 +1,37 @@
 ---
 task_id: DLK-M3-023
-reviewed_commit: 07abe45aaf56f52fc1bad918277bfb689b17b03b
+reviewed_commit: 32a9a2137d42bf9dcfbbb5b6305463c730da74f1
 decision: changes_requested
 reviewed_by: ChatGPT planner
 ---
 
 # Review: DLK-M3-023
+
+## Latest re-review (supersedes the decision and findings below)
+
+**Decision: changes_requested.** Reviewed correction commit `32a9a2137d42bf9dcfbbb5b6305463c730da74f1` on `backend-database`. One acceptance-test correction remains; no new production-code defect was identified in the correction diff.
+
+### R3 remaining - P2: Scope ordering assertions to actual history rows
+
+`backend/tests/integration/test_case_report_pdf_api.py:349-389` searches the entire PDF independently for IDs/event types and checks associated values only for presence. A cause ID can match the outcome summary or diagnosis table before its confirmation row. Repeated IDs/types and independently matched values do not establish row identity or correspondence. The fixture also has only one answer, one check, and one confirmation, so reversing those histories cannot fail this test. Exact count headers are now covered, but the required ordering proof remains incomplete.
+
+Correction for Gemini/planner: restrict extraction to each numbered history section; use at least two distinguishable entries per history in a focused renderer fixture where the API workflow cannot naturally supply them. Compare ordered row-specific tuples/markers (ID or event type plus revision, timestamp, answer/outcome/actor as appropriate) against the corresponding report arrays. Include repeated IDs/event types with distinguishable row values. Ensure a reversed row sequence or a value associated with the wrong row fails the assertions. Retain the real API JSON/PDF same-basis test and exact counts. Update the implementation report to describe the actual coverage; it currently overstates timestamp/order verification. No separate task packet was generated.
+
+### Previous finding disposition
+
+- R1 resolved in code: the visible live clock was replaced with persisted `Case Created`; a logical text repeatability test was added.
+- R2 resolved in code: stored explanation, supporting/contradicting/neutral evidence, next question and next check are rendered with neutral empty states. Non-empty evidence fixtures were added.
+- R3 partially resolved: exact counts added; ordering gap above remains.
+- R4: implementer supplied a four-fixture, ten-page rendering report. This is implementer-reported evidence, not independent reviewer visual verification: access to the temporary artifact directory was denied in this session. Minor documentation correction: 1224 x 1584 pixels for US Letter corresponds to 144 DPI, not 150 DPI. Page-wide bounding boxes alone cannot prove absence of internal cell overlap; describe actual visual inspection separately if performed.
+- R5 resolved: unsupported confidentiality label replaced with neutral provenance text.
+
+### Verification and boundaries
+
+- Reviewer inspected the correction diff and relevant test fixtures, confirmed task validation returned `VALID`, and checked the committed diff for whitespace errors (passed).
+- Gemini reports PDF integration 9 passed, PDF unit 5 passed, and full backend 297 passed with no failures/skips. These suites were not rerun by the reviewer, consistent with the project planner/executor split.
+- Review and queue records updated only. No production corrections, new task, commit, push, or merge performed.
+
+## Prior review of 07abe45 (historical)
 
 ## Decision
 

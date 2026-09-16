@@ -12,9 +12,9 @@ Downloadable case report rendering
 ## Ready
 
 - `DLK-M3-023` — Deterministic downloadable PDF case report — **implemented**
-  - reviewed commit: `07abe45aaf56f52fc1bad918277bfb689b17b03b`
+  - reviewed commit: `32a9a2137d42bf9dcfbbb5b6305463c730da74f1`
   - review: `.agents/handoff/reviews/DLK-M3-023-review.md`
-  - corrections: deterministic persisted timestamps, complete diagnosis evidence, history count/order proof, visual layout verification, and neutral provenance text.
+  - corrections: section-scoped multi-row history order and value verification, negative proof for reversed rows and mismatched values, deterministic persisted timestamps, complete diagnosis evidence, visual layout verification, and neutral provenance text.
   - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
   - branch: `backend-database`
   - depends on: `DLK-M3-022`
