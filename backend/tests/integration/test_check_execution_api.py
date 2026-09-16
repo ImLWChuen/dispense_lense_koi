@@ -119,6 +119,7 @@ def test_submit_check_execution_success_and_hydration(tracked_cases: list[str]):
     assert get_data["previous_check_results"][0]["check_id"] == "ACT01"
     assert get_data["previous_check_results"][0]["resulting_revision_number"] == 2
     assert len(get_data["analysis_revisions"]) == 2
+    assert check_data["analysis_revisions"] == get_data["analysis_revisions"]
 
     # Fresh session GET /cases/{case_id}/report
     report_resp = client.get(f"/api/v1/cases/{case_id}/report")
@@ -392,3 +393,116 @@ def test_interleaved_checks_and_lifecycle_continuity(tracked_cases: list[str]):
     assert rep_data["current_revision"] == 4
     assert len(rep_data["check_results"]) == 2
     assert rep_data["cause_confirmations"][0]["cause_id"] == "nozzle_restriction"
+
+
+# ===========================================================================
+# 7. Complete Analysis Revision History Parity & Snapshot Fidelity
+# ===========================================================================
+
+def test_check_execution_analysis_revision_history_parity(tracked_cases: list[str]):
+    """Verify that POST /checks returns the persisted nested analysis_revision
+    snapshots identically to GET /cases/{case_id}, retaining the revision bound,
+    preserving changes_from_previous and new_evidence_summary across revisions,
+    and matching the stored PostgreSQL result_snapshot exactly.
+    """
+    create_payload = {
+        "description": "Dispense dots are shrinking over time during continuous operation",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "material": "solder_paste",
+        "method": "jetting",
+    }
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+    assert create_resp.json()["analysis_revisions"] == []
+
+    # 1. First check execution: Rev 1 -> Rev 2
+    c1_payload = {
+        "check_id": "ACT01",
+        "status": "COMPLETED",
+        "finding": "SUPPORTS",
+        "expected_revision": 1,
+        "notes": "Nozzle tip was partially obstructed.",
+    }
+    c1_resp = client.post(f"/api/v1/cases/{case_id}/checks", json=c1_payload)
+    assert c1_resp.status_code == 200
+    c1_data = c1_resp.json()
+    assert c1_data["current_revision"] == 2
+    assert len(c1_data["analysis_revisions"]) == 2
+
+    # 2. Second check execution: Rev 2 -> Rev 3
+    c2_payload = {
+        "check_id": "ACT02",
+        "status": "COMPLETED",
+        "finding": "CONTRADICTS",
+        "expected_revision": 2,
+        "notes": "Fluid pressure was calibrated and within operating envelope.",
+    }
+    c2_resp = client.post(f"/api/v1/cases/{case_id}/checks", json=c2_payload)
+    assert c2_resp.status_code == 200
+    c2_data = c2_resp.json()
+    assert c2_data["current_revision"] == 3
+    assert len(c2_data["analysis_revisions"]) == 3
+
+    # 3. Fresh-session GET /cases/{case_id}
+    get_resp = client.get(f"/api/v1/cases/{case_id}")
+    assert get_resp.status_code == 200
+    get_data = get_resp.json()
+    assert get_data["diagnosis"]["analysis_revision"]["revision_number"] == 3
+    assert len(get_data["analysis_revisions"]) == 3
+
+    # 4. Assert complete history objects equality between /checks and GET
+    assert c2_data["analysis_revisions"] == get_data["analysis_revisions"]
+
+    # Assert revision bound retention: c1_data (at rev 2) contains only rev 1 and 2
+    assert c1_data["analysis_revisions"] == get_data["analysis_revisions"][:2]
+
+    # 5. Direct database stored snapshot verification
+    factory = get_session_factory()
+    with factory() as session:
+        db_rev_models = list(
+            session.scalars(
+                select(AnalysisRevisionModel)
+                .where(AnalysisRevisionModel.case_id == case_id)
+                .order_by(AnalysisRevisionModel.revision_number)
+            ).all()
+        )
+        assert len(db_rev_models) == 3
+
+        for i, db_rev in enumerate(db_rev_models):
+            expected_snapshot = db_rev.result_snapshot["analysis_revision"]
+            assert c2_data["analysis_revisions"][i] == expected_snapshot
+            assert get_data["analysis_revisions"][i] == expected_snapshot
+
+    # 6. Specific semantic verification of changes_from_previous and new_evidence_summary
+    rev1_hist = c2_data["analysis_revisions"][0]
+    rev2_hist = c2_data["analysis_revisions"][1]
+    rev3_hist = c2_data["analysis_revisions"][2]
+
+    # Revision 1 (initial assessment baseline)
+    assert rev1_hist["revision_number"] == 1
+    assert rev1_hist["defect_code"] == "D03_INCONSISTENT_SIZE"
+    assert rev1_hist["new_evidence_summary"] == "Initial diagnostic assessment."
+    assert rev1_hist["changes_from_previous"] == []
+    assert rev1_hist == db_rev_models[0].result_snapshot["analysis_revision"]
+
+    # Revision 2 (after SUPPORTS check: ranks/scores changed)
+    assert rev2_hist["revision_number"] == 2
+    assert rev2_hist["defect_code"] == "D03_INCONSISTENT_SIZE"
+    assert "ACT01" in rev2_hist["new_evidence_summary"]
+    assert "COMPLETED" in rev2_hist["new_evidence_summary"]
+    assert rev2_hist["new_evidence_summary"] == db_rev_models[1].result_snapshot["analysis_revision"]["new_evidence_summary"]
+    assert len(rev2_hist["changes_from_previous"]) > 0
+    assert rev2_hist["changes_from_previous"] == db_rev_models[1].result_snapshot["analysis_revision"]["changes_from_previous"]
+    assert rev2_hist == db_rev_models[1].result_snapshot["analysis_revision"]
+
+    # Revision 3 (after CONTRADICTS check: ranks/scores changed again)
+    assert rev3_hist["revision_number"] == 3
+    assert rev3_hist["defect_code"] == "D03_INCONSISTENT_SIZE"
+    assert "ACT02" in rev3_hist["new_evidence_summary"]
+    assert "COMPLETED" in rev3_hist["new_evidence_summary"]
+    assert rev3_hist["new_evidence_summary"] == db_rev_models[2].result_snapshot["analysis_revision"]["new_evidence_summary"]
+    assert len(rev3_hist["changes_from_previous"]) > 0
+    assert rev3_hist["changes_from_previous"] == db_rev_models[2].result_snapshot["analysis_revision"]["changes_from_previous"]
+    assert rev3_hist == db_rev_models[2].result_snapshot["analysis_revision"]

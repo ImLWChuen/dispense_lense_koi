@@ -1181,16 +1181,9 @@ def submit_case_check(
                 if rev_num <= target_revision:
                     rev_model_hist = repository.get_analysis_revision(canonical_id, revision_number=rev_num)
                     if rev_model_hist and rev_model_hist.result_snapshot:
-                        analysis_revisions.append(
-                            AnalysisRevision(
-                                revision_number=rev_model_hist.revision_number,
-                                timestamp=rev_model_hist.analyzed_at,
-                                defect_code=rev_model_hist.defect_code,
-                                ranked_causes=DiagnosisResult.model_validate(rev_model_hist.result_snapshot).ranked_causes,
-                                new_evidence_summary=rev_model_hist.result_snapshot.get("explanation", ""),
-                                changes_from_previous=[],
-                            )
-                        )
+                        snapshot_dict = rev_model_hist.result_snapshot
+                        if "analysis_revision" in snapshot_dict and snapshot_dict["analysis_revision"]:
+                            analysis_revisions.append(AnalysisRevision.model_validate(snapshot_dict["analysis_revision"]))
 
             issue_cond = (
                 IssueCondition(case_model.issue_condition)

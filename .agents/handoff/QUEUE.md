@@ -4,12 +4,13 @@
 
 Final backend MVP acceptance and contract hardening
 
-## Integration changes requested (R4 resolved)
+## Integration changes requested (R5 resolved)
 
-- Reviewed reconciliation commit: `3be96cceaa56b0f4700fa252dba18f1f877dd89a`.
+- Reviewed reconciliation commit: `80cd0a8ffb168e2665dc2ad422a29c19e5bdb83b`.
+- R5 resolved: returned persisted nested `analysis_revision` snapshots in `POST /checks`, exactly as `GET` handler does, retaining revision bound (`<= target_revision`). Preserved `changes_from_previous` and `new_evidence_summary`. Added `test_check_execution_analysis_revision_history_parity` verifying complete history objects parity against fresh GET and PostgreSQL snapshots.
 - R4 resolved: reconciled `/checks` with canonical engine and persistence contracts; added `get_case_check_executions`, synchronized `CheckExecutionModel` in `append_check_result_revision`, added alias support in `get_action_by_id`, ensured single commit on successful response construction, and added real PostgreSQL integration test suite (`test_check_execution_api.py`).
-- Review: `.agents/handoff/reviews/DLK-M3-024-review.md` (R4 resolution section added).
-- Full backend suite verified: 349 passed, 0 failed.
+- Review: `.agents/handoff/reviews/DLK-M3-024-review.md` (R4 & R5 resolution sections added).
+- Full backend suite verified: 350 passed, 0 failed.
 
 ## Accepted prerequisite
 

@@ -7,6 +7,23 @@ reviewed_by: ChatGPT planner
 
 # Review: DLK-M3-024
 
+## Latest reconciliation review: 80cd0a8 - changes requested
+
+Reviewed `80cd0a8ffb168e2665dc2ad422a29c19e5bdb83b`. The R4 engine signature, return unpacking, missing history method, next-step fields, and commit/rollback defects are corrected. Added integration tests exercise real /checks submissions, fresh GET/report retrieval, stale and invalid requests, and interoperability with /check-results. One new response-history defect remains before publication.
+
+### R5 - P2: Return persisted revision history without replacing its contents
+
+In `backend/app/api/cases.py`, submit_case_check builds its analysis_revisions response using a new AnalysisRevision for each stored snapshot, sets `changes_from_previous=[]`, and assigns the top-level diagnosis explanation to `new_evidence_summary`. The engine persists an actual revision-specific evidence summary and change list under `result_snapshot['analysis_revision']`. The existing GET detail handler correctly validates and returns that nested snapshot. Consequently the /checks response loses historical change explanations and differs from GET for the same revision immediately after a successful submission.
+
+Use the persisted nested analysis_revision exactly as the existing GET handler does, preserving the target-revision bound. Do not synthesize missing change lists or replace evidence summaries with diagnosis explanations. Add an integration assertion comparing the complete returned revision-history objects with fresh-session GET and stored nested snapshots for a case with a nonempty evidence summary/change history. Retain existing /checks lifecycle/report checks and rerun affected tests and the backend suite.
+
+### R5 Resolution
+
+- **Persisted Nested Snapshot Hydration:** Updated `submit_case_check` (`POST /api/v1/cases/{case_id}/checks`) in `backend/app/api/cases.py` to hydrate `analysis_revisions` from `rev_model_hist.result_snapshot["analysis_revision"]` via `AnalysisRevision.model_validate`, exactly matching `get_durable_case` (`GET /api/v1/cases/{case_id}`) while retaining the revision bound (`if rev_num <= target_revision:`).
+- **Preserved Evidence Summaries & Detected Changes:** Removed the synthetic reconstruction that wiped `changes_from_previous=[]` and substituted `new_evidence_summary` with the top-level diagnosis explanation. The response now preserves the exact historical `changes_from_previous` list and `new_evidence_summary` recorded in each snapshot.
+- **Integration Test Coverage & Parity Assertions:** Added `test_check_execution_analysis_revision_history_parity` in `backend/tests/integration/test_check_execution_api.py`. Verified exact whole-object equality between `check_resp.json()["analysis_revisions"]` and fresh-session `get_resp.json()["analysis_revisions"]`, exact parity with PostgreSQL stored `AnalysisRevisionModel.result_snapshot["analysis_revision"]`, bound retention across multi-step revisions, and non-empty `changes_from_previous` and check-specific `new_evidence_summary`.
+- **Suite Verification:** All 350 backend tests passed (including check execution, check results, case reports, lifecycle, and full test suite).
+
 ## Reconciliation review - changes requested
 
 Reviewed `3be96cceaa56b0f4700fa252dba18f1f877dd89a`. Earlier DLK-M3-024 acceptance remains historical; the new integrated checkout is not accepted for publication.
