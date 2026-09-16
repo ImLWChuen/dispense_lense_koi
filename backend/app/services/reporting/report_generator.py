@@ -124,6 +124,7 @@ def _map_lifecycle_event(model: CaseLifecycleEventModel) -> LifecycleEventRecord
 def build_case_report(
     case_id: str,
     repository: CaseRepository,
+    pinned_revision: int | None = None,
 ) -> CaseReportResponse | None:
     """Assemble a deterministic read-only report for a durable case from persistent storage.
 
@@ -134,6 +135,8 @@ def build_case_report(
     Args:
         case_id: Canonical UUID string identifying the case.
         repository: CaseRepository instance for storage access.
+        pinned_revision: Optional revision number to pin the report basis to. If None,
+            the latest available analysis revision is used as the pinned basis.
 
     Returns:
         CaseReportResponse if case and revisions exist, None if case is not found.
@@ -142,48 +145,65 @@ def build_case_report(
     if case_model is None:
         return None
 
-    latest_rev = repository.get_latest_analysis_revision(case_id)
-    if latest_rev is None:
-        # Fallback to initial revision if latest cannot be resolved directly
-        latest_rev = repository.get_analysis_revision(case_id, revision_number=1)
-        if latest_rev is None:
+    if pinned_revision is not None:
+        target_rev = repository.get_analysis_revision(case_id, revision_number=pinned_revision)
+        if target_rev is None:
             return None
+    else:
+        target_rev = repository.get_latest_analysis_revision(case_id)
+        if target_rev is None:
+            target_rev = repository.get_analysis_revision(case_id, revision_number=1)
+            if target_rev is None:
+                return None
 
-    latest_diagnosis = DiagnosisResult.model_validate(latest_rev.result_snapshot)
+    effective_revision = target_rev.revision_number
+    latest_diagnosis = DiagnosisResult.model_validate(target_rev.result_snapshot)
 
-    # 1. Question-answer history (deterministic sorting: revision asc, answered_at asc, question_id asc)
-    raw_qa = repository.get_case_question_answers(case_id)
+    # Resolve issue condition strictly from the pinned revision basis, not from potentially mutable case_model
+    pinned_condition_raw = target_rev.issue_condition or latest_diagnosis.issue_condition
+    if pinned_condition_raw in IssueCondition._value2member_map_:
+        pinned_condition = IssueCondition(pinned_condition_raw)
+    elif isinstance(pinned_condition_raw, IssueCondition):
+        pinned_condition = pinned_condition_raw
+    else:
+        try:
+            pinned_condition = IssueCondition(str(pinned_condition_raw))
+        except ValueError:
+            pinned_condition = pinned_condition_raw
+
+    # 1. Question-answer history (scoped to pinned revision; sorted by revision asc, answered_at asc, question_id asc)
+    raw_qa = repository.get_case_question_answers(case_id, max_revision=effective_revision)
     mapped_qa = [_map_question_answer(m) for m in raw_qa]
     sorted_qa = sorted(
         mapped_qa,
         key=lambda r: (r.resulting_revision_number, r.answered_at, r.question_id),
     )
 
-    # 2. Troubleshooting-check history (deterministic sorting: revision asc, checked_at asc, check_id asc)
-    raw_cr = repository.get_case_check_results(case_id)
+    # 2. Troubleshooting-check history (scoped to pinned revision; sorted by revision asc, checked_at asc, check_id asc)
+    raw_cr = repository.get_case_check_results(case_id, max_revision=effective_revision)
     mapped_cr = [_map_check_result(m) for m in raw_cr]
     sorted_cr = sorted(
         mapped_cr,
         key=lambda r: (r.resulting_revision_number, r.checked_at, r.check_id),
     )
 
-    # 3. Cause-confirmation history (deterministic sorting: revision asc, confirmed_at asc, cause_id asc)
-    raw_conf = repository.get_case_cause_confirmations(case_id)
+    # 3. Cause-confirmation history (scoped to pinned revision; sorted by revision asc, confirmed_at asc, cause_id asc)
+    raw_conf = repository.get_case_cause_confirmations(case_id, max_revision=effective_revision)
     mapped_conf = [_map_cause_confirmation(m) for m in raw_conf]
     sorted_conf = sorted(
         mapped_conf,
         key=lambda r: (r.resulting_revision_number, r.confirmed_at, r.cause_id),
     )
 
-    # 4. Issue-lifecycle history (deterministic sorting: revision asc, created_at asc, id asc)
-    raw_lc = repository.get_case_lifecycle_events(case_id)
+    # 4. Issue-lifecycle history (scoped to pinned revision; sorted by revision asc, created_at asc, id asc)
+    raw_lc = repository.get_case_lifecycle_events(case_id, max_revision=effective_revision)
     mapped_lc = [_map_lifecycle_event(m) for m in raw_lc]
     sorted_lc = sorted(
         mapped_lc,
         key=lambda r: (r.resulting_revision_number, r.created_at, r.id or 0),
     )
 
-    # 5. Outcome summary projection
+    # 5. Outcome summary projection scoped strictly to pinned revision basis
     confirmed_cause_ids: list[str] = [
         c.cause_id
         for c in latest_diagnosis.ranked_causes
@@ -194,35 +214,33 @@ def build_case_report(
         if conf.cause_id not in confirmed_cause_ids:
             confirmed_cause_ids.append(conf.cause_id)
 
-    issue_condition_val = (
-        IssueCondition(case_model.issue_condition)
-        if case_model.issue_condition in IssueCondition._value2member_map_
-        else case_model.issue_condition
-    )
     is_resolved = (
-        issue_condition_val == IssueCondition.RESOLVED
-        or str(case_model.issue_condition).upper() == "RESOLVED"
+        pinned_condition == IssueCondition.RESOLVED
+        or str(pinned_condition).upper() == "RESOLVED"
     )
 
     outcome_summary = CaseOutcomeSummary(
-        issue_condition=issue_condition_val,
-        current_revision=latest_rev.revision_number,
+        issue_condition=pinned_condition,
+        current_revision=effective_revision,
         confirmed_causes=confirmed_cause_ids,
         currently_confirmed_causes=confirmed_cause_ids,
         is_resolved=is_resolved,
         resolved=is_resolved,
     )
 
+    defect_code = target_rev.defect_code or latest_diagnosis.defect_category or case_model.defect_code
+    defect_name = latest_diagnosis.defect_name or case_model.defect_name
+
     return CaseReportResponse(
         case_id=str(case_model.case_id),
-        current_revision=latest_rev.revision_number,
-        defect_code=case_model.defect_code,
-        defect_name=case_model.defect_name,
-        description=case_model.description,
+        current_revision=effective_revision,
+        defect_code=defect_code,
+        defect_name=defect_name,
+        description=case_model.description or "",
         material=case_model.material,
         method=case_model.method,
         machine_context=case_model.machine_context,
-        issue_condition=issue_condition_val,
+        issue_condition=pinned_condition,
         created_at=case_model.created_at,
         current_diagnosis=latest_diagnosis,
         diagnosis=latest_diagnosis,

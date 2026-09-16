@@ -2384,25 +2384,28 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `case_id` | `UUID` | **Yes** | Unique identifier of the case. |
-| `title` | `string` | **Yes** | Case title. |
-| `description` | `string` | **Yes** | Detailed case description. |
-| `initial_symptoms` | `array[string]` | **Yes** | Initial symptoms provided at case inception. |
-| `dispense_pattern` | `string` | No | Dispense pattern classification (or null). |
-| `fluid_type` | `string` | No | Dispensed fluid type (or null). |
-| `created_at` | `datetime` | **Yes** | ISO-8601 timestamp when the case was created. |
-| `updated_at` | `datetime` | **Yes** | ISO-8601 timestamp of last case update. |
-| `current_diagnosis` | `DiagnosisResponse` | **Yes** | Current analysis snapshot from the latest analysis revision (aliased as `diagnosis`). |
-| `diagnosis` | `DiagnosisResponse` | **Yes** | Alias for `current_diagnosis`. |
+| `case_id` | `string` | **Yes** | Unique case identifier. |
+| `current_revision` | `integer` | **Yes** | Current revision number of the case. |
+| `defect_code` | `string` | No | Persisted defect code identifier (e.g. 'D03_INCONSISTENT_SIZE'). |
+| `defect_name` | `string` | No | Persisted human-readable defect title. |
+| `description` | `string` | **Yes** | Problem description provided by technician. |
+| `material` | `string` | No | Dispensed fluid material name or category. |
+| `method` | `string` | No | Dispensing method (e.g. 'jetting', 'time_pressure'). |
+| `machine_context` | `object` | No | Equipment/process parameters. |
+| `issue_condition` | `string` | **Yes** | Current issue condition (`UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, `RECURRED`). |
+| `created_at` | `datetime` | **Yes** | Case creation timestamp (ISO-8601). |
+| `current_diagnosis` | `DiagnosisResult` | **Yes** | Current analysis snapshot from the latest analysis revision (aliased as `diagnosis`). |
+| `diagnosis` | `DiagnosisResult` | **Yes** | Alias for `current_diagnosis`. |
 | `question_answers` | `array[QuestionAnswerRecord]` | **Yes** | Historical question-answer submissions in ascending revision order (aliased as `question_answer_history`). |
 | `question_answer_history` | `array[QuestionAnswerRecord]` | **Yes** | Alias for `question_answers`. |
-| `check_results` | `array[CheckResultRecord]` | **Yes** | Historical troubleshooting check results in ascending revision order (aliased as `check_result_history`). |
-| `check_result_history` | `array[CheckResultRecord]` | **Yes** | Alias for `check_results`. |
+| `check_results` | `array[CheckResultRecord]` | **Yes** | Historical troubleshooting check results in ascending revision order (aliased as `troubleshooting_check_history`). |
+| `troubleshooting_check_history` | `array[CheckResultRecord]` | **Yes** | Alias for `check_results`. |
 | `cause_confirmations` | `array[CauseConfirmationRecord]` | **Yes** | Historical cause confirmation submissions in ascending revision order (aliased as `cause_confirmation_history`). |
 | `cause_confirmation_history` | `array[CauseConfirmationRecord]` | **Yes** | Alias for `cause_confirmations`. |
-| `lifecycle_events` | `array[CaseLifecycleEventRecord]` | **Yes** | Complete audit log of lifecycle transitions in ascending revision order (aliased as `lifecycle_event_history`). |
-| `lifecycle_event_history` | `array[CaseLifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
-| `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the final or current case state. |
+| `lifecycle_events` | `array[LifecycleEventRecord]` | **Yes** | Complete audit log of lifecycle transitions in ascending revision order (aliased as `issue_lifecycle_history`). |
+| `issue_lifecycle_history` | `array[LifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
+| `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the persisted outcome state (aliased as `current_outcome_summary`). |
+| `current_outcome_summary` | `CaseOutcomeSummary` | **Yes** | Alias for `outcome_summary`. |
 
 ##### Outcome Summary Schema (`CaseOutcomeSummary`)
 
@@ -2410,8 +2413,10 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 |---|---|---|---|
 | `issue_condition` | `string` | **Yes** | Current case issue condition (`UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, or `RECURRED`). |
 | `current_revision` | `integer` | **Yes** | Current revision number of the case. |
-| `confirmed_causes` | `array[string]` | **Yes** | List of confirmed root causes (empty if none confirmed). |
-| `is_resolved` | `boolean` | **Yes** | Whether the case is currently in `RESOLVED` condition. |
+| `confirmed_causes` | `array[string]` | **Yes** | List of confirmed root causes (aliased as `currently_confirmed_causes`). |
+| `currently_confirmed_causes` | `array[string]` | **Yes** | Alias for `confirmed_causes`. |
+| `is_resolved` | `boolean` | **Yes** | Whether the case is currently in `RESOLVED` condition (aliased as `resolved`). |
+| `resolved` | `boolean` | **Yes** | Alias for `is_resolved`. |
 
 ##### Status and Error Codes
 - `200 OK` — Complete report assembled and returned.
@@ -2430,99 +2435,111 @@ Accept: application/json
 ```json
 {
   "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
-  "title": "Severe Dispense Tail Issue",
-  "description": "Tail defect observed on dispense line A",
-  "initial_symptoms": [
-    "tail"
-  ],
-  "dispense_pattern": "lines",
-  "fluid_type": "epoxy",
+  "current_revision": 6,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "issue_condition": "RESOLVED",
   "created_at": "2026-09-14T10:00:00Z",
-  "updated_at": "2026-09-14T12:00:00Z",
   "current_diagnosis": {
+    "defect_category": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
     "issue_condition": "RESOLVED",
     "analysis_revision": {
       "revision_number": 6
     },
-    "confirmed_causes": [
-      "nozzle_restriction"
-    ],
     "ranked_causes": [
       {
         "cause_id": "nozzle_restriction",
         "name": "Nozzle Restriction / Clog",
         "score": 45.0,
-        "is_confirmed": true
+        "is_confirmed": true,
+        "conclusion": "CONFIRMED"
       }
     ],
     "unconfirmed_causes": []
   },
   "diagnosis": {
+    "defect_category": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
     "issue_condition": "RESOLVED",
     "analysis_revision": {
       "revision_number": 6
     },
-    "confirmed_causes": [
-      "nozzle_restriction"
-    ],
     "ranked_causes": [
       {
         "cause_id": "nozzle_restriction",
         "name": "Nozzle Restriction / Clog",
         "score": 45.0,
-        "is_confirmed": true
+        "is_confirmed": true,
+        "conclusion": "CONFIRMED"
       }
     ],
     "unconfirmed_causes": []
   },
   "question_answers": [
     {
-      "revision_number": 2,
-      "question_id": "fluid_temp",
-      "answer": "fluid_temp_normal",
-      "created_at": "2026-09-14T10:15:00Z"
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "answer_text": null,
+      "source": "USER",
+      "answered_at": "2026-09-14T10:05:00Z",
+      "resulting_revision_number": 2
     }
   ],
   "question_answer_history": [
     {
-      "revision_number": 2,
-      "question_id": "fluid_temp",
-      "answer": "fluid_temp_normal",
-      "created_at": "2026-09-14T10:15:00Z"
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "answer_text": null,
+      "source": "USER",
+      "answered_at": "2026-09-14T10:05:00Z",
+      "resulting_revision_number": 2
     }
   ],
   "check_results": [
     {
-      "revision_number": 3,
-      "check_id": "check_nozzle_clog",
-      "result": "positive",
-      "notes": "Debris observed in nozzle tip",
-      "created_at": "2026-09-14T10:30:00Z"
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "finding_details": null,
+      "outcome": "air_bubbles_found",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T10:10:00Z",
+      "resulting_revision_number": 3
     }
   ],
-  "check_result_history": [
+  "troubleshooting_check_history": [
     {
-      "revision_number": 3,
-      "check_id": "check_nozzle_clog",
-      "result": "positive",
-      "notes": "Debris observed in nozzle tip",
-      "created_at": "2026-09-14T10:30:00Z"
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "finding_details": null,
+      "outcome": "air_bubbles_found",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T10:10:00Z",
+      "resulting_revision_number": 3
     }
   ],
   "cause_confirmations": [
     {
-      "revision_number": 4,
-      "confirmed_cause": "nozzle_restriction",
-      "notes": "Verified nozzle restriction",
-      "created_at": "2026-09-14T10:45:00Z"
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "lead_tech",
+      "notes": "Verified restriction via microscopic inspection",
+      "confirmed_at": "2026-09-14T10:12:00Z",
+      "resulting_revision_number": 4
     }
   ],
   "cause_confirmation_history": [
     {
-      "revision_number": 4,
-      "confirmed_cause": "nozzle_restriction",
-      "notes": "Verified nozzle restriction",
-      "created_at": "2026-09-14T10:45:00Z"
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "lead_tech",
+      "notes": "Verified restriction via microscopic inspection",
+      "confirmed_at": "2026-09-14T10:12:00Z",
+      "resulting_revision_number": 4
     }
   ],
   "lifecycle_events": [
@@ -2531,42 +2548,42 @@ Accept: application/json
       "prior_issue_condition": "UNRESOLVED",
       "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
       "resulting_revision_number": 5,
-      "actor": "technician_dan",
-      "details": "Replaced nozzle tip and performed purge cycle",
+      "actor": "technician",
+      "details": "Replaced fluid syringe and cleaned nozzle",
       "verification_passed": null,
-      "created_at": "2026-09-14T11:00:00Z"
+      "created_at": "2026-09-14T10:15:00Z"
     },
     {
       "event_type": "RECOVERY_VERIFICATION",
       "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
       "resulting_issue_condition": "RESOLVED",
       "resulting_revision_number": 6,
-      "actor": "technician_dan",
-      "details": "5 test shots inspected under microscope. Zero tailing observed.",
+      "actor": "qa_engineer",
+      "details": "100 test shots verified within nominal dot tolerance",
       "verification_passed": true,
-      "created_at": "2026-09-14T11:30:00Z"
+      "created_at": "2026-09-14T10:20:00Z"
     }
   ],
-  "lifecycle_event_history": [
+  "issue_lifecycle_history": [
     {
       "event_type": "RECOVERY_ACTION",
       "prior_issue_condition": "UNRESOLVED",
       "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
       "resulting_revision_number": 5,
-      "actor": "technician_dan",
-      "details": "Replaced nozzle tip and performed purge cycle",
+      "actor": "technician",
+      "details": "Replaced fluid syringe and cleaned nozzle",
       "verification_passed": null,
-      "created_at": "2026-09-14T11:00:00Z"
+      "created_at": "2026-09-14T10:15:00Z"
     },
     {
       "event_type": "RECOVERY_VERIFICATION",
       "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
       "resulting_issue_condition": "RESOLVED",
       "resulting_revision_number": 6,
-      "actor": "technician_dan",
-      "details": "5 test shots inspected under microscope. Zero tailing observed.",
+      "actor": "qa_engineer",
+      "details": "100 test shots verified within nominal dot tolerance",
       "verification_passed": true,
-      "created_at": "2026-09-14T11:30:00Z"
+      "created_at": "2026-09-14T10:20:00Z"
     }
   ],
   "outcome_summary": {
@@ -2575,7 +2592,23 @@ Accept: application/json
     "confirmed_causes": [
       "nozzle_restriction"
     ],
-    "is_resolved": true
+    "currently_confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "is_resolved": true,
+    "resolved": true
+  },
+  "current_outcome_summary": {
+    "issue_condition": "RESOLVED",
+    "current_revision": 6,
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "currently_confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "is_resolved": true,
+    "resolved": true
   }
 }
 ```

@@ -28,6 +28,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.api.cases import get_case_repository, get_diagnosis_engine
+from app.db.repository import CaseRepository
 from app.core.config import get_database_url
 from app.db.database import reset_engine
 from app.db.session import get_session_factory
@@ -49,7 +50,7 @@ from app.schemas.diagnosis import (
     DiagnosisResult,
     IssueCondition,
 )
-from app.services.diagnosis.engine import DiagnosticEngine
+from app.services.diagnosis.engine import DiagnosticEngine, StateManager
 from tests.case_snapshot_helper import capture_complete_case_state
 from tests.unit.test_persistence_safety import assert_safe_test_database
 
@@ -130,8 +131,8 @@ def _create_initial_case(tracked_ids: list[str], defect_code: str = "D03_INCONSI
     return data
 
 
-def _advance_case_to_rev7_recurred(tracked_ids: list[str]) -> tuple[str, dict[str, Any]]:
-    """Advance a case through all 7 revisions ending with recurrence (RECURRED)."""
+def _advance_case_to_rev6_resolved(tracked_ids: list[str]) -> tuple[str, dict[str, Any]]:
+    """Advance a case through revision 6 ending with verified resolution (RESOLVED)."""
     case_data = _create_initial_case(tracked_ids)
     case_id = case_data["case_id"]
 
@@ -194,6 +195,13 @@ def _advance_case_to_rev7_recurred(tracked_ids: list[str]) -> tuple[str, dict[st
     )
     assert ver_resp.status_code == 200
     assert ver_resp.json()["issue_condition"] == "RESOLVED"
+
+    return case_id, ver_resp.json()
+
+
+def _advance_case_to_rev7_recurred(tracked_ids: list[str]) -> tuple[str, dict[str, Any]]:
+    """Advance a case through all 7 revisions ending with recurrence (RECURRED)."""
+    case_id, _ = _advance_case_to_rev6_resolved(tracked_ids)
 
     # Rev 7: Recurrence (RESOLVED -> RECURRED)
     rec_resp = client.post(
@@ -396,14 +404,21 @@ def test_report_missing_case_and_invalid_uuid():
 
 
 def test_report_sanitized_500_on_internal_error(tracked_cases: list[str]):
-    """Verify unexpected internal errors return sanitized 500 without leaking sensitive markers."""
-    case_data = _create_initial_case(tracked_cases)
-    case_id = case_data["case_id"]
+    """Verify unexpected internal errors return sanitized 500 without leaking sensitive markers and commit zero mutations."""
+    case_id, _ = _advance_case_to_rev7_recurred(tracked_cases)
+
+    factory = get_session_factory()
+
+    # Capture complete durable case state before failing GET in independent session
+    with factory() as session:
+        state_before = capture_complete_case_state(session, case_id)
 
     sensitive_marker = "SENSITIVE_DB_PASSWORD_LEAK_SECRET_12345"
 
-    with patch(
-        "app.api.cases.build_case_report",
+    # Trigger failure AFTER report reads have already begun (e.g. during get_case_check_results)
+    with patch.object(
+        CaseRepository,
+        "get_case_check_results",
         side_effect=ValueError(f"Database error with credentials: {sensitive_marker}"),
     ):
         resp = client.get(f"/api/v1/cases/{case_id}/report")
@@ -411,3 +426,113 @@ def test_report_sanitized_500_on_internal_error(tracked_cases: list[str]):
         data = resp.json()
         assert sensitive_marker not in resp.text
         assert data["detail"] == "An unexpected error occurred while generating the case report."
+
+    # Capture state again in fresh independent session
+    with factory() as session:
+        state_after = capture_complete_case_state(session, case_id)
+
+    # Assert all case, revision, and history data are completely unchanged
+    assert state_before == state_after, "Persistent case state was modified during failing report assembly!"
+
+
+def test_report_consistency_under_concurrent_update(tracked_cases: list[str]):
+    """Verify that a report assembled during a concurrent case update remains coherent and writes nothing."""
+    case_id, _ = _advance_case_to_rev6_resolved(tracked_cases)
+
+    factory = get_session_factory()
+    orig_get_qa = CaseRepository.get_case_question_answers
+    update_committed = False
+
+    def hook_get_qa(self_repo, target_cid, max_revision=None):
+        nonlocal update_committed
+        # Trigger concurrent recurrence update on the first call for this case using an independent session
+        if target_cid == case_id and not update_committed:
+            with factory() as writer_session:
+                writer_repo = CaseRepository(writer_session)
+                writer_case = writer_repo.load_structured_case(case_id)
+                assert writer_case is not None
+                writer_engine = DiagnosticEngine()
+                new_cond, _ = StateManager.transition_issue_condition(
+                    current_condition=writer_case.issue_condition,
+                    target_condition=IssueCondition.RECURRED,
+                    verification_passed=False,
+                    verification_details="Concurrent recurrence reported while report in flight",
+                )
+                writer_case.issue_condition = new_cond
+                writer_result = writer_engine.diagnose(writer_case)
+                writer_result.issue_condition = new_cond
+                writer_repo.append_recurrence_revision(
+                    case=writer_case,
+                    reported_by="concurrent_reporter",
+                    recurrence_details="Concurrent recurrence reported while report in flight",
+                    result=writer_result,
+                    expected_revision=6,
+                )
+                writer_session.commit()
+            update_committed = True
+        return orig_get_qa(self_repo, target_cid, max_revision=max_revision)
+
+    with patch.object(CaseRepository, "get_case_question_answers", side_effect=hook_get_qa, autospec=True):
+        resp = client.get(f"/api/v1/cases/{case_id}/report")
+
+    assert resp.status_code == 200, f"Expected 200 but got: {resp.text}"
+    assert update_committed is True, "Concurrent writer hook was not triggered during report assembly"
+
+    report = resp.json()
+
+    # The report must describe one coherent revision basis: revision 6 (RESOLVED)
+    assert report["current_revision"] == 6
+    assert report["issue_condition"] == "RESOLVED"
+    assert report["diagnosis"]["analysis_revision"]["revision_number"] == 6
+    assert report["diagnosis"]["issue_condition"] == "RESOLVED"
+    assert report["current_diagnosis"]["analysis_revision"]["revision_number"] == 6
+    assert report["current_diagnosis"]["issue_condition"] == "RESOLVED"
+
+    # Outcome summary must match the pinned revision basis
+    summary = report["outcome_summary"]
+    assert summary["current_revision"] == 6
+    assert summary["issue_condition"] == "RESOLVED"
+    assert summary["is_resolved"] is True
+    assert "nozzle_restriction" in summary["confirmed_causes"]
+
+    # History items must only contain events up to the pinned revision (rev 6)
+    # The R7 recurrence event MUST NOT leak into the R6 report
+    event_types = [e["event_type"] for e in report["lifecycle_events"]]
+    assert "RECURRENCE" not in event_types
+    assert len(report["lifecycle_events"]) == 2
+    assert [e["resulting_revision_number"] for e in report["lifecycle_events"]] == [5, 6]
+
+    for qa in report["question_answers"]:
+        assert qa["resulting_revision_number"] <= 6
+    for cr in report["check_results"]:
+        assert cr["resulting_revision_number"] <= 6
+    for cc in report["cause_confirmations"]:
+        assert cc["resulting_revision_number"] <= 6
+
+    # Verify the database state in an independent session:
+    # 1. The database really is at revision 7 with RECURRED
+    with factory() as session:
+        state_after_report = capture_complete_case_state(session, case_id)
+
+    assert state_after_report["case"]["issue_condition"] == "RECURRED"
+    assert len(state_after_report["analysis_revisions"]) == 7
+    assert state_after_report["analysis_revisions"][-1]["revision_number"] == 7
+    assert state_after_report["analysis_revisions"][-1]["issue_condition"] == "RECURRED"
+    assert len(state_after_report["lifecycle_events"]) == 3  # action, verification, recurrence
+
+    # 2. Verify report generation writes NOTHING:
+    # Run a second report GET now (which will assemble from revision 7)
+    with factory() as session:
+        state_before_second = capture_complete_case_state(session, case_id)
+
+    resp2 = client.get(f"/api/v1/cases/{case_id}/report")
+    assert resp2.status_code == 200
+    report2 = resp2.json()
+    assert report2["current_revision"] == 7
+    assert report2["issue_condition"] == "RECURRED"
+    assert report2["outcome_summary"]["is_resolved"] is False
+
+    with factory() as session:
+        state_after_second = capture_complete_case_state(session, case_id)
+
+    assert state_before_second == state_after_second, "Report generation created persistent database mutations!"

@@ -293,3 +293,44 @@ def test_build_case_report_deterministic_ordering():
     assert report.outcome_summary.confirmed_causes == ["C01_FLUID_PRESSURE"]
     assert report.outcome_summary.is_resolved is True
     assert report.outcome_summary.current_revision == 6
+
+
+def test_build_case_report_pinned_revision_consistency():
+    case_id = "11111111-1111-4111-8111-111111111111"
+    mock_repo = MagicMock()
+    # Case model has condition RECURRED (simulating a concurrent update to rev 7)
+    case_model = _make_dummy_case_model(case_id, issue_condition="RECURRED")
+    mock_repo.get_case.return_value = case_model
+
+    # Target rev 6 is RESOLVED
+    rev6_model = AnalysisRevisionModel()
+    rev6_model.revision_number = 6
+    rev6_model.analyzed_at = datetime(2026, 9, 15, 11, 0, 0, tzinfo=timezone.utc)
+    rev6_model.defect_code = case_model.defect_code
+    rev6_model.issue_condition = "RESOLVED"
+    rev6_model.result_snapshot = _make_dummy_diagnosis_snapshot(
+        case_id,
+        revision_number=6,
+        issue_condition=IssueCondition.RESOLVED,
+    )
+    mock_repo.get_analysis_revision.return_value = rev6_model
+    mock_repo.get_case_question_answers.return_value = []
+    mock_repo.get_case_check_results.return_value = []
+    mock_repo.get_case_cause_confirmations.return_value = []
+    mock_repo.get_case_lifecycle_events.return_value = []
+
+    # Pin revision to 6
+    report = build_case_report(case_id, mock_repo, pinned_revision=6)
+    assert report is not None
+    # Report condition MUST be RESOLVED (from rev 6), NOT RECURRED (from case_model)
+    assert report.issue_condition == IssueCondition.RESOLVED
+    assert report.current_revision == 6
+    assert report.outcome_summary.issue_condition == IssueCondition.RESOLVED
+    assert report.outcome_summary.current_revision == 6
+    assert report.outcome_summary.is_resolved is True
+
+    # Assert max_revision was passed to all history queries
+    mock_repo.get_case_question_answers.assert_called_with(case_id, max_revision=6)
+    mock_repo.get_case_check_results.assert_called_with(case_id, max_revision=6)
+    mock_repo.get_case_cause_confirmations.assert_called_with(case_id, max_revision=6)
+    mock_repo.get_case_lifecycle_events.assert_called_with(case_id, max_revision=6)

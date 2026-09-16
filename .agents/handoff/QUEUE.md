@@ -12,6 +12,9 @@ Durable case report/export
 ## Ready
 
 - `DLK-M3-022` — Deterministic durable case report export API — **implemented**
+  - reviewed commit: `c445855a03ee165db2a05540931c72bb801b014f`
+  - review: `.agents/handoff/reviews/DLK-M3-022-review.md`
+  - corrections: consistent report revision basis, failure-path nonmutation proof, and accurate verification/report documentation.
   - task: `.agents/handoff/tasks/DLK-M3-022-case-report-export.md`
   - branch: `backend-database`
   - depends on: `DLK-M3-021`
