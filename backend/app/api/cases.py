@@ -17,6 +17,7 @@ from app.schemas.case import (
     CaseCheckResponse,
     CaseObservationResponse,
     CheckExecutionRecord,
+    CheckResultRecord,
     CreateCaseRequest,
     DurableCaseResponse,
     LifecycleEventRecord,
@@ -25,6 +26,7 @@ from app.schemas.case import (
     SubmitCheckRequest,
 )
 from app.schemas.diagnosis import (
+    AnalysisRevision,
     CheckExecutionStatus,
     CheckFinding,
     CheckResult,
@@ -261,7 +263,7 @@ def get_durable_case(
         latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
 
         ans_models = repository.get_case_question_answers(canonical_id)
-        chk_models = repository.get_case_check_results(canonical_id)
+        chk_models = repository.get_case_check_executions(canonical_id)
 
         questions_dict = {q.id: q for q in load_questions()}
         previous_answers = []
@@ -292,23 +294,19 @@ def get_durable_case(
                 CheckResultRecord(
                     check_id=cm.check_id,
                     execution_status=(
-                        CheckExecutionStatus(cm.execution_status)
-                        if cm.execution_status in CheckExecutionStatus._value2member_map_
-                        else cm.execution_status
+                        CheckExecutionStatus(cm.status)
+                        if cm.status in CheckExecutionStatus._value2member_map_
+                        else cm.status
                     ),
                     finding=(
                         CheckFinding(cm.finding)
                         if cm.finding in CheckFinding._value2member_map_
                         else cm.finding
                     ),
-                    finding_details=cm.finding_details,
-                    outcome=cm.outcome,
-                    source=(
-                        EvidenceSource(cm.source)
-                        if cm.source in EvidenceSource._value2member_map_
-                        else cm.source
-                    ),
-                    checked_at=cm.checked_at,
+                    finding_details=cm.notes,
+                    outcome=None,
+                    source=EvidenceSource.USER_CHECK_RESULT,
+                    checked_at=cm.executed_at,
                     resulting_revision_number=cm.resulting_revision_number,
                     name=cdef.name if cdef else f"Check {cm.check_id}",
                     description=cdef.description if cdef else None,
@@ -495,7 +493,7 @@ def submit_case_answer(
 
             initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
             qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
-            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_executions(canonical_id, max_revision=target_revision)
 
             observations = [
                 CaseObservationResponse(
@@ -548,23 +546,19 @@ def submit_case_answer(
                 CheckResultRecord(
                     check_id=cm.check_id,
                     execution_status=(
-                        CheckExecutionStatus(cm.execution_status)
-                        if cm.execution_status in CheckExecutionStatus._value2member_map_
-                        else cm.execution_status
+                        CheckExecutionStatus(cm.status)
+                        if cm.status in CheckExecutionStatus._value2member_map_
+                        else cm.status
                     ),
                     finding=(
                         CheckFinding(cm.finding)
                         if cm.finding in CheckFinding._value2member_map_
                         else cm.finding
                     ),
-                    finding_details=cm.finding_details,
-                    outcome=cm.outcome,
-                    source=(
-                        EvidenceSource(cm.source)
-                        if cm.source in EvidenceSource._value2member_map_
-                        else cm.source
-                    ),
-                    checked_at=cm.checked_at,
+                    finding_details=cm.notes,
+                    outcome=None,
+                    source=EvidenceSource.USER_CHECK_RESULT,
+                    checked_at=cm.executed_at,
                     resulting_revision_number=cm.resulting_revision_number,
                 )
                 for cm in cr_models
@@ -689,13 +683,17 @@ def submit_case_check(
 
         # 3. Execute domain check submission workflow
         try:
-            result = engine.submit_check_result(
-                case=case,
+            check_record = CheckResult(
                 check_id=request.check_id,
                 status=status_enum,
                 finding=finding_enum,
                 notes=request.notes,
                 source=EvidenceSource.USER_CHECK_RESULT,
+                timestamp=datetime.now(timezone.utc),
+            )
+            updated_case, result = engine.submit_check_result(
+                case=case,
+                check_result=check_record,
             )
         except ValueError as ve:
             raise HTTPException(
@@ -710,17 +708,10 @@ def submit_case_check(
             )
 
         # 4. Atomically persist check revision
-        check_record = CheckResult(
-            check_id=request.check_id,
-            status=status_enum,
-            finding=finding_enum,
-            notes=request.notes,
-        )
-
         try:
             target_revision = request.expected_revision + 1
             repository.append_check_result_revision(
-                case=case,
+                case=updated_case,
                 check_result=check_record,
                 result=result,
                 expected_revision=request.expected_revision,

@@ -2,9 +2,7 @@
 
 from app.models.case import (
     AnalysisRevisionModel,
-    CaseCauseConfirmationModel,
-    CaseCheckResultModel,
-    CaseLifecycleEventModel,
+    CheckExecutionModel,
     CaseModel,
     ObservationModel,
     QuestionAnswerModel,
@@ -15,7 +13,5 @@ __all__ = [
     "ObservationModel",
     "AnalysisRevisionModel",
     "QuestionAnswerModel",
-    "CaseCheckResultModel",
-    "CaseCauseConfirmationModel",
-    "CaseLifecycleEventModel",
+    "CheckExecutionModel",
 ]

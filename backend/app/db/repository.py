@@ -15,9 +15,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session_factory
 from app.models.case import (
     AnalysisRevisionModel,
-    CaseCauseConfirmationModel,
-    CaseCheckResultModel,
-    CaseLifecycleEventModel,
+
     CaseModel,
     CheckExecutionModel,
     ObservationModel,
@@ -303,68 +301,7 @@ class CaseRepository:
             if should_close:
                 session.close()
 
-    def get_case_check_results(
-        self, case_id: str, max_revision: int | None = None
-    ) -> list[CaseCheckResultModel]:
-        """Retrieve all check results associated with a case ordered by resulting_revision_number."""
-        session, should_close = self._get_active_session()
-        try:
-            stmt = (
-                select(CaseCheckResultModel)
-                .where(CaseCheckResultModel.case_id == case_id)
-            )
-            if max_revision is not None:
-                stmt = stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
-            stmt = stmt.order_by(
-                CaseCheckResultModel.resulting_revision_number,
-                CaseCheckResultModel.id,
-            ).execution_options(populate_existing=True)
-            return list(session.scalars(stmt).all())
-        finally:
-            if should_close:
-                session.close()
 
-    def get_case_cause_confirmations(
-        self, case_id: str, max_revision: int | None = None
-    ) -> list[CaseCauseConfirmationModel]:
-        """Retrieve all cause confirmations associated with a case ordered by resulting_revision_number."""
-        session, should_close = self._get_active_session()
-        try:
-            stmt = (
-                select(CaseCauseConfirmationModel)
-                .where(CaseCauseConfirmationModel.case_id == case_id)
-            )
-            if max_revision is not None:
-                stmt = stmt.where(CaseCauseConfirmationModel.resulting_revision_number <= max_revision)
-            stmt = stmt.order_by(
-                CaseCauseConfirmationModel.resulting_revision_number,
-                CaseCauseConfirmationModel.id,
-            ).execution_options(populate_existing=True)
-            return list(session.scalars(stmt).all())
-        finally:
-            if should_close:
-                session.close()
-
-    def get_case_lifecycle_events(
-        self, case_id: str, max_revision: int | None = None
-    ) -> list[CaseLifecycleEventModel]:
-        """Retrieve all lifecycle events associated with a case ordered by resulting_revision_number."""
-        session, should_close = self._get_active_session()
-        try:
-            stmt = (
-                select(CaseLifecycleEventModel)
-                .where(CaseLifecycleEventModel.case_id == case_id)
-            )
-            if max_revision is not None:
-                stmt = stmt.where(CaseLifecycleEventModel.resulting_revision_number <= max_revision)
-            stmt = stmt.order_by(
-                CaseLifecycleEventModel.resulting_revision_number,
-                CaseLifecycleEventModel.id,
-            ).execution_options(populate_existing=True)
-            return list(session.scalars(stmt).all())
-        finally:
-            if should_close:
-                session.close()
 
     def load_structured_case(
         self,
@@ -601,7 +538,7 @@ class CaseRepository:
                 previous_check_results=previous_check_results,
                 analysis_revisions=analysis_revisions,
                 issue_condition=issue_cond,
-                confirmed_causes=[c.cause_id for c in conf_models],
+                confirmed_causes=[],
                 created_at=case_model.created_at,
             )
         finally:
@@ -735,14 +672,14 @@ class CaseRepository:
             # All check results persisted up to latest_revision must be represented in case.previous_check_results
             persisted_crs = list(
                 session.scalars(
-                    select(CaseCheckResultModel)
+                    select(CheckExecutionModel)
                     .where(
-                        CaseCheckResultModel.case_id == case.case_id,
-                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                        CheckExecutionModel.case_id == case.case_id,
+                        CheckExecutionModel.resulting_revision_number <= latest_revision,
                     )
                     .order_by(
-                        CaseCheckResultModel.resulting_revision_number,
-                        CaseCheckResultModel.id,
+                        CheckExecutionModel.resulting_revision_number,
+                        CheckExecutionModel.id,
                     )
                     .execution_options(populate_existing=True)
                 ).all()
@@ -1042,9 +979,9 @@ class CaseRepository:
 
             # 5. Insert the check execution record
             status_val = (
-                check_result.status.value
-                if hasattr(check_result.status, "value")
-                else str(check_result.status)
+                check_result.execution_status.value
+                if hasattr(check_result.execution_status, "value")
+                else str(check_result.execution_status)
             )
             finding_val = (
                 check_result.finding.value
@@ -1056,7 +993,7 @@ class CaseRepository:
                 check_id=check_result.check_id,
                 status=status_val,
                 finding=finding_val,
-                notes=check_result.notes,
+                notes=check_result.finding_details,
                 executed_at=check_result.timestamp,
                 resulting_revision_number=new_revision_number,
             )
