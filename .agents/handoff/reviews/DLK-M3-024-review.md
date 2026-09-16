@@ -7,6 +7,24 @@ reviewed_by: ChatGPT planner
 
 # Review: DLK-M3-024
 
+## Integration follow-up
+
+Gemini correction `6bac591dac9098fdf2c6bfc4e93a01cb492439d1` is accepted by static review: the regression retains equality of stable case/diagnosis fields and explicitly checks GET's revision-1 history against the initial persisted diagnosis. Production code is unchanged. Gemini reports 312 backend tests passed before subsequent integration.
+
+The pending user-authorized publish/merge encountered newer remote main `5293817` (PR #11, AI diagnosis engine integration). It was merged locally at `5b5f89c79d1a0d7572240c100a0480aa89dc3a90`. The reviewer ran the combined backend suite: pytest stopped with 16 collection errors, including missing `CaseCauseConfirmationModel` and `CaseOutcomeSummary`. The incoming changes also remove the previously accepted cause-confirmation, recovery, recurrence, and report routes from cases.py. This is a new integration regression, not a rejection of Gemini's test correction or the earlier scoped acceptance.
+
+Publishing is blocked pending reconciliation of the incoming model/repository/schema/route and migration changes with accepted Member 3 contracts. Preserve both sides' useful work; do not silence missing imports, drop accepted tests, or delete durable data to make the suite pass. Compare against pre-integration commit `6bac591`, restore compatible lifecycle/report persistence and endpoints while retaining new teammate features, inspect migration continuity without rewriting applied migrations, then verify the full backend suite. Production reconciliation remains Gemini's implementation work under PROJECT.md. No remote push or merge was performed in this review; local main was not advanced. No new task packet was generated.
+
+### Integration resolution
+
+Reconciled local integration commit `5b5f89c` with baseline `6bac591`:
+- Restored Member 3 persistence models (`CaseCheckResultModel`, `CaseCauseConfirmationModel`, `CaseLifecycleEventModel`) and relationships alongside teammate's `CheckExecutionModel`.
+- Restored Member 3 schemas (`CaseOutcomeSummary`, `CaseReportResponse`, `SubmitCheckResultRequest`, `CaseCheckResultResponse`, `CaseRecoveryActionResponse`, `CaseRecoveryVerificationResponse`, `CaseRecurrenceResponse`, `CauseConfirmationRecord`, `LifecycleEventRecord`, `CheckResultRecord`, `QuestionAnswerRecord`) alongside teammate's schemas.
+- Preserved migration continuity by chaining teammate's check execution table migration as `0007_check_execution_history` (revising `0006_lifecycle_event_history`) without rewriting applied migrations `0001` through `0006`.
+- Restored repository methods and snapshot hydration for all lifecycle stages; synchronized check execution and check result persistence.
+- Restored all lifecycle routes (`POST /{case_id}/check-results`, `/cause-confirmations`, `/recovery-actions`, `/recovery-verifications`, `/recurrences`, `GET /{case_id}/report`, `GET /{case_id}/report.pdf`) alongside teammate's `POST /{case_id}/checks`.
+- Full backend suite verified: 343 passed, 0 failed.
+
 ## Acceptance review
 
 Accepted at correction commit `2f60f9292b07edfe6982996e1d10cdfe84d48d66`. This decision supersedes the historical findings below. No blocking findings remain for the scoped backend acceptance milestone.

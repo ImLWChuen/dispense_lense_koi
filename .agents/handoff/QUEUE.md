@@ -4,6 +4,15 @@
 
 Final backend MVP acceptance and contract hardening
 
+## Integration resolution
+
+- Gemini's test-only correction `6bac591` is accepted.
+- Reconciled local integration commit `5b5f89c` with working baseline `6bac591`.
+- Restored Member 3 models, schemas, repository queries, and endpoints (`/check-results`, `/cause-confirmations`, `/recovery-actions`, `/recovery-verifications`, `/recurrences`, `/report`, `/report.pdf`).
+- Preserved teammate's new features: AI/LLM explanation services, dynamic knowledge catalog endpoints, and `/checks` route.
+- Preserved migration continuity via `0007_check_execution_history` without rewriting applied migrations `0001`-`0006`.
+- Full backend suite verified: 343 passed, 0 failed.
+
 ## Accepted prerequisite
 
 - `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
