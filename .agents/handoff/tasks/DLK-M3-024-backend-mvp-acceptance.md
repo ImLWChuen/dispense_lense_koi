@@ -577,19 +577,20 @@ Finalized Member 3's backend MVP contract and verified end-to-end acceptance aga
 ### Frontend/backend contract matrix
 
 Created `docs/api/frontend-backend-contract.md` inventorying all 13 backend endpoints and mapping them against frontend consumers in `frontend/lib/api/cases.ts`, `frontend/lib/api/reports.ts`, and page views. Identified 2 Member 1 mismatches:
-- `POST /api/v1/cases/{case_id}/check-results`: Frontend calls `submitCheckResult` and expects `{ case_id, diagnosis }` while backend returns rich `CaseCheckResultResponse`.
-- `POST /api/v1/cases/{case_id}/recovery-verifications`: Frontend calls `verifyResolution` and expects `{ case_id, resolved, verification_passed }` while backend returns rich `CaseRecoveryVerificationResponse`.
+- `POST /api/v1/cases/{case_id}/check-results`: Frontend calls `submitCheckResult` and sends `finding_text?: string`. Because backend `SubmitCheckResultRequest` configures `extra="forbid"`, passing `finding_text` results in **HTTP 422 Unprocessable Entity** (`extra_forbidden`); extra fields are **not** ignored. Furthermore, frontend expects `Promise<DiagnosisResult>` while backend returns rich `CaseCheckResultResponse`.
+- `POST /api/v1/cases/{case_id}/recovery-verifications`: Frontend calls `verifyCase` (passing `status`, `notes`, `expectedRevision`) and expects `Promise<DiagnosisResult>` while backend returns rich `CaseRecoveryVerificationResponse`.
+- Clarified that actor string limits enforce a maximum length of 64 characters (`confirmed_by`, `performed_by`, `verified_by`, `reported_by`), not 100 characters.
 Frontend files were preserved strictly read-only per policy.
 
 ### Existing list-endpoint acceptance
 
 Formally characterized and verified `GET /api/v1/cases`:
-- Empty database returns HTTP 200 with empty list `[]`.
+- Empty database: `test_list_cases_empty_database` safely asserts disposable test database safety (`assert_safe_test_database`), establishes an isolated uncommitted transaction on a dedicated PostgreSQL connection, deletes records within that transaction view, overrides `app.dependency_overrides[get_db]` to route requests through that uncommitted session, asserts HTTP 200 with exact empty list `[]`, and safely rolls back the transaction in a `finally` block so that unrelated development data is preserved without permanent deletion.
 - Multiple cases are returned exactly once with distinct IDs.
 - Each case exposes its persisted initial diagnosis and latest diagnosis snapshot without triggering diagnostic recalculation.
 - Persisted issue condition is correctly exposed and typed.
 - Read-only: verified complete database state is identical before and after.
-- Sanitized 500 error handling: internal repository exceptions log error details and return generic `{"detail": "An unexpected error occurred while retrieving cases."}` without stack trace or credential leaks.
+- Sanitized 500 error handling: `test_list_cases_sanitized_500_on_internal_error` captures complete database state before and after the simulated repository failure, verifying that internal exceptions return generic `{"detail": "An unexpected error occurred while retrieving cases."}` without stack trace or credential leaks and cause zero durable database mutations (`state_before == state_after`).
 - OpenAPI schema registers HTTP 200 and HTTP 500 responses.
 
 ### End-to-end workflow proof
@@ -610,7 +611,7 @@ Formally characterized and verified `GET /api/v1/cases`:
 ### Read-only/concurrency proof
 
 - `test_cross_event_stale_write_protection`: Stale writes submitted with outdated `expected_revision` across all mutating endpoints return HTTP 409 Conflict with zero database mutations.
-- `test_all_public_read_surfaces_read_only_proof`: Deep state snapshots across 7 database tables before and after invoking `GET /api/v1/cases/{id}`, `GET /api/v1/cases`, `GET /api/v1/cases/{id}/report`, `GET /api/v1/cases/{id}/report.pdf`, and `GET /api/v1/health` showed exact parity.
+- `test_all_public_read_surfaces_read_only_proof`: Asserts that all 6 setup mutations succeed (verifying HTTP 200 and revision progression up to revision 7: answer -> check -> confirmation -> recovery action -> verification -> recurrence). Confirms that `state_before` has fully populated histories across all 7 tables and reaches revision 7. Then executes all 5 public read endpoints (`GET /api/v1/cases/{id}`, `GET /api/v1/cases`, `GET /api/v1/cases/{id}/report`, `GET /api/v1/cases/{id}/report.pdf`, and `GET /api/v1/health`) and asserts deep state equality in a fresh session (`state_before == state_after`).
 
 ### Six-defect support evidence
 

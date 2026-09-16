@@ -21,11 +21,12 @@ import pypdf
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 from app.core.config import get_database_url
-from app.db.database import reset_engine
+from app.db.database import get_engine, reset_engine
 from app.db.repository import CaseRepository
-from app.db.session import get_session_factory
+from app.db.session import get_db, get_session_factory
 from app.main import app
 from app.models.case import (
     AnalysisRevisionModel,
@@ -153,14 +154,35 @@ def test_list_cases_openapi_registration():
 
 
 def test_list_cases_empty_database():
-    """Verify GET /api/v1/cases returns 200 OK and an empty list when no cases exist."""
-    # When all cases are cleared or in an empty DB, list returns []
-    factory = get_session_factory()
-    with factory() as session:
-        # Check current count
-        resp = client.get("/api/v1/cases")
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+    """Verify GET /api/v1/cases returns 200 OK and an empty list when no cases exist.
+
+    Uses transactional isolation via a dedicated uncommitted transaction that deletes
+    cases in session view and rolls back, safely asserting [] against real PostgreSQL
+    without deleting unrelated development cases.
+    """
+    assert_safe_test_database(get_database_url())
+    engine = get_engine()
+    with engine.connect() as conn:
+        trans = conn.begin()
+        session = Session(bind=conn)
+        try:
+            session.execute(delete(CaseLifecycleEventModel))
+            session.execute(delete(CaseCauseConfirmationModel))
+            session.execute(delete(CaseCheckResultModel))
+            session.execute(delete(QuestionAnswerModel))
+            session.execute(delete(AnalysisRevisionModel))
+            session.execute(delete(ObservationModel))
+            session.execute(delete(CaseModel))
+            session.flush()
+
+            app.dependency_overrides[get_db] = lambda: session
+            resp = client.get("/api/v1/cases")
+            assert resp.status_code == 200
+            assert resp.json() == []
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+            session.close()
+            trans.rollback()
 
 
 def test_list_cases_multiple_cases_and_no_recalculation(tracked_cases: list[str]):
@@ -237,17 +259,28 @@ def test_list_cases_read_only_proof(tracked_cases: list[str]):
     assert state_before == state_after, "GET /api/v1/cases caused durable database mutations!"
 
 
-def test_list_cases_sanitized_500_on_internal_error():
-    """Verify an unexpected internal repository failure during listing produces a sanitized 500 error."""
-    secret_marker = "SENSITIVE_DB_CREDENTIAL_LEAK_TOKEN_LIST_CASES"
+def test_list_cases_sanitized_500_on_internal_error(tracked_cases: list[str]):
+    """Verify an unexpected internal repository failure during listing produces a sanitized 500 error and no mutations."""
+    case_data = _create_test_case(tracked_cases)
+    cid = case_data["case_id"]
 
+    factory = get_session_factory()
+    with factory() as session:
+        state_before = capture_complete_case_state(session, cid)
+
+    secret_marker = "SENSITIVE_DB_CREDENTIAL_LEAK_TOKEN_LIST_CASES"
     with patch.object(CaseRepository, "get_all_cases", side_effect=RuntimeError(secret_marker)):
         resp = client.get("/api/v1/cases")
 
     assert resp.status_code == 500
     assert secret_marker not in resp.text, f"Internal exception details leaked in 500 response: {resp.text}"
     data = resp.json()
-    assert "detail" in data
+    assert data["detail"] == "An unexpected error occurred while retrieving cases."
+
+    with factory() as fresh_session:
+        state_after = capture_complete_case_state(fresh_session, cid)
+
+    assert state_before == state_after, "Failing GET /api/v1/cases caused durable database mutations!"
 
 
 # ==============================================================================
@@ -529,35 +562,69 @@ def test_all_public_read_surfaces_read_only_proof(tracked_cases: list[str]):
     case_data = _create_test_case(tracked_cases)
     cid = case_data["case_id"]
 
-    # Advance through question answer, check result, confirmation, recovery action, verification, recurrence
-    client.post(
+    # 1. Answer -> Rev 2
+    r_qa = client.post(
         f"/api/v1/cases/{cid}/answers",
         json={"question_id": "Q01", "answer": "after_prolonged_operation", "expected_revision": 1},
     )
-    client.post(
+    assert r_qa.status_code == 200
+    assert r_qa.json()["current_revision"] == 2
+
+    # 2. Check result -> Rev 3
+    r_cr = client.post(
         f"/api/v1/cases/{cid}/check-results",
         json={"check_id": "ACT02", "execution_status": "COMPLETED", "finding": "SUPPORTS", "expected_revision": 2},
     )
-    client.post(
+    assert r_cr.status_code == 200
+    assert r_cr.json()["current_revision"] == 3
+
+    # 3. Cause confirmation -> Rev 4
+    r_cc = client.post(
         f"/api/v1/cases/{cid}/cause-confirmations",
         json={"cause_id": "nozzle_restriction", "expected_revision": 3},
     )
-    client.post(
+    assert r_cc.status_code == 200
+    assert r_cc.json()["current_revision"] == 4
+
+    # 4. Recovery action -> Rev 5
+    r_ra = client.post(
         f"/api/v1/cases/{cid}/recovery-actions",
         json={"recovery_details": "Nozzle cleaned", "expected_revision": 4},
     )
-    client.post(
+    assert r_ra.status_code == 200
+    assert r_ra.json()["current_revision"] == 5
+
+    # 5. Recovery verification -> Rev 6 (RESOLVED)
+    r_rv = client.post(
         f"/api/v1/cases/{cid}/recovery-verifications",
-        json={"verification_passed": True, "verification_details": "Verified", "expected_revision": 5},
+        json={"verification_passed": True, "verification_details": "Verified nominal shots", "expected_revision": 5},
     )
-    client.post(
+    assert r_rv.status_code == 200
+    assert r_rv.json()["current_revision"] == 6
+    assert r_rv.json()["issue_condition"] == "RESOLVED"
+
+    # 6. Recurrence -> Rev 7 (RECURRED)
+    r_rec = client.post(
         f"/api/v1/cases/{cid}/recurrences",
         json={"recurrence_details": "Re-occurred shift 2", "expected_revision": 6},
     )
+    assert r_rec.status_code == 200
+    assert r_rec.json()["current_revision"] == 7
+    assert r_rec.json()["issue_condition"] == "RECURRED"
 
     factory = get_session_factory()
     with factory() as session:
         state_before = capture_complete_case_state(session, cid)
+
+    # Assert case reached revision 7 with fully populated histories
+    assert max(r["revision_number"] for r in state_before["analysis_revisions"]) == 7
+    assert state_before["case"]["issue_condition"] == "RECURRED"
+    assert len(state_before["analysis_revisions"]) == 7
+    assert len(state_before["observations"]) > 0
+    assert len(state_before["question_answers"]) == 1
+    assert len(state_before["check_results"]) == 1
+    assert len(state_before["cause_confirmations"]) == 1
+    assert len(state_before["lifecycle_events"]) == 3
 
     # 1. GET case detail
     r_detail = client.get(f"/api/v1/cases/{cid}")

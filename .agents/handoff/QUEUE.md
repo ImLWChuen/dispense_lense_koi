@@ -15,6 +15,9 @@ Final backend MVP acceptance and contract hardening
 ## Implemented (Awaiting Review)
 
 - `DLK-M3-024` — Final backend MVP contract and end-to-end acceptance — **implemented**
+  - reviewed commit: `288df23d22433fab7b534303d2be03ce84ec0ad5`
+  - review: `.agents/handoff/reviews/DLK-M3-024-review.md`
+  - corrections: genuine empty-list integration proof with transactional isolation and rollback, failure-path and asserted revision 7 rich-state nonmutation proof, accurate Member 1 contract documentation.
   - task: `.agents/handoff/tasks/DLK-M3-024-backend-mvp-acceptance.md`
   - branch: `backend-database`
   - depends on: `DLK-M3-023`

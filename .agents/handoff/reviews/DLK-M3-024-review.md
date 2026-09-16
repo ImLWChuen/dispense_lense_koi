@@ -1,0 +1,45 @@
+---
+task_id: DLK-M3-024
+reviewed_commit: 288df23d22433fab7b534303d2be03ce84ec0ad5
+decision: changes_requested
+reviewed_by: ChatGPT planner
+---
+
+# Review: DLK-M3-024
+
+## Decision
+
+Changes requested. The lifecycle walkthrough, cross-event stale-write snapshots, six-defect API coverage, and list error sanitization are present. The final acceptance evidence and Member 1 contract handoff need the bounded corrections below before declaring the backend milestone complete.
+
+## Findings
+
+### R1 - P2: Actually verify the empty-list result
+
+`backend/tests/integration/test_mvp_backend_acceptance.py:155-164` neither establishes an empty database nor asserts `resp.json() == []`. It only asserts HTTP 200 and that the response is a list, so it passes against any populated database and would accept a fabricated nonempty response. The task explicitly requires real PostgreSQL empty-result verification, and the report currently claims this is proved.
+
+Use an isolated PostgreSQL database/schema or a safely isolated transaction/dependency setup that makes the real repository see no cases. Assert the empty response exactly. Do not delete unrelated development cases or substitute a mocked empty repository for the required integration proof. Document the isolation and cleanup mechanism.
+
+### R2 - P2: Complete the required failure-path and rich-state nonmutation proofs
+
+`backend/tests/integration/test_mvp_backend_acceptance.py:240-252` verifies sanitization only: it captures no durable state before/after the failing list request. Task 2 explicitly requires the internal read-failure scenario to be non-mutating. Use a tracked persisted case and independent-session complete-state snapshots around the injected failure; retain the sensitive-marker check. Prefer injecting a read failure after cases have been retrieved so the route's assembly failure path is exercised.
+
+In `test_all_public_read_surfaces_read_only_proof` at lines 527 onward, every setup mutation response is discarded. If setup starts failing, this proof can silently run against an initial or partially populated case. Assert each setup response and expected revision, then assert the baseline reached revision 7 / RECURRED with all four histories populated before taking snapshots. Reuse an asserted workflow helper if convenient. Keep the existing full snapshot comparison across all read requests.
+
+### R3 - P2: Correct the contract handed to Member 1
+
+`docs/api/frontend-backend-contract.md:29` says the backend ignores extra check-result fields. `SubmitCheckResultRequest` uses `extra="forbid"`; when the frontend sends a defined `finding_text`, that request is rejected with HTTP 422. Record this as a request incompatibility and instruct Member 1 to remove/map the field to accepted `outcome`/`finding_details` as appropriate. Do not weaken the backend schema.
+
+The actor limits at lines 61-66 are 64 characters, not 100, as the committed schema and new OpenAPI test already show. Correct the matrix and stale test comments. Align the task report with the actual frontend names/types: `casesApi.verifyCase` exists and is typed `Promise<DiagnosisResult>`; the report's `verifyResolution` and described response shape do not match the source. A frontend helper name differing from a backend operation name is not itself a contract mismatch. Preserve the real response-wrapper mismatch and leave frontend implementation to Member 1.
+
+## Acceptance evidence and limitations
+
+- Reviewed the exact local commit and its production, test, and documentation changes on `backend-database`; working tree was clean before this review.
+- The list route now returns a sanitized 500 for unexpected assembly/repository errors. The public lifecycle test checks revisions 1-7, retained histories, cause confirmation independent of issue condition, and JSON/PDF report basis.
+- The added six-defect parametrization exercises stateless evaluation and durable creation without editing Member 2 knowledge or engine code.
+- Creation-time defect-name fallback is a small additional production change outside the packet's explicitly listed list/read correction paths. It uses existing knowledge labels and leaves response shape unchanged; no functional defect was identified in it. Future implementation reports should explicitly identify such scope deviations and their regression evidence before claiming exact scope compliance.
+- Reviewer checked the committed diff for whitespace errors (passed) and ran task validation (VALID).
+- Gemini reports 15 new acceptance tests and 312 full backend tests passing with no failures/skips. The reviewer did not rerun PostgreSQL suites under the planner/implementer role split. Passing counts do not resolve the missing assertions above.
+
+## Follow-up
+
+Give R1-R3 to Gemini as corrections within DLK-M3-024, and update the task report to reflect actual verified behavior. No new task packet was generated. The backend completion declaration remains pending this review. Only the review and queue were edited; no production changes, commits, pushes, or merges were performed.
