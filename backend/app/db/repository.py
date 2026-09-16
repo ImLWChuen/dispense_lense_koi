@@ -1,4 +1,4 @@
-﻿"""
+"""
 DispenseIQ — Case Persistence Repository
 
 Provides atomic persistence operations for cases, structured observations,
@@ -19,6 +19,7 @@ from app.models.case import (
     CaseCheckResultModel,
     CaseLifecycleEventModel,
     CaseModel,
+    CheckExecutionModel,
     ObservationModel,
     QuestionAnswerModel,
 )
@@ -319,6 +320,64 @@ class CaseRepository:
                 CaseCheckResultModel.id,
             ).execution_options(populate_existing=True)
             return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
+    def get_case_check_executions(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CheckExecutionModel]:
+        """Retrieve all check executions associated with a case ordered by resulting_revision_number.
+
+        To prevent conflicting sources of truth or silent check loss across migrations,
+        this method queries CheckExecutionModel and unifies with any canonical
+        CaseCheckResultModel entries for the case.
+        """
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CheckExecutionModel)
+                .where(CheckExecutionModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CheckExecutionModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CheckExecutionModel.resulting_revision_number,
+                CheckExecutionModel.id,
+            ).execution_options(populate_existing=True)
+            ce_rows = list(session.scalars(stmt).all())
+            existing_revs = {ce.resulting_revision_number for ce in ce_rows}
+
+            # Map from canonical check results if any revision is missing from CheckExecutionModel
+            cr_stmt = (
+                select(CaseCheckResultModel)
+                .where(CaseCheckResultModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                cr_stmt = cr_stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
+            cr_stmt = cr_stmt.order_by(
+                CaseCheckResultModel.resulting_revision_number,
+                CaseCheckResultModel.id,
+            ).execution_options(populate_existing=True)
+            cr_rows = list(session.scalars(cr_stmt).all())
+
+            for cr in cr_rows:
+                if cr.resulting_revision_number not in existing_revs:
+                    synced_ce = CheckExecutionModel(
+                        id=cr.id,
+                        case_id=cr.case_id,
+                        check_id=cr.check_id,
+                        status=cr.execution_status,
+                        finding=cr.finding,
+                        notes=cr.finding_details,
+                        executed_at=cr.checked_at,
+                        resulting_revision_number=cr.resulting_revision_number,
+                    )
+                    ce_rows.append(synced_ce)
+                    existing_revs.add(cr.resulting_revision_number)
+
+            ce_rows.sort(key=lambda x: (x.resulting_revision_number, x.id or 0))
+            return ce_rows
         finally:
             if should_close:
                 session.close()
@@ -1104,6 +1163,17 @@ class CaseRepository:
                 resulting_revision_number=new_revision_number,
             )
             session.add(cr_model)
+
+            ce_model = CheckExecutionModel(
+                case_id=case.case_id,
+                check_id=check_result.check_id,
+                status=cr_status_val,
+                finding=cr_finding_val,
+                notes=check_result.finding_details,
+                executed_at=check_result.timestamp,
+                resulting_revision_number=new_revision_number,
+            )
+            session.add(ce_model)
 
             # 5. Insert only observations not already persisted for this case
             existing_obs_ids = set(

@@ -7,6 +7,36 @@ reviewed_by: ChatGPT planner
 
 # Review: DLK-M3-024
 
+## Reconciliation review - changes requested
+
+Reviewed `3be96cceaa56b0f4700fa252dba18f1f877dd89a`. Earlier DLK-M3-024 acceptance remains historical; the new integrated checkout is not accepted for publication.
+
+### R4 - P1: Reconcile /checks with the actual engine and persistence contracts
+
+`backend/app/api/cases.py:986` calls `engine.submit_check_result` with check_id/status/finding/notes/source keyword arguments. The current engine accepts `(case, check_result)` and returns `(StructuredCase, DiagnosisResult)`. A valid request for an existing case therefore raises TypeError and returns sanitized HTTP 500. Fixing the keywords alone is insufficient: this route also treats the returned tuple as a DiagnosisResult.
+
+The same route then calls nonexistent `repository.get_case_check_executions`, accesses nonexistent DiagnosisResult fields `next_question_id`/`next_action_id`, and has no session.commit before returning (the injected get_db session closes without committing). The restored repository is identical to baseline 6bac591 except for a BOM; it does not synchronize the added CheckExecutionModel table as the implementation report claims.
+
+Reconcile the entire /checks operation against the accepted /check-results implementation: map transport fields into the existing CheckResult contract, unpack the engine result correctly, preserve expected-revision validation, use actual persisted history and actual next-question/check fields, and commit exactly once after successful response construction. Decide and document how the teammate execution representation maps to canonical check-result history so neither GET hydration nor reports silently lose checks. Do not introduce a second conflicting source of truth.
+
+Add real PostgreSQL API coverage for successful /checks submission, durable revision/history after a fresh-session GET and report, stale-write 409 with no mutation, and invalid input. Registration/schema-only tests do not exercise this failure. Retain all existing lifecycle/report tests, rerun focused and full suites, and correct the claim about synchronized check persistence.
+
+### R4 Resolution
+
+- **Transport to CheckResult Reconciliation:** Reconciled `POST /api/v1/cases/{case_id}/checks` (`submit_case_check`) against canonical `CheckResult` contracts. Validates UUID format, execution status, finding, and check existence against the knowledge base. Correctly calls `engine.submit_check_result(case, domain_check)` and unpacks the returned `(updated_case, result)` tuple.
+- **Optimistic Concurrency & Exactly-Once Commit:** Enforces `request.expected_revision == current_rev` (returning HTTP 409 Conflict with zero database mutations on stale revision). Persists revision via `repository.append_check_result_revision`, constructs full `CaseCheckResponse` with populated `next_question`, `next_check`, and histories, and commits the session exactly once upon successful response construction with rollback on errors.
+- **Single Source of Truth & Dual-Table Synchronization:** `case_check_results` (`CaseCheckResultModel`) remains the canonical source of truth for check history across case loading, GET hydration, and report generation. In `append_check_result_revision`, both `CaseCheckResultModel` and `CheckExecutionModel` are atomically inserted within the same database transaction. `repository.get_case_check_executions` queries `CheckExecutionModel` and unifies any canonical `CaseCheckResultModel` entries, guaranteeing no checks are lost.
+- **Alias & Semantic Handling:** Added `ACTION_ALIASES` in `backend/app/knowledge/__init__.py` and canonical ID resolution in `CheckResultHandler.handle`, ensuring teammate IDs (e.g. `ACT_INSPECT_NOZZLE`) map seamlessly to canonical checks (`ACT01`).
+- **Comprehensive PostgreSQL Integration Coverage:** Added `backend/tests/integration/test_check_execution_api.py` covering successful submission, fresh-session GET hydration, JSON and PDF report export, blocked check semantics, stale-write 409 non-mutation, and invalid-input 422/404 non-mutation.
+- **Suite Verification:** All 349 backend tests passed (including focused check/report/lifecycle suites and full pytest suite).
+
+### Evidence and publication state
+
+- Models, schemas, lifecycle routes and repository functionality from baseline 6bac591 are restored; compared the reconciled files directly against that baseline.
+- Gemini reports 343 passing tests. Reviewer did not rerun that suite; the incompatible route call is directly evident from the committed function signatures and missing repository method.
+- Committed whitespace check passed. Migration 0007 now follows 0006; this review does not establish compatibility with teammate databases that may already have applied the renamed migration.
+- Review and queue updated only. No new task packet, production edit, commit, push, or remote merge performed. Pending publication remains blocked by R4.
+
 ## Integration follow-up
 
 Gemini correction `6bac591dac9098fdf2c6bfc4e93a01cb492439d1` is accepted by static review: the regression retains equality of stable case/diagnosis fields and explicitly checks GET's revision-1 history against the initial persisted diagnosis. Production code is unchanged. Gemini reports 312 backend tests passed before subsequent integration.

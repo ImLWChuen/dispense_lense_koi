@@ -4,14 +4,12 @@
 
 Final backend MVP acceptance and contract hardening
 
-## Integration resolution
+## Integration changes requested (R4 resolved)
 
-- Gemini's test-only correction `6bac591` is accepted.
-- Reconciled local integration commit `5b5f89c` with working baseline `6bac591`.
-- Restored Member 3 models, schemas, repository queries, and endpoints (`/check-results`, `/cause-confirmations`, `/recovery-actions`, `/recovery-verifications`, `/recurrences`, `/report`, `/report.pdf`).
-- Preserved teammate's new features: AI/LLM explanation services, dynamic knowledge catalog endpoints, and `/checks` route.
-- Preserved migration continuity via `0007_check_execution_history` without rewriting applied migrations `0001`-`0006`.
-- Full backend suite verified: 343 passed, 0 failed.
+- Reviewed reconciliation commit: `3be96cceaa56b0f4700fa252dba18f1f877dd89a`.
+- R4 resolved: reconciled `/checks` with canonical engine and persistence contracts; added `get_case_check_executions`, synchronized `CheckExecutionModel` in `append_check_result_revision`, added alias support in `get_action_by_id`, ensured single commit on successful response construction, and added real PostgreSQL integration test suite (`test_check_execution_api.py`).
+- Review: `.agents/handoff/reviews/DLK-M3-024-review.md` (R4 resolution section added).
+- Full backend suite verified: 349 passed, 0 failed.
 
 ## Accepted prerequisite
 

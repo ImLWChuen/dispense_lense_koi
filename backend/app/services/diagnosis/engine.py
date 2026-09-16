@@ -255,7 +255,7 @@ _CHECK_OUTCOME_PATTERNS: dict[str, dict[str, list[str]]] = {
         ],
         "blockage_found": [
             "blockage", "blocked", "restricted", "clogged", "buildup",
-            "dried material", "obstruction", "blockage_found",
+            "dried material", "obstruction", "obstructed", "obstruct", "blockage_found",
         ],
         "damage_found": [
             "damaged", "damage", "bent", "cracked", "burr", "damage_found",
@@ -418,6 +418,7 @@ class CheckResultHandler:
                 f"Must be a supported troubleshooting check from actions.json."
             )
         check_name = check_def.name
+        canonical_check_id = check_def.id
 
         # -------------------------------------------------------------------
         # Rule 1: Non-completed checks (BLOCKED, FAILED, UNKNOWN, etc.)
@@ -464,7 +465,7 @@ class CheckResultHandler:
         # Rule 3: COMPLETED check with SUPPORTS or CONTRADICTS finding
         # -------------------------------------------------------------------
         outcome_key = cls._resolve_outcome_key(
-            check_result.check_id,
+            canonical_check_id,
             check_result.finding,
             check_result.finding_details,
             check_result.outcome,
@@ -479,7 +480,7 @@ class CheckResultHandler:
             observations.append(
                 Observation(
                     observation_type=ObservationType.CHECK_RESULT,
-                    value=f"{check_result.check_id}:{outcome_key}",
+                    value=f"{canonical_check_id}:{outcome_key}",
                     original_text=details_text,
                     statement_type=StatementType.USER_OBSERVATION,
                     source=check_result.source,
@@ -488,7 +489,7 @@ class CheckResultHandler:
 
         # 3b. Add mapped domain observation (e.g. nozzle_condition=clean for R042)
         domain_obs = cls._map_to_domain_observation(
-            check_result.check_id,
+            canonical_check_id,
             outcome_key,
             check_result.finding,
             details_text,

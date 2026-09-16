@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.knowledge import get_check_by_id, load_questions
+from app.knowledge import get_action_by_id, get_check_by_id, load_questions
 
 from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_db
@@ -963,11 +963,30 @@ def submit_case_check(
     """Process a troubleshooting check execution, re-evaluate diagnosis, and persist Revision N+1."""
     try:
         try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+
+        try:
             status_enum = CheckExecutionStatus(request.status.upper())
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid check execution status: '{request.status}'.",
+            )
+
+        if status_enum in (CheckExecutionStatus.PENDING, CheckExecutionStatus.IN_PROGRESS):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Cannot submit check result with unfinished execution status: '{status_enum.value}'. "
+                    "Check must be completed, blocked, failed, skipped, unknown, or not applicable."
+                ),
             )
 
         try:
@@ -978,66 +997,87 @@ def submit_case_check(
                 detail=f"Invalid check finding: '{request.finding}'.",
             )
 
-        case = repository.load_structured_case(case_id, for_update=True)
+        check_def = get_action_by_id(request.check_id)
+        if check_def is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Unknown check_id '{request.check_id}'. "
+                    f"Must be a supported troubleshooting check from actions.json."
+                ),
+            )
+
+        case = repository.load_structured_case(canonical_id)
         if case is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Diagnostic case '{case_id}' was not found.",
+                detail=f"Case '{canonical_id}' not found.",
             )
 
-        try:
-            result = engine.submit_check_result(
-                case=case,
-                check_id=request.check_id,
-                status=status_enum,
-                finding=finding_enum,
-                notes=request.notes,
-                source=EvidenceSource.USER_CHECK_RESULT,
-            )
-        except ValueError as ve:
+        current_rev = (
+            case.analysis_revisions[-1].revision_number
+            if case.analysis_revisions
+            else 1
+        )
+        if request.expected_revision != current_rev:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(ve),
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Stale revision for case '{canonical_id}': expected revision "
+                    f"{request.expected_revision}, but current revision is {current_rev}."
+                ),
             )
 
-        if result.analysis_revision is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Check execution evaluation did not produce a valid analysis revision.",
-            )
-
-        check_record = CheckResult(
+        domain_check = CheckResult(
             check_id=request.check_id,
-            status=status_enum,
+            execution_status=status_enum,
             finding=finding_enum,
-            notes=request.notes,
+            finding_details=request.notes,
+            outcome=None,
+            source=EvidenceSource.USER_CHECK_RESULT,
+            timestamp=datetime.now(timezone.utc),
         )
 
         try:
-            target_revision = request.expected_revision + 1
-            repository.append_check_result_revision(
-                case=case,
-                check_result=check_record,
+            CheckResultHandler.handle(domain_check)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
+
+        updated_case, result = engine.submit_check_result(case, domain_check)
+
+        try:
+            rev_model = repository.append_check_result_revision(
+                case=updated_case,
+                check_result=domain_check,
                 result=result,
                 expected_revision=request.expected_revision,
             )
 
-            case_model = repository.get_case(case_id)
+            target_revision = rev_model.revision_number
+
+            case_model = repository.get_case(canonical_id)
             if case_model is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Case '{case_id}' was not found.",
+                    detail=f"Case '{canonical_id}' not found.",
                 )
 
-            initial_rev = repository.get_analysis_revision(case_id, revision_number=1)
-            if initial_rev is None:
+            obs_models = repository.get_case_observations(canonical_id, max_revision=target_revision)
+            rev1_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+            if rev1_model is None:
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Initial diagnostic assessment revision (rev 1) not found.",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Initial diagnosis revision for case '{canonical_id}' not found.",
                 )
-            initial_diagnosis = DiagnosisResult.model_validate(initial_rev.result_snapshot)
 
-            obs_models = repository.get_case_observations(case_id, max_revision=target_revision)
+            initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
+            qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
+            ce_models = repository.get_case_check_executions(canonical_id, max_revision=target_revision)
+
             observations = [
                 CaseObservationResponse(
                     id=obs.observation_id,
@@ -1065,9 +1105,53 @@ def submit_case_check(
                     first_seen_revision=obs.first_seen_revision,
                 )
                 for obs in obs_models
+                if obs.first_seen_revision <= target_revision
             ]
 
-            case_check_executions = repository.get_case_check_executions(case_id, max_revision=target_revision)
+            previous_answers = [
+                QuestionAnswerRecord(
+                    question_id=qm.question_id,
+                    answer_value=qm.answer_value,
+                    answer_text=qm.answer_text,
+                    source=(
+                        EvidenceSource(qm.source)
+                        if qm.source in EvidenceSource._value2member_map_
+                        else qm.source
+                    ),
+                    answered_at=qm.answered_at,
+                    resulting_revision_number=qm.resulting_revision_number,
+                )
+                for qm in qa_models
+                if qm.resulting_revision_number <= target_revision
+            ]
+
+            previous_check_results = [
+                CheckResultRecord(
+                    check_id=cm.check_id,
+                    execution_status=(
+                        CheckExecutionStatus(cm.execution_status)
+                        if cm.execution_status in CheckExecutionStatus._value2member_map_
+                        else cm.execution_status
+                    ),
+                    finding=(
+                        CheckFinding(cm.finding)
+                        if cm.finding in CheckFinding._value2member_map_
+                        else cm.finding
+                    ),
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=(
+                        EvidenceSource(cm.source)
+                        if cm.source in EvidenceSource._value2member_map_
+                        else cm.source
+                    ),
+                    checked_at=cm.checked_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                )
+                for cm in cr_models
+                if cm.resulting_revision_number <= target_revision
+            ]
+
             previous_checks = [
                 CheckExecutionRecord(
                     check_id=cm.check_id,
@@ -1077,45 +1161,36 @@ def submit_case_check(
                     executed_at=cm.executed_at,
                     resulting_revision_number=cm.resulting_revision_number,
                 )
-                for cm in case_check_executions
+                for cm in ce_models
+                if cm.resulting_revision_number <= target_revision
             ]
 
-            submitted_check = CheckExecutionRecord(
-                check_id=request.check_id,
-                status=request.status,
-                finding=request.finding,
-                notes=request.notes,
-                executed_at=result.analysis_revision.timestamp,
-                resulting_revision_number=target_revision,
-            )
+            matching_submitted = [
+                c for c in previous_checks if c.resulting_revision_number == target_revision
+            ]
+            if not matching_submitted:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Submitted check execution record not found for the resulting revision.",
+                )
+            submitted_check = matching_submitted[-1]
 
-            next_q = None
-            if result.next_question_id:
-                for q in engine.question_engine.questions:
-                    if q.id == result.next_question_id:
-                        next_q = Question(
-                            question_id=q.id,
-                            text=q.text,
-                            purpose=q.purpose,
-                            usefulness_score=0.0,
-                            target_causes=q.applicable_causes,
-                            options=list(q.evidence_mapping.keys()) if q.evidence_mapping else [],
+            revisions = repository.list_case_revisions(canonical_id)
+            analysis_revisions = []
+            for rev_num in sorted(revisions):
+                if rev_num <= target_revision:
+                    rev_model_hist = repository.get_analysis_revision(canonical_id, revision_number=rev_num)
+                    if rev_model_hist and rev_model_hist.result_snapshot:
+                        analysis_revisions.append(
+                            AnalysisRevision(
+                                revision_number=rev_model_hist.revision_number,
+                                timestamp=rev_model_hist.analyzed_at,
+                                defect_code=rev_model_hist.defect_code,
+                                ranked_causes=DiagnosisResult.model_validate(rev_model_hist.result_snapshot).ranked_causes,
+                                new_evidence_summary=rev_model_hist.result_snapshot.get("explanation", ""),
+                                changes_from_previous=[],
+                            )
                         )
-                        break
-
-            next_c = None
-            if result.next_action_id:
-                for c in engine.action_planner.checks:
-                    if c.id == result.next_action_id:
-                        next_c = TroubleshootingCheck(
-                            check_id=c.id,
-                            name=c.name,
-                            description=c.description,
-                            procedure=c.procedure,
-                            effort_level=c.effort_level,
-                            target_causes=c.applicable_causes,
-                        )
-                        break
 
             issue_cond = (
                 IssueCondition(case_model.issue_condition)
@@ -1123,7 +1198,7 @@ def submit_case_check(
                 else case_model.issue_condition
             )
 
-            return CaseCheckResponse(
+            response = CaseCheckResponse(
                 case_id=case_model.case_id,
                 description=case_model.description,
                 material=case_model.material,
@@ -1139,21 +1214,26 @@ def submit_case_check(
                 diagnosis=result,
                 submitted_check=submitted_check,
                 previous_checks=previous_checks,
-                next_question=next_q,
-                next_check=next_c,
+                previous_check_results=previous_check_results,
+                previous_answers=previous_answers,
+                analysis_revisions=analysis_revisions,
+                next_question=result.next_question,
+                next_check=result.next_check,
             )
 
+            session.commit()
+            return response
         except StaleRevisionError as sre:
+            session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(sre),
             )
-        except ValueError as ve:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(ve),
-            )
+        except HTTPException:
+            session.rollback()
+            raise
         except Exception:
+            session.rollback()
             logger.exception("Unexpected error persisting check execution revision")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
