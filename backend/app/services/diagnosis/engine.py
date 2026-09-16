@@ -55,6 +55,7 @@ from app.services.diagnosis.defect_identifier import identify_defect
 from app.services.diagnosis.evidence_engine import EvidenceEngine
 from app.services.diagnosis.question_engine import QuestionEngine
 from app.services.diagnosis.symptom_extractor import SymptomExtractor
+from app.services.ai.explanation_service import ExplanationService
 from app.utils.scoring import SCORING_CONFIG
 
 
@@ -666,12 +667,14 @@ class DiagnosticEngine:
         cause_ranker: CauseRanker | None = None,
         question_engine: QuestionEngine | None = None,
         action_planner: ActionPlanner | None = None,
+        explanation_service: ExplanationService | None = None,
     ) -> None:
         self.extractor = symptom_extractor or SymptomExtractor()
         self.evidence_engine = evidence_engine or EvidenceEngine()
         self.ranker = cause_ranker or CauseRanker(self.evidence_engine)
         self.question_engine = question_engine or QuestionEngine()
         self.action_planner = action_planner or ActionPlanner()
+        self.explanation_service = explanation_service or ExplanationService()
 
     # -----------------------------------------------------------------------
     # Primary API: diagnose
@@ -1034,48 +1037,13 @@ class DiagnosticEngine:
         next_check: TroubleshootingCheck | None,
     ) -> str:
         """Build a comprehensive human-readable explanation of current state and changes."""
-        lines: list[str] = []
-        top_cause = ranking.top_cause
-
-        # 1. Top hypothesis and confirmed causes
-        confirmed_causes = [c for c in ranking.ranked_causes if c.conclusion == CauseConclusion.CONFIRMED]
-        if confirmed_causes:
-            names = ", ".join(f"'{c.cause_name}'" for c in confirmed_causes)
-            lines.append(f"Root cause confirmed: {names} (explicitly confirmed by technician).")
-
-        if top_cause:
-            lines.append(
-                f"{top_cause.cause_name} is currently the highest-supported hypothesis "
-                f"with evidence support {top_cause.score:.0f}/100."
-            )
-            if top_cause.supporting_evidence:
-                supp_count = len(top_cause.supporting_evidence)
-                lines.append(f"It is supported by {supp_count} observation(s).")
-            if top_cause.contradicting_evidence:
-                lines.append(
-                    f"Warning: {len(top_cause.contradicting_evidence)} contradicting evidence item(s) noted."
-                )
-        else:
-            lines.append("No candidate causes currently evaluated.")
-
-        # 2. Changes from previous revision (Phase 10)
-        if current_revision.changes_from_previous:
-            lines.append("\nChanges since last revision:")
-            for change in current_revision.changes_from_previous:
-                lines.append(f"  • {change}")
-
-        # 3. Next recommendation
-        if next_check:
-            lines.append(
-                f"\nRecommended Action: Run troubleshooting check '{next_check.name}' "
-                f"({next_check.check_id}, effort: {next_check.effort_level})."
-            )
-        elif next_question:
-            lines.append(
-                f"\nRecommended Next Step: Answer question '{next_question.text}'"
-            )
-
-        return "\n".join(lines)
+        return self.explanation_service.explain_diagnosis(
+            ranking=ranking,
+            case=case,
+            current_revision=current_revision,
+            next_question=next_question,
+            next_check=next_check,
+        )
 
 
 # Alias for backwards-compatibility with task verification contracts
