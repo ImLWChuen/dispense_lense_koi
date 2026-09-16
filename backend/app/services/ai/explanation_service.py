@@ -155,7 +155,7 @@ class ExplanationService:
         confirmed = getattr(case, "confirmed_causes", [])
 
         attempted_checks = [
-            {"check_id": c.check_id, "status": c.status, "finding": c.finding}
+            {"check_id": c.check_id, "status": c.execution_status, "finding": c.finding}
             for c in case.previous_check_results
         ]
 

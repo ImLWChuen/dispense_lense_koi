@@ -99,8 +99,9 @@ def create_durable_case(
                 detail="Diagnostic evaluation could not identify a defect category from the provided evidence.",
             )
 
-        if not case.defect_name and (case.defect_code or result.defect):
-            defect_def = get_defect_by_code(case.defect_code or result.defect)
+        defect_to_check = case.defect_code or result.defect
+        if not case.defect_name and defect_to_check:
+            defect_def = get_defect_by_code(defect_to_check)
             if defect_def:
                 case.defect_name = defect_def.name
                 if not result.defect_name:
@@ -301,7 +302,7 @@ def get_durable_case(
         latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
 
         ans_models = repository.get_case_question_answers(canonical_id)
-        chk_models = repository.get_case_check_results(canonical_id)
+        chk_models = repository.get_case_check_executions(canonical_id)
 
         questions_dict = {q.id: q for q in load_questions()}
         previous_answers = []
@@ -332,23 +333,19 @@ def get_durable_case(
                 CheckResultRecord(
                     check_id=cm.check_id,
                     execution_status=(
-                        CheckExecutionStatus(cm.execution_status)
-                        if cm.execution_status in CheckExecutionStatus._value2member_map_
-                        else cm.execution_status
+                        CheckExecutionStatus(cm.status)
+                        if cm.status in CheckExecutionStatus._value2member_map_
+                        else cm.status
                     ),
                     finding=(
                         CheckFinding(cm.finding)
                         if cm.finding in CheckFinding._value2member_map_
                         else cm.finding
                     ),
-                    finding_details=cm.finding_details,
-                    outcome=cm.outcome,
-                    source=(
-                        EvidenceSource(cm.source)
-                        if cm.source in EvidenceSource._value2member_map_
-                        else cm.source
-                    ),
-                    checked_at=cm.checked_at,
+                    finding_details=cm.notes,
+                    outcome=None,
+                    source=EvidenceSource.USER_CHECK_RESULT,
+                    checked_at=cm.executed_at,
                     resulting_revision_number=cm.resulting_revision_number,
                     name=cdef.name if cdef else f"Check {cm.check_id}",
                     description=cdef.description if cdef else None,
@@ -535,7 +532,7 @@ def submit_case_answer(
 
             initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
             qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
-            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_executions(canonical_id, max_revision=target_revision)
 
             observations = [
                 CaseObservationResponse(
@@ -588,23 +585,19 @@ def submit_case_answer(
                 CheckResultRecord(
                     check_id=cm.check_id,
                     execution_status=(
-                        CheckExecutionStatus(cm.execution_status)
-                        if cm.execution_status in CheckExecutionStatus._value2member_map_
-                        else cm.execution_status
+                        CheckExecutionStatus(cm.status)
+                        if cm.status in CheckExecutionStatus._value2member_map_
+                        else cm.status
                     ),
                     finding=(
                         CheckFinding(cm.finding)
                         if cm.finding in CheckFinding._value2member_map_
                         else cm.finding
                     ),
-                    finding_details=cm.finding_details,
-                    outcome=cm.outcome,
-                    source=(
-                        EvidenceSource(cm.source)
-                        if cm.source in EvidenceSource._value2member_map_
-                        else cm.source
-                    ),
-                    checked_at=cm.checked_at,
+                    finding_details=cm.notes,
+                    outcome=None,
+                    source=EvidenceSource.USER_CHECK_RESULT,
+                    checked_at=cm.executed_at,
                     resulting_revision_number=cm.resulting_revision_number,
                 )
                 for cm in cr_models

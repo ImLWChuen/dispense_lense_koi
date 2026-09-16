@@ -123,7 +123,7 @@ def test_repository_append_check_validates_mismatched_id():
     repo = CaseRepository()
     case = StructuredCase(case_id="case-aaa", description="test")
     res = DiagnosisResult(case_id="case-bbb")
-    cr = CheckResult(check_id="ACT_01", status=CheckExecutionStatus.COMPLETED, finding=CheckFinding.SUPPORTS)
+    cr = CheckResult(check_id="ACT_01", execution_status=CheckExecutionStatus.COMPLETED, finding=CheckFinding.SUPPORTS)
 
     with pytest.raises(ValueError, match="Mismatched case IDs"):
         repo.append_check_result_revision(case, cr, res, expected_revision=1)
@@ -135,7 +135,7 @@ def test_repository_append_check_validates_missing_revision():
     cid = str(uuid.uuid4())
     case = StructuredCase(case_id=cid, description="test")
     res = DiagnosisResult(case_id=cid, analysis_revision=None)
-    cr = CheckResult(check_id="ACT_01", status=CheckExecutionStatus.COMPLETED, finding=CheckFinding.SUPPORTS)
+    cr = CheckResult(check_id="ACT_01", execution_status=CheckExecutionStatus.COMPLETED, finding=CheckFinding.SUPPORTS)
 
     with pytest.raises(ValueError, match="must include an analysis_revision"):
         repo.append_check_result_revision(case, cr, res, expected_revision=1)

@@ -414,6 +414,7 @@ def test_immutable_revision_snapshot_semantic_match(case_repo, db_session):
     assert rev_model.revision_number == 1
     assert rev_model.defect_code == "D03_INCONSISTENT_SIZE"
     assert rev_model.issue_condition == IssueCondition.UNRESOLVED.value
+    assert result.analysis_revision is not None
     assert rev_model.analyzed_at.timestamp() == pytest.approx(
         result.analysis_revision.timestamp.timestamp(), abs=0.001
     )
@@ -474,6 +475,7 @@ def test_duplicate_revision_insertion_fails_and_does_not_overwrite(case_repo, db
     db_session.commit()
 
     # Attempt to insert a duplicate revision 1 for the same case_id
+    assert result.analysis_revision is not None
     duplicate_rev = AnalysisRevisionModel(
         case_id=case.case_id,
         revision_number=1,
@@ -1172,6 +1174,7 @@ def test_atomic_rollback_on_append_failure_leaves_no_partial_writes():
         with factory() as session:
             repo = CaseRepository(session=session)
             reconstructed = repo.load_structured_case(test_id)
+            assert reconstructed is not None
             ans = QuestionAnswer(question_id="Q01", answer_value="after_prolonged_operation")
             updated_case, result2 = engine.submit_question_answer(reconstructed, ans)
 
@@ -1360,6 +1363,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             mixed_case_no_answers = copy.deepcopy(case_v2)
             mixed_case_no_answers.previous_answers = []  # MISSING revision 2 answer!
             updated_mixed_2, res3_b = engine.submit_question_answer(mixed_case_no_answers, ans2)
+            assert res3_b.analysis_revision is not None
             res3_b.analysis_revision.revision_number = 3
 
             with pytest.raises(ValueError, match="Inconsistent case state: case previous_answers"):
@@ -1741,7 +1745,7 @@ def test_load_structured_case_exhausted_retries_raises_explicit_runtime_error():
                 calls[0] += 1
                 return calls[0]
 
-            rs.scalar = churning_scalar
+            rs.scalar = churning_scalar  # type: ignore
             with pytest.raises(RuntimeError, match="Could not obtain a verified consistent snapshot"):
                 r_repo.load_structured_case(case_id)
     finally:
@@ -2053,12 +2057,12 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
 
         cr = target_crs[0]
         cr_data = {
-            "check_id": str(cr.check_id),
-            "execution_status": str(cr.execution_status),
-            "finding": str(cr.finding),
-            "outcome": str(cr.outcome),
-            "source": str(cr.source),
-            "resulting_revision_number": int(cr.resulting_revision_number),
+            "check_id": cr.check_id,
+            "execution_status": cr.execution_status,
+            "finding": cr.finding,
+            "outcome": cr.outcome,
+            "source": cr.source,
+            "resulting_revision_number": cr.resulting_revision_number,
         }
 
         rev_obs = session.scalars(
@@ -2069,11 +2073,11 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
         ).all()
         obs_data = [
             {
-                "observation_id": str(o.observation_id),
-                "observation_type": str(o.observation_type),
-                "value": str(o.value),
-                "source": str(o.source),
-                "first_seen_revision": int(o.first_seen_revision),
+                "observation_id": o.observation_id,
+                "observation_type": o.observation_type,
+                "value": o.value,
+                "source": o.source,
+                "first_seen_revision": o.first_seen_revision,
             }
             for o in rev_obs
         ]
@@ -2086,9 +2090,9 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
         ).all()
         rev_data = (
             {
-                "revision_number": int(revs[0].revision_number),
-                "defect_code": str(revs[0].defect_code) if revs[0].defect_code is not None else None,
-                "issue_condition": str(revs[0].issue_condition) if revs[0].issue_condition is not None else None,
+                "revision_number": revs[0].revision_number,
+                "defect_code": revs[0].defect_code if revs[0].defect_code is not None else None,
+                "issue_condition": revs[0].issue_condition if revs[0].issue_condition is not None else None,
                 "result_snapshot": copy.deepcopy(revs[0].result_snapshot),
             }
             if revs
@@ -2117,7 +2121,7 @@ def test_append_check_result_revision_rollback_on_failure(case_repo, db_session)
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
     # Assert outside repository call that fault was reached and evidence was captured
-    assert fault_reached is True, "The deliberate fault was never reached in the commit boundary hook."
+    assert fault_reached, "The deliberate fault was never reached in the commit boundary hook."
     assert captured_pending_evidence.get("check_result") is not None
     assert captured_pending_evidence["check_result"]["check_id"] == "ACT01"
     assert captured_pending_evidence["check_result"]["outcome"] == "blockage_found"
@@ -2397,7 +2401,7 @@ def test_append_cause_confirmation_revision_rollback_on_failure(case_repo, db_se
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert fault_reached is True
+    assert fault_reached
 
     # 5. Verify fresh session proves baseline preservation and no phantom writes
     with factory() as fresh_session:
@@ -2628,7 +2632,7 @@ def test_append_recovery_action_revision_rollback_on_failure(case_repo, db_sessi
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert fault_reached is True
+    assert fault_reached
 
     # 5. Verify fresh session proves baseline preservation and no phantom writes
     with factory() as fresh_session:
@@ -2817,7 +2821,7 @@ def test_append_recovery_verification_revision_rollback_on_failure(case_repo, db
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert fault_reached is True
+    assert fault_reached
 
     # 5. Verify fresh session proves baseline preservation and no phantom writes
     with factory() as fresh_session:
@@ -3185,7 +3189,7 @@ def test_append_recurrence_revision_rollback_on_failure(db_session, case_repo):
     finally:
         event.remove(Session, "before_commit", fail_after_flush_before_commit)
 
-    assert fault_reached is True
+    assert fault_reached
 
     # 5. Verify fresh session proves baseline preservation and no phantom writes
     with factory() as fresh_session:

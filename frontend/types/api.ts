@@ -73,6 +73,9 @@ export interface QuestionAnswerRecord {
     source: string;
     answered_at: string;
     resulting_revision_number: number;
+    text?: string;
+    reasoning?: string;
+    options?: string[];
 }
 
 export interface CheckResultRecord {
@@ -84,6 +87,11 @@ export interface CheckResultRecord {
     source: string;
     checked_at: string;
     resulting_revision_number: number;
+    name?: string;
+    description?: string;
+    procedure?: string;
+    effort_level?: string;
+    target_causes?: string[];
 }
 
 export interface AnalysisRevision {

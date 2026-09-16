@@ -48,7 +48,7 @@ class NumberedCanvas(canvas.Canvas):
 
     def showPage(self) -> None:
         self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
+        self._startPage()  # type: ignore
 
     def save(self) -> None:
         num_pages = len(self._saved_page_states)
@@ -72,7 +72,7 @@ class NumberedCanvas(canvas.Canvas):
         # Running Footer (on all pages)
         self.line(36, 48, 576, 48)
         self.drawString(36, 36, "Generated from persisted diagnostic records")
-        page_text = f"Page {self._pageNumber} of {page_count}"
+        page_text = f"Page {self._pageNumber} of {page_count}"  # type: ignore
         self.drawRightString(576, 36, page_text)
 
         self.restoreState()

@@ -50,7 +50,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     "engineer",
                     notes
                 );
-                currentRevision = confirmResponse.current_revision;
+                currentRevision = (confirmResponse as any).current_revision;
 
                 // 2. Submit the recovery action
                 if (recoveryAction) {
@@ -60,7 +60,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         currentRevision,
                         "engineer"
                     );
-                    currentRevision = actionResponse.current_revision;
+                    currentRevision = (actionResponse as any).current_revision;
                 }
 
                 // 3. Verify the case

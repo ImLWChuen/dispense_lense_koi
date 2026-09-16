@@ -303,26 +303,6 @@ class CaseRepository:
             if should_close:
                 session.close()
 
-    def get_case_check_results(
-        self, case_id: str, max_revision: int | None = None
-    ) -> list[CaseCheckResultModel]:
-        """Retrieve all check results associated with a case ordered by resulting_revision_number."""
-        session, should_close = self._get_active_session()
-        try:
-            stmt = (
-                select(CaseCheckResultModel)
-                .where(CaseCheckResultModel.case_id == case_id)
-            )
-            if max_revision is not None:
-                stmt = stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
-            stmt = stmt.order_by(
-                CaseCheckResultModel.resulting_revision_number,
-                CaseCheckResultModel.id,
-            ).execution_options(populate_existing=True)
-            return list(session.scalars(stmt).all())
-        finally:
-            if should_close:
-                session.close()
 
     def get_case_check_executions(
         self, case_id: str, max_revision: int | None = None
@@ -382,6 +362,27 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_case_check_results(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CaseCheckResultModel]:
+        """Retrieve all check results associated with a case ordered by resulting_revision_number."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseCheckResultModel)
+                .where(CaseCheckResultModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CaseCheckResultModel.resulting_revision_number,
+                CaseCheckResultModel.id,
+            ).execution_options(populate_existing=True)
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_cause_confirmations(
         self, case_id: str, max_revision: int | None = None
     ) -> list[CaseCauseConfirmationModel]:
@@ -423,7 +424,6 @@ class CaseRepository:
         finally:
             if should_close:
                 session.close()
-
     def load_structured_case(
         self,
         case_id: str,
@@ -826,14 +826,14 @@ class CaseRepository:
             # All check results persisted up to latest_revision must be represented in case.previous_check_results
             persisted_crs = list(
                 session.scalars(
-                    select(CaseCheckResultModel)
+                    select(CheckExecutionModel)
                     .where(
-                        CaseCheckResultModel.case_id == case.case_id,
-                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                        CheckExecutionModel.case_id == case.case_id,
+                        CheckExecutionModel.resulting_revision_number <= latest_revision,
                     )
                     .order_by(
-                        CaseCheckResultModel.resulting_revision_number,
-                        CaseCheckResultModel.id,
+                        CheckExecutionModel.resulting_revision_number,
+                        CheckExecutionModel.id,
                     )
                     .execution_options(populate_existing=True)
                 ).all()
@@ -1474,6 +1474,7 @@ class CaseRepository:
                     )
                     session.add(obs_model)
                     existing_obs_ids.add(obs.id)
+
 
             # 6. Append immutable AnalysisRevisionModel
             rev_issue_cond_val = (

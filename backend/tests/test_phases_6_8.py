@@ -20,17 +20,17 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
+# Add backend root to path
+backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, backend_root)
 
 import pytest
-from backend.app.services.diagnosis.symptom_extractor import SymptomExtractor
-from backend.app.services.diagnosis.defect_identifier import identify_defect
-from backend.app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
-from backend.app.services.diagnosis.question_engine import QuestionEngine
-from backend.app.services.diagnosis.action_planner import ActionPlanner
-from backend.app.schemas.diagnosis import (
+from app.services.diagnosis.symptom_extractor import SymptomExtractor
+from app.services.diagnosis.defect_identifier import identify_defect
+from app.services.diagnosis.cause_ranker import CauseRanker, RankingResult
+from app.services.diagnosis.question_engine import QuestionEngine
+from app.services.diagnosis.action_planner import ActionPlanner
+from app.schemas.diagnosis import (
     Observation,
     Question,
     QuestionAnswer,
@@ -215,6 +215,7 @@ def _verify_question_engine(ranking: RankingResult) -> Question:
     print(f"  Overlapping causes: {targets_overlap}")
 
     print("\n✓ Question engine passed")
+    return q
 
 
 # ===================================================================
@@ -310,6 +311,7 @@ def _verify_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
         print(f"  {marker} {c.name:<35s}  Priority: {c.priority_score:.1f}  Effort: {c.effort_level}")
 
     print("\n✓ Action planner passed")
+    return check
 
 
 # ===================================================================
@@ -404,36 +406,33 @@ def _verify_full_pipeline() -> None:
 
 if __name__ == "__main__":
     test_cause_ranker()
-    ranking, observations, defect_code, ranker = _make_ranker_setup()
+    _ranking, _observations, _defect_code, _ranker = _make_ranker_setup()
 
-    test_reranking(ranker, observations, defect_code)
+    _verify_reranking(_ranker, _observations, _defect_code)
 
     q_engine = QuestionEngine()
     q_res = q_engine.select_next_question(
-        ranked_causes=ranking.ranked_causes,
+        ranked_causes=_ranking.ranked_causes,
         previous_answers=[],
-        defect_code=ranking.defect_code,
+        defect_code=_ranking.defect_code,
     )
     assert q_res.selected_question is not None
     first_q = q_res.selected_question
-    test_question_already_answered(ranking, first_q)
-    test_question_stopping()
+    _verify_question_already_answered(_ranking, first_q)
+    _verify_question_stopping()
 
     a_planner = ActionPlanner()
     a_res = a_planner.select_next_action(
-        ranked_causes=ranking.ranked_causes,
+        ranked_causes=_ranking.ranked_causes,
         previous_check_results=[],
-        defect_code=ranking.defect_code,
+        defect_code=_ranking.defect_code,
     )
     assert a_res.selected_check is not None
     first_c = a_res.selected_check
-    test_action_already_attempted(ranking, first_c)
+    _verify_action_already_attempted(_ranking, first_c)
 
     _verify_full_pipeline()
 
-
-if __name__ == "__main__":
-    test_phases_6_through_8()
 
     separator("ALL PHASES 6–8 TESTS PASSED")
     print("Cause ranker, question engine, and action planner are working correctly.\n")
