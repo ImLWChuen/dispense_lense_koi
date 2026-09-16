@@ -1,0 +1,247 @@
+"use client";
+
+import { useState, useEffect, useCallback, use } from "react";
+import Link from "next/link";
+import { CheckCircle2, ArrowRight } from "lucide-react";
+
+import Header from "@/components/layout/Header";
+import Sidebar from "@/components/layout/Sidebar";
+import PageContainer from "@/components/layout/PageContainer";
+import TroubleshootingChecklist from "@/components/diagnosis/TroubleshootingChecklist";
+import QuestionProgress from "@/components/diagnosis/QuestionProgress";
+import { casesApi } from "@/lib/api/cases";
+import { DurableCaseResponse } from "@/types/api";
+
+export default function TroubleshootingPage({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+    const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Maintain a list of historical/pending checks.
+    const [checks, setChecks] = useState<any[]>([]);
+
+    const fetchCase = useCallback(async () => {
+        try {
+            const data = await casesApi.getCase(resolvedParams.id);
+            setCaseData(data);
+            
+            const nextCheck = data.diagnosis?.next_check;
+            
+            // Only add nextCheck if it's not already in the list
+            setChecks(prev => {
+                if (!nextCheck) return prev;
+                if (prev.some(c => c.check_id === nextCheck.check_id)) return prev;
+                return [...prev, nextCheck];
+            });
+            
+        } catch (err: any) {
+            console.error("Failed to fetch case", err);
+            setError(err.message || "Failed to load case data.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [resolvedParams.id]);
+
+    useEffect(() => {
+        fetchCase();
+    }, [fetchCase]);
+
+    const handleCheckSubmit = async (checkId: string, status: string, findingDetails: string, outcome: string) => {
+        if (!caseData?.diagnosis?.analysis_revision) return;
+        
+        setIsSubmitting(true);
+        try {
+            await casesApi.submitCheckResult(
+                caseData.case_id,
+                checkId,
+                status,
+                outcome, // API uses finding for "NORMAL", "CONFIRMED", etc.
+                caseData.diagnosis.analysis_revision.revision_number,
+                undefined, // optional outcome text
+                findingDetails
+            );
+            
+            // Refresh to get the next check or transition to verification
+            await fetchCase();
+        } catch (err: any) {
+            console.error("Failed to submit check result", err);
+            setError(err.message || "Failed to submit check result.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (isLoading && !caseData) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex h-64 items-center justify-center">
+                            <p className="text-gray-500">Loading troubleshooting checks...</p>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextCheck = diagnosis?.next_check;
+    const isDone = !nextCheck && !isLoading;
+
+    // Map checks to the UI component format
+    const checklistActions = checks.map(c => ({
+        id: c.check_id,
+        name: c.name,
+        description: c.description,
+        procedure: c.procedure,
+        effortLevel: c.effort_level as "low" | "medium" | "high",
+        applicableCauses: c.target_causes || [],
+    }));
+
+    return (
+        <div className="min-h-screen">
+            <Sidebar />
+
+            <div className="ml-64">
+                <Header />
+
+                <PageContainer>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-[#6d5dfc]">
+                                Diagnostic workflow · {resolvedParams.id.split('-')[0]}
+                            </p>
+
+                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                                Troubleshooting Checks
+                            </h1>
+
+                            <p className="mt-2 text-sm text-gray-500">
+                                Perform the recommended checks to gather
+                                physical evidence and validate the diagnosis.
+                            </p>
+                        </div>
+
+                        <Link
+                            href={`/diagnosis/${resolvedParams.id}`}
+                            className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                        >
+                            ← Back to Diagnosis
+                        </Link>
+                    </div>
+
+                    {error && (
+                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
+                        <div className="xl:col-span-2 space-y-4">
+                            {checklistActions.length > 0 && (
+                                <TroubleshootingChecklist 
+                                    actions={checklistActions} 
+                                    onSubmit={handleCheckSubmit}
+                                    isSubmitting={isSubmitting}
+                                />
+                            )}
+                            
+                            {isDone && (
+                                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
+                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
+                                    <h3 className="text-lg font-semibold text-emerald-800">Checks Complete</h3>
+                                    <p className="mt-2 text-sm text-emerald-700">
+                                        The diagnostic engine has gathered sufficient physical evidence.
+                                        You can now proceed to cause verification.
+                                    </p>
+                                    <Link
+                                        href={`/diagnosis/${resolvedParams.id}/verification`}
+                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                    >
+                                        Continue to Verification
+                                        <ArrowRight size={16} />
+                                    </Link>
+                                </div>
+                            )}
+
+                            {!isDone && checklistActions.length > 0 && (
+                                <div className="mt-6 flex justify-end">
+                                    <Link
+                                        href={`/diagnosis/${resolvedParams.id}/verification`}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
+                                    >
+                                        Skip to Verification →
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-6">
+                            <QuestionProgress current={checks.length - (nextCheck ? 1 : 0)} total={checks.length} />
+
+                            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                                <p className="text-sm font-semibold text-gray-900">
+                                    Check Priority
+                                </p>
+
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Checks are ordered by diagnostic value
+                                </p>
+
+                                <div className="mt-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-gray-600">
+                                            Low effort
+                                        </span>
+
+                                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                                            Start here
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-gray-600">
+                                            Medium effort
+                                        </span>
+
+                                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                            If needed
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-gray-600">
+                                            High effort
+                                        </span>
+
+                                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                                            Last resort
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-5">
+                                <p className="text-sm font-semibold text-gray-900">
+                                    Tip
+                                </p>
+
+                                <p className="mt-2 text-xs leading-5 text-gray-600">
+                                    Complete low-effort checks first. Each
+                                    finding automatically updates the cause
+                                    ranking. You may not need to perform all
+                                    checks if a clear cause emerges early.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </PageContainer>
+            </div>
+        </div>
+    );
+}

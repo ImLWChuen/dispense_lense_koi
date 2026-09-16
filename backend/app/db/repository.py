@@ -195,6 +195,20 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_all_cases(self) -> list[CaseModel]:
+        """Retrieve all cases ordered by descending creation time."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseModel)
+                .order_by(CaseModel.created_at.desc())
+                .execution_options(populate_existing=True)
+            )
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_observations(
         self, case_id: str, max_revision: int | None = None
     ) -> list[ObservationModel]:

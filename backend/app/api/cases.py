@@ -140,6 +140,85 @@ def create_durable_case(
 
 
 @router.get(
+    "",
+    response_model=list[DurableCaseResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve all diagnostic cases",
+    description="Retrieves a list of all persisted diagnostic cases with their initial analysis.",
+)
+def list_durable_cases(
+    repository: CaseRepository = Depends(get_case_repository),
+) -> list[DurableCaseResponse]:
+    """Retrieve all existing cases and their initial diagnosis from persistent storage."""
+    case_models = repository.get_all_cases()
+    responses = []
+    
+    for case_model in case_models:
+        canonical_id = case_model.case_id
+        obs_models = repository.get_case_observations(canonical_id)
+        rev_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+        
+        if not rev_model:
+            continue
+            
+        initial_diagnosis = DiagnosisResult.model_validate(rev_model.result_snapshot)
+        
+        revisions = repository.list_case_revisions(canonical_id)
+        latest_rev_num = max(revisions) if revisions else 1
+        latest_rev_model = repository.get_analysis_revision(canonical_id, revision_number=latest_rev_num)
+        latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
+        
+        observations = [
+            CaseObservationResponse(
+                id=obs.observation_id,
+                observation_id=obs.observation_id,
+                observation_type=(
+                    ObservationType(obs.observation_type)
+                    if obs.observation_type in ObservationType._value2member_map_
+                    else obs.observation_type
+                ),
+                value=obs.value,
+                original_text=obs.original_text,
+                statement_type=(
+                    StatementType(obs.statement_type)
+                    if obs.statement_type in StatementType._value2member_map_
+                    else obs.statement_type
+                ),
+                source=(
+                    EvidenceSource(obs.source)
+                    if obs.source in EvidenceSource._value2member_map_
+                    else obs.source
+                ),
+                confidence=obs.confidence,
+                timestamp=obs.created_at,
+                created_at=obs.created_at,
+                first_seen_revision=obs.first_seen_revision,
+            )
+            for obs in obs_models
+        ]
+        
+        responses.append(
+            DurableCaseResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=initial_diagnosis.defect_name,
+                issue_condition=case_model.issue_condition,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=latest_diagnosis,
+            )
+        )
+        
+    return responses
+
+
+
+@router.get(
     "/{case_id}",
     response_model=DurableCaseResponse,
     status_code=status.HTTP_200_OK,
@@ -184,6 +263,11 @@ def get_durable_case(
             )
 
         initial_diagnosis = DiagnosisResult.model_validate(rev_model.result_snapshot)
+
+        revisions = repository.list_case_revisions(canonical_id)
+        latest_rev_num = max(revisions) if revisions else 1
+        latest_rev_model = repository.get_analysis_revision(canonical_id, revision_number=latest_rev_num)
+        latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
 
         observations = [
             CaseObservationResponse(
@@ -232,7 +316,7 @@ def get_durable_case(
             created_at=case_model.created_at,
             observations=observations,
             initial_diagnosis=initial_diagnosis,
-            diagnosis=initial_diagnosis,
+            diagnosis=latest_diagnosis,
         )
     except HTTPException:
         raise
