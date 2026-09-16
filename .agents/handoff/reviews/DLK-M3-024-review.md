@@ -1,13 +1,19 @@
 ---
 task_id: DLK-M3-024
-reviewed_commit: 2f60f9292b07edfe6982996e1d10cdfe84d48d66
+reviewed_commit: c7a21a8f4e670a653f49cef8958b07d958d8b185
 decision: accepted
 reviewed_by: ChatGPT planner
 ---
 
 # Review: DLK-M3-024
 
-## Latest reconciliation review: 80cd0a8 - changes requested
+## Latest reconciliation review: c7a21a8 - accepted
+
+Reviewer verified the R5 correction against its parent: `/checks` now validates the persisted nested analysis revision, matching GET while retaining the target-revision bound. The regression compares complete history objects against fresh GET and stored PostgreSQL snapshots and asserts nonempty evidence/change history. No actionable findings remain in this correction; R4 and R5 publication blockers are resolved. Historical findings below are superseded by this acceptance.
+
+Reviewer independently ran the full backend suite on 2026-09-16: **350 passed, 34 warnings in 59.47s**. Warnings concern dependency deprecations and a pytest cache-path creation failure; no test failed. Committed whitespace check passed. Refreshed origin/main is already contained in this checkout. The previously authorized push, merge and synchronization can proceed. This acceptance covers backend reconciliation, not untested frontend flows or teammate database migration histories.
+
+## Historical reconciliation review: 80cd0a8 - changes requested
 
 Reviewed `80cd0a8ffb168e2665dc2ad422a29c19e5bdb83b`. The R4 engine signature, return unpacking, missing history method, next-step fields, and commit/rollback defects are corrected. Added integration tests exercise real /checks submissions, fresh GET/report retrieval, stale and invalid requests, and interoperability with /check-results. One new response-history defect remains before publication.
 
