@@ -2,45 +2,34 @@
 
 ## Current milestone
 
-Adaptive investigation — durable technician answer submission accepted
+Downloadable case report rendering
 
-## Accepted prerequisites
+## Accepted prerequisite
 
-- Member 2 question-answer contract — merged to synchronized `main`
-  - Q01-Q15 answer semantics aligned with knowledge definitions
-  - UNKNOWN / NOT_APPLICABLE semantics available
-  - answer-driven diagnosis revision workflow available
+- `DLK-M3-022` — Deterministic durable case report export API — **accepted**
+  - reviewed commit: `e68015c4587b5f5afe7b14e78b2fe161dd3bf40c`
 
-- `DLK-M3-010` — durable case API rollback and response-parity closeout — **accepted**
-  - accepted commit: `d94e8ea54837719a444a27af05f2eac71efcb34f`
-  - review: `.agents/handoff/reviews/DLK-M3-010-review.md`
+## Accepted
 
-- `DLK-M3-011` — question-answer persistence and immutable analysis revision append — **accepted**
-  - accepted commit: `f242cba7bbfd9521f5e7f497894a22477307b6b3`
-  - review: `.agents/handoff/reviews/DLK-M3-011-review.md`
-
-- `DLK-M3-012` — technician question-answer submission API — **accepted**
-  - accepted commit: `17756205b7299037b5c23a6b97209ac5f594f749`
-  - review: `.agents/handoff/reviews/DLK-M3-012-review.md`
-
-## Ready
-
-None. No implementation task is currently released.
+- `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
+  - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
+  - review: `.agents/handoff/reviews/DLK-M3-023-review.md`
+  - accepted evidence: section-scoped multi-row history verification, negative reversed/mismatched-row proof, deterministic persisted timestamps, complete diagnosis evidence, visual layout report, and neutral provenance text.
+  - task: `.agents/handoff/tasks/DLK-M3-023-pdf-report-export.md`
+  - branch: `backend-database`
+  - depends on: `DLK-M3-022`
+  - dependency authorization:
+    - `reportlab==5.0.1` — production renderer
+    - `pypdf==6.18.1` — parser/text-validation dependency
+    - no other PDF dependency or native renderer is authorized
 
 ## Not released
 
-Pending future task planning and relevant teammate contract checks:
+No follow-on task is currently authorized. Remaining roadmap areas include:
 
-- troubleshooting-check result submission
-- troubleshooting outcome → evidence integration
-- cause confirmation workflow
-- issue recovery verification
-- report generation
+- historical-case retrieval / similarity
+- LLM explanation/report narration
 - image/CV integration
-- LLM integration
-- historical-case retrieval
-- frontend adaptive-answer integration
+- frontend report integration
 
-Before releasing troubleshooting-check APIs, the planner must re-check Member 2's current check/action outcome mappings and explicit human-confirmation semantics.
-
-No further implementation is authorized by this queue.
+DLK-M3-023 is complete. A new bounded task must be authorized before further implementation.

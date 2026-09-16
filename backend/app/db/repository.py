@@ -15,6 +15,9 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session_factory
 from app.models.case import (
     AnalysisRevisionModel,
+    CaseCauseConfirmationModel,
+    CaseCheckResultModel,
+    CaseLifecycleEventModel,
     CaseModel,
     CheckExecutionModel,
     ObservationModel,
@@ -193,6 +196,20 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_all_cases(self) -> list[CaseModel]:
+        """Retrieve all cases ordered by descending creation time."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseModel)
+                .order_by(CaseModel.created_at.desc())
+                .execution_options(populate_existing=True)
+            )
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_observations(
         self, case_id: str, max_revision: int | None = None
     ) -> list[ObservationModel]:
@@ -247,6 +264,24 @@ class CaseRepository:
             if should_close:
                 session.close()
 
+    def get_latest_analysis_revision(
+        self,
+        case_id: str,
+    ) -> AnalysisRevisionModel | None:
+        """Retrieve the latest analysis revision for a case ordered by revision_number descending."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(AnalysisRevisionModel)
+                .where(AnalysisRevisionModel.case_id == case_id)
+                .order_by(AnalysisRevisionModel.revision_number.desc())
+                .execution_options(populate_existing=True)
+            )
+            return session.scalars(stmt).first()
+        finally:
+            if should_close:
+                session.close()
+
     def get_case_question_answers(
         self, case_id: str, max_revision: int | None = None
     ) -> list[QuestionAnswerModel]:
@@ -262,6 +297,69 @@ class CaseRepository:
             stmt = stmt.order_by(
                 QuestionAnswerModel.resulting_revision_number,
                 QuestionAnswerModel.id,
+            ).execution_options(populate_existing=True)
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
+    def get_case_check_results(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CaseCheckResultModel]:
+        """Retrieve all check results associated with a case ordered by resulting_revision_number."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseCheckResultModel)
+                .where(CaseCheckResultModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CaseCheckResultModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CaseCheckResultModel.resulting_revision_number,
+                CaseCheckResultModel.id,
+            ).execution_options(populate_existing=True)
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
+    def get_case_cause_confirmations(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CaseCauseConfirmationModel]:
+        """Retrieve all cause confirmations associated with a case ordered by resulting_revision_number."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseCauseConfirmationModel)
+                .where(CaseCauseConfirmationModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CaseCauseConfirmationModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CaseCauseConfirmationModel.resulting_revision_number,
+                CaseCauseConfirmationModel.id,
+            ).execution_options(populate_existing=True)
+            return list(session.scalars(stmt).all())
+        finally:
+            if should_close:
+                session.close()
+
+    def get_case_lifecycle_events(
+        self, case_id: str, max_revision: int | None = None
+    ) -> list[CaseLifecycleEventModel]:
+        """Retrieve all lifecycle events associated with a case ordered by resulting_revision_number."""
+        session, should_close = self._get_active_session()
+        try:
+            stmt = (
+                select(CaseLifecycleEventModel)
+                .where(CaseLifecycleEventModel.case_id == case_id)
+            )
+            if max_revision is not None:
+                stmt = stmt.where(CaseLifecycleEventModel.resulting_revision_number <= max_revision)
+            stmt = stmt.order_by(
+                CaseLifecycleEventModel.resulting_revision_number,
+                CaseLifecycleEventModel.id,
             ).execution_options(populate_existing=True)
             return list(session.scalars(stmt).all())
         finally:
@@ -503,6 +601,7 @@ class CaseRepository:
                 previous_check_results=previous_check_results,
                 analysis_revisions=analysis_revisions,
                 issue_condition=issue_cond,
+                confirmed_causes=[c.cause_id for c in conf_models],
                 created_at=case_model.created_at,
             )
         finally:
@@ -631,6 +730,34 @@ class CaseRepository:
                     raise ValueError(
                         f"Inconsistent case state: case previous_answers is missing "
                         f"persisted question '{pq.question_id}' from revision {latest_revision} or earlier."
+                    )
+
+            # All check results persisted up to latest_revision must be represented in case.previous_check_results
+            persisted_crs = list(
+                session.scalars(
+                    select(CaseCheckResultModel)
+                    .where(
+                        CaseCheckResultModel.case_id == case.case_id,
+                        CaseCheckResultModel.resulting_revision_number <= latest_revision,
+                    )
+                    .order_by(
+                        CaseCheckResultModel.resulting_revision_number,
+                        CaseCheckResultModel.id,
+                    )
+                    .execution_options(populate_existing=True)
+                ).all()
+            )
+            if len(case.previous_check_results) < len(persisted_crs):
+                raise ValueError(
+                    f"Inconsistent case state: case previous_check_results has {len(case.previous_check_results)} "
+                    f"entries, but {len(persisted_crs)} check results are persisted up to revision {latest_revision}."
+                )
+            case_cr_ids = [c.check_id for c in case.previous_check_results]
+            for pcr in persisted_crs:
+                if pcr.check_id not in case_cr_ids:
+                    raise ValueError(
+                        f"Inconsistent case state: case previous_check_results is missing "
+                        f"persisted check '{pcr.check_id}' from revision {latest_revision} or earlier."
                     )
 
             if case.analysis_revisions:

@@ -19,9 +19,9 @@ specifically:
 import sys
 from pathlib import Path
 
-project_root = str(Path(__file__).resolve().parents[3])
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+backend_dir = str(Path(__file__).resolve().parents[2])
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
 if sys.platform == "win32":
     reconfigure_fn = getattr(sys.stdout, "reconfigure", None)
@@ -209,6 +209,104 @@ class TestOutcomeMappingCorrectness:
         ]
         assert len(domain_obs) == 1
         assert domain_obs[0].value == "visible_bubbles"
+
+    def test_act03_consistent_but_wrong_size_emits_check_result_and_no_directional_deposit_size(self):
+        """ACT03 consistent_but_wrong_size must produce CHECK_RESULT observation
+        but NO directional deposit_size observation (neither undersized nor oversized)."""
+        result = CheckResult(
+            check_id="ACT03",
+            execution_status=CheckExecutionStatus.COMPLETED,
+            finding=CheckFinding.SUPPORTS,
+            outcome="consistent_but_wrong_size",
+        )
+        observations, _ = CheckResultHandler.handle(result)
+
+        # Must emit the structured CHECK_RESULT observation
+        check_obs = [
+            o for o in observations
+            if getattr(o.observation_type, "value", o.observation_type) == "check_result"
+        ]
+        assert len(check_obs) == 1, "Should produce exactly one check_result observation"
+        assert check_obs[0].value == "ACT03:consistent_but_wrong_size"
+
+        # Must NOT emit any deposit_size observation
+        size_obs = [
+            o for o in observations
+            if getattr(o.observation_type, "value", o.observation_type) == "deposit_size"
+        ]
+        assert len(size_obs) == 0, f"Expected no deposit_size observations, got {size_obs}"
+
+        # Must NOT emit any observation claiming undersized or oversized
+        values = [o.value for o in observations]
+        assert "undersized" not in values, "Must not claim deposit_size=undersized"
+        assert "oversized" not in values, "Must not claim deposit_size=oversized"
+
+    def test_act03_high_variation_maps_to_inconsistent(self):
+        """ACT03 high_variation still maps to deposit_size=inconsistent."""
+        result = CheckResult(
+            check_id="ACT03",
+            execution_status=CheckExecutionStatus.COMPLETED,
+            finding=CheckFinding.SUPPORTS,
+            outcome="high_variation",
+        )
+        observations, _ = CheckResultHandler.handle(result)
+
+        size_obs = [
+            o for o in observations
+            if getattr(o.observation_type, "value", o.observation_type) == "deposit_size"
+        ]
+        assert len(size_obs) == 1
+        assert size_obs[0].value == "inconsistent"
+
+    def test_act03_consistent_but_wrong_size_does_not_fabricate_undersized_evidence_in_engine(self):
+        """ACT03 consistent_but_wrong_size must not introduce undersized-derived evidence
+        (e.g., false support for nozzle restriction or air supply issue). It must only
+        receive the evidence relationships defined in actions.json (supports parameter_issue,
+        contradicts pressure_instability)."""
+        engine = DiagnosticEngine()
+        case = StructuredCase(
+            description="Dispense issue test",
+            defect_code="D03_INCONSISTENT_SIZE",
+            observations=[],
+        )
+        engine.diagnose(case)
+
+        check_res = CheckResult(
+            check_id="ACT03",
+            execution_status=CheckExecutionStatus.COMPLETED,
+            finding=CheckFinding.SUPPORTS,
+            outcome="consistent_but_wrong_size",
+        )
+        new_case, new_diag = engine.submit_check_result(case, check_res)
+
+        # Verify no deposit_size observation was added to case
+        assert not any(
+            getattr(o.observation_type, "value", o.observation_type) == "deposit_size"
+            for o in new_case.observations
+        )
+        assert not any(o.value in ("undersized", "oversized") for o in new_case.observations)
+
+        # Check that check_result observation was added
+        check_obs = [
+            o for o in new_case.observations
+            if getattr(o.observation_type, "value", o.observation_type) == "check_result"
+        ]
+        assert len(check_obs) == 1
+        assert check_obs[0].value == "ACT03:consistent_but_wrong_size"
+
+        # Check evidence on causes in new_diag:
+        # nozzle_restriction and air_supply_issue must NOT receive support from this check
+        param_cause = next((c for c in new_diag.ranked_causes if c.cause_id == "parameter_issue"), None)
+        assert param_cause is not None
+        assert len(param_cause.supporting_evidence) > 0
+
+        press_cause = next((c for c in new_diag.ranked_causes if c.cause_id == "pressure_instability"), None)
+        assert press_cause is not None
+        assert len(press_cause.contradicting_evidence) > 0
+
+        nozzle_cause = next((c for c in new_diag.ranked_causes if c.cause_id == "nozzle_restriction"), None)
+        if nozzle_cause:
+            assert len(nozzle_cause.supporting_evidence) == 0
 
     def test_nozzle_blockage_result_maps_only_to_nozzle_observation(self):
         """Finding a nozzle blockage must NOT produce pressure, material,

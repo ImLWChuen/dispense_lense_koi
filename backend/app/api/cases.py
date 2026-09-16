@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
+
+from app.knowledge import get_check_by_id, load_questions
 
 from app.db.repository import CaseRepository, StaleRevisionError
 from app.db.session import get_db
@@ -17,6 +19,7 @@ from app.schemas.case import (
     CheckExecutionRecord,
     CreateCaseRequest,
     DurableCaseResponse,
+    LifecycleEventRecord,
     QuestionAnswerRecord,
     SubmitAnswerRequest,
     SubmitCheckRequest,
@@ -32,8 +35,10 @@ from app.schemas.diagnosis import (
     QuestionAnswer,
     StatementType,
 )
-from app.services.diagnosis.engine import DiagnosticEngine
+from app.knowledge import get_causes_for_defect
+from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
+from app.services.reporting import build_case_report, render_case_report_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +131,85 @@ def create_durable_case(
 
 
 @router.get(
+    "",
+    response_model=list[DurableCaseResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Retrieve all diagnostic cases",
+    description="Retrieves a list of all persisted diagnostic cases with their initial analysis.",
+)
+def list_durable_cases(
+    repository: CaseRepository = Depends(get_case_repository),
+) -> list[DurableCaseResponse]:
+    """Retrieve all existing cases and their initial diagnosis from persistent storage."""
+    case_models = repository.get_all_cases()
+    responses = []
+    
+    for case_model in case_models:
+        canonical_id = case_model.case_id
+        obs_models = repository.get_case_observations(canonical_id)
+        rev_model = repository.get_analysis_revision(canonical_id, revision_number=1)
+        
+        if not rev_model:
+            continue
+            
+        initial_diagnosis = DiagnosisResult.model_validate(rev_model.result_snapshot)
+        
+        revisions = repository.list_case_revisions(canonical_id)
+        latest_rev_num = max(revisions) if revisions else 1
+        latest_rev_model = repository.get_analysis_revision(canonical_id, revision_number=latest_rev_num)
+        latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
+        
+        observations = [
+            CaseObservationResponse(
+                id=obs.observation_id,
+                observation_id=obs.observation_id,
+                observation_type=(
+                    ObservationType(obs.observation_type)
+                    if obs.observation_type in ObservationType._value2member_map_
+                    else obs.observation_type
+                ),
+                value=obs.value,
+                original_text=obs.original_text,
+                statement_type=(
+                    StatementType(obs.statement_type)
+                    if obs.statement_type in StatementType._value2member_map_
+                    else obs.statement_type
+                ),
+                source=(
+                    EvidenceSource(obs.source)
+                    if obs.source in EvidenceSource._value2member_map_
+                    else obs.source
+                ),
+                confidence=obs.confidence,
+                timestamp=obs.created_at,
+                created_at=obs.created_at,
+                first_seen_revision=obs.first_seen_revision,
+            )
+            for obs in obs_models
+        ]
+        
+        responses.append(
+            DurableCaseResponse(
+                case_id=case_model.case_id,
+                description=case_model.description,
+                material=case_model.material,
+                method=case_model.method,
+                machine_context=case_model.machine_context,
+                defect_code=case_model.defect_code,
+                defect_name=initial_diagnosis.defect_name,
+                issue_condition=case_model.issue_condition,
+                created_at=case_model.created_at,
+                observations=observations,
+                initial_diagnosis=initial_diagnosis,
+                diagnosis=latest_diagnosis,
+            )
+        )
+        
+    return responses
+
+
+
+@router.get(
     "/{case_id}",
     response_model=DurableCaseResponse,
     status_code=status.HTTP_200_OK,
@@ -170,6 +254,77 @@ def get_durable_case(
             )
 
         initial_diagnosis = DiagnosisResult.model_validate(rev_model.result_snapshot)
+
+        revisions = repository.list_case_revisions(canonical_id)
+        latest_rev_num = max(revisions) if revisions else 1
+        latest_rev_model = repository.get_analysis_revision(canonical_id, revision_number=latest_rev_num)
+        latest_diagnosis = DiagnosisResult.model_validate(latest_rev_model.result_snapshot) if latest_rev_model else initial_diagnosis
+
+        ans_models = repository.get_case_question_answers(canonical_id)
+        chk_models = repository.get_case_check_results(canonical_id)
+
+        questions_dict = {q.id: q for q in load_questions()}
+        previous_answers = []
+        for qm in ans_models:
+            qdef = questions_dict.get(qm.question_id)
+            previous_answers.append(
+                QuestionAnswerRecord(
+                    question_id=qm.question_id,
+                    answer_value=qm.answer_value,
+                    answer_text=qm.answer_text,
+                    source=(
+                        EvidenceSource(qm.source)
+                        if qm.source in EvidenceSource._value2member_map_
+                        else qm.source
+                    ),
+                    answered_at=qm.answered_at,
+                    resulting_revision_number=qm.resulting_revision_number,
+                    text=qdef.text if qdef else None,
+                    reasoning=qdef.purpose if qdef else None,
+                    options=list(qdef.evidence_mapping.keys()) if qdef and qdef.evidence_mapping else None,
+                )
+            )
+
+        previous_check_results = []
+        for cm in chk_models:
+            cdef = get_check_by_id(cm.check_id)
+            previous_check_results.append(
+                CheckResultRecord(
+                    check_id=cm.check_id,
+                    execution_status=(
+                        CheckExecutionStatus(cm.execution_status)
+                        if cm.execution_status in CheckExecutionStatus._value2member_map_
+                        else cm.execution_status
+                    ),
+                    finding=(
+                        CheckFinding(cm.finding)
+                        if cm.finding in CheckFinding._value2member_map_
+                        else cm.finding
+                    ),
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=(
+                        EvidenceSource(cm.source)
+                        if cm.source in EvidenceSource._value2member_map_
+                        else cm.source
+                    ),
+                    checked_at=cm.checked_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                    name=cdef.name if cdef else f"Check {cm.check_id}",
+                    description=cdef.description if cdef else None,
+                    procedure=cdef.procedure if cdef else "Historical check record.",
+                    effort_level=cdef.effort_level if cdef else "low",
+                    target_causes=cdef.applicable_causes if cdef else [],
+                )
+            )
+
+        analysis_revisions = []
+        for rev_num in sorted(revisions):
+            rev_model_hist = repository.get_analysis_revision(canonical_id, revision_number=rev_num)
+            if rev_model_hist and rev_model_hist.result_snapshot:
+                snapshot_dict = rev_model_hist.result_snapshot
+                if "analysis_revision" in snapshot_dict and snapshot_dict["analysis_revision"]:
+                    analysis_revisions.append(AnalysisRevision.model_validate(snapshot_dict["analysis_revision"]))
 
         observations = [
             CaseObservationResponse(
@@ -217,8 +372,11 @@ def get_durable_case(
             issue_condition=issue_cond,
             created_at=case_model.created_at,
             observations=observations,
+            previous_answers=previous_answers,
+            previous_check_results=previous_check_results,
+            analysis_revisions=analysis_revisions,
             initial_diagnosis=initial_diagnosis,
-            diagnosis=initial_diagnosis,
+            diagnosis=latest_diagnosis,
         )
     except HTTPException:
         raise
@@ -337,6 +495,7 @@ def submit_case_answer(
 
             initial_diagnosis = DiagnosisResult.model_validate(rev1_model.result_snapshot)
             qa_models = repository.get_case_question_answers(canonical_id, max_revision=target_revision)
+            cr_models = repository.get_case_check_results(canonical_id, max_revision=target_revision)
 
             observations = [
                 CaseObservationResponse(
@@ -385,6 +544,33 @@ def submit_case_answer(
                 if qm.resulting_revision_number <= target_revision
             ]
 
+            previous_check_results = [
+                CheckResultRecord(
+                    check_id=cm.check_id,
+                    execution_status=(
+                        CheckExecutionStatus(cm.execution_status)
+                        if cm.execution_status in CheckExecutionStatus._value2member_map_
+                        else cm.execution_status
+                    ),
+                    finding=(
+                        CheckFinding(cm.finding)
+                        if cm.finding in CheckFinding._value2member_map_
+                        else cm.finding
+                    ),
+                    finding_details=cm.finding_details,
+                    outcome=cm.outcome,
+                    source=(
+                        EvidenceSource(cm.source)
+                        if cm.source in EvidenceSource._value2member_map_
+                        else cm.source
+                    ),
+                    checked_at=cm.checked_at,
+                    resulting_revision_number=cm.resulting_revision_number,
+                )
+                for cm in cr_models
+                if cm.resulting_revision_number <= target_revision
+            ]
+
             matching_submitted = [
                 a for a in previous_answers if a.resulting_revision_number == target_revision
             ]
@@ -417,6 +603,7 @@ def submit_case_answer(
                 current_revision=target_revision,
                 submitted_answer=submitted_answer,
                 previous_answers=previous_answers,
+                previous_check_results=previous_check_results,
                 next_question=result.next_question,
                 next_check=result.next_check,
             )

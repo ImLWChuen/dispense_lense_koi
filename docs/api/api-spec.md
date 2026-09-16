@@ -1873,6 +1873,791 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 ---
 
+### 5. Technician Troubleshooting Check-Result Submission
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/check-results`
+- **Description:** Submits a technician troubleshooting check execution and finding for an active durable case, executes Member 2's `CheckResultHandler` and diagnostic engine check-result workflow, evaluates the next immutable analysis revision, and atomically persists the check-result history, any newly derived observations, and the revision snapshot in PostgreSQL.
+
+#### Lifecycle & Concurrency Contract
+
+- **Atomic Revision Advance:** Each accepted check result atomically appends one `CaseCheckResult` history record, any newly generated observations (with `first_seen_revision = N + 1` and `source = USER_CHECK_RESULT`), and one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** The client must provide `expected_revision`. The update succeeds only if `expected_revision` matches the case's current persisted revision at transaction execution time.
+- **Stale Revisions (409 Conflict):** If `expected_revision` does not match the latest persisted revision (e.g. concurrent check submissions or replays), the transaction is rejected with `409 Conflict` and no partial rows are committed.
+- **Member 2 Diagnostic Authority & Semantic Boundaries:**
+  - Check ID is validated against `actions.json`. Unknown IDs return `422 Unprocessable Entity`.
+  - Specific outcomes are validated against action definitions. Invalid outcomes return `422 Unprocessable Entity`.
+  - **Unfinished Statuses Rejected (422):** Execution statuses `PENDING` and `IN_PROGRESS` are strictly rejected with `422 Unprocessable Entity` before evidence evaluation or persistence, as this is a result submission endpoint.
+  - **Non-Executing Statuses:** `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, and `SKIPPED` checks are recorded in history and advance the revision, but their finding is strictly normalized to `UNKNOWN` and they generate zero diagnostic observations.
+  - **Inconclusive Findings:** Completed checks with `INCONCLUSIVE`, `UNKNOWN`, or `NOT_APPLICABLE` findings are recorded in history and advance the revision, but generate zero diagnostic observations.
+  - **Non-Directional Semantic Fix (ACT03):** Completed `ACT03` with outcome `consistent_but_wrong_size` generates the structured `CHECK_RESULT` observation but generates no directional `deposit_size` observation (neither `undersized` nor `oversized`).
+  - **Strict Cause and Issue Independence:** A supporting check result increases evidence scores but **never** automatically confirms a root cause (which requires explicit confirmation) and **never** transitions the issue condition to `RESOLVED` (which requires independent recovery verification).
+- **Idempotency & Replay:** Re-submitting the same payload with an outdated `expected_revision` safely fails with `409 Conflict`.
+
+#### Request Schema (`SubmitCheckResultRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `check_id` | `string` | **Yes** | — | Identifier of the troubleshooting check (e.g. `"ACT01"`, `"ACT02"`). Must match a supported action in `actions.json`. |
+| `execution_status` | `string` | **Yes** | — | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. Note: `PENDING` and `IN_PROGRESS` are rejected with `422`. |
+| `finding` | `string` | **Yes** | — | Finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `outcome` | `string` \| `null` | No | `null` | Optional action outcome key (e.g. `"no_blockage"`, `"air_bubbles_found"`). Validated against action evidence mapping. |
+| `finding_details` | `string` \| `null` | No | `null` | Optional technician description, equipment readings, or inspection notes. |
+
+#### Input Validation Rules (HTTP 422)
+
+1. **Unknown Check:** Supplying an unsupported check ID returns `422 Unprocessable Entity` (`"Unknown check_id: 'ACT99'..."`).
+2. **Invalid Outcome:** Supplying an outcome key not defined in the check's evidence mapping returns `422 Unprocessable Entity` (`"Invalid outcome '...' for check ACT01..."`).
+3. **Empty Fields:** Submitting an empty or whitespace-only `check_id` returns `422 Unprocessable Entity`.
+4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity`.
+5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+6. **Unfinished Execution Status:** Submitting `execution_status` as `PENDING` or `IN_PROGRESS` returns `422 Unprocessable Entity` without altering case state or evaluating evidence.
+
+#### Status and Error Codes
+
+- `200 OK` — Check result accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist in the database.
+- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` — Invalid input schema, unsupported check ID, or invalid outcome key.
+- `500 Internal Server Error` — Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+
+#### Representative Execution Example
+
+##### Request Payload (`POST /api/v1/cases/{case_id}/check-results`)
+```json
+{
+  "check_id": "ACT01",
+  "execution_status": "COMPLETED",
+  "finding": "CONTRADICTS",
+  "outcome": "no_blockage",
+  "finding_details": "No visible blockage under 50x microscope",
+  "expected_revision": 1
+}
+```
+
+##### Response Payload (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "issue_condition": "UNRESOLVED",
+  "created_at": "2026-09-14T14:19:10.123456Z",
+  "observations": [
+    {
+      "id": "obs_1",
+      "observation_id": "obs_1",
+      "observation_type": "deposit_size",
+      "value": "undersized",
+      "original_text": "Dispense dots are shrinking",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER",
+      "confidence": null,
+      "timestamp": "2026-09-14T14:19:10.123456Z",
+      "created_at": "2026-09-14T14:19:10.123456Z",
+      "first_seen_revision": 1
+    },
+    {
+      "id": "obs_2",
+      "observation_id": "obs_2",
+      "observation_type": "check_result",
+      "value": "ACT01:no_blockage",
+      "original_text": "No visible blockage under 50x microscope",
+      "statement_type": "USER_OBSERVATION",
+      "source": "USER_CHECK_RESULT",
+      "confidence": null,
+      "timestamp": "2026-09-14T14:19:11.123456Z",
+      "created_at": "2026-09-14T14:19:11.123456Z",
+      "first_seen_revision": 2
+    }
+  ],
+  "initial_diagnosis": { ... },
+  "diagnosis": {
+    "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "ranked_causes": [ ... ],
+    "analysis_revision": {
+      "revision_number": 2,
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Check 'Inspect Nozzle for Physical Blockage' (ACT01) was COMPLETED with finding CONTRADICTS. Outcome: no_blockage.",
+      "changes_from_previous": [
+        "Nozzle Restriction decreased from 40 to 10 (-30 pts)."
+      ]
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "current_revision": 2,
+  "submitted_check_result": {
+    "check_id": "ACT01",
+    "execution_status": "COMPLETED",
+    "finding": "CONTRADICTS",
+    "finding_details": "No visible blockage under 50x microscope",
+    "outcome": "no_blockage",
+    "source": "USER_CHECK_RESULT",
+    "checked_at": "2026-09-14T14:19:11.123456Z",
+    "resulting_revision_number": 2
+  },
+  "previous_check_results": [
+    {
+      "check_id": "ACT01",
+      "execution_status": "COMPLETED",
+      "finding": "CONTRADICTS",
+      "finding_details": "No visible blockage under 50x microscope",
+      "outcome": "no_blockage",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T14:19:11.123456Z",
+      "resulting_revision_number": 2
+    }
+  ],
+  "previous_answers": [],
+  "next_question": { ... },
+  "next_check": { ... }
+}
+```
+
+---
+
+### 6. Technician Explicit Root-Cause Confirmation Submission
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/cause-confirmations`
+- **Description:** Submits an explicit technician root-cause confirmation for an active durable case, executes Member 2's `confirm_cause()` diagnostic engine workflow, evaluates the next immutable analysis revision, and atomically persists the cause confirmation event and the revision snapshot in PostgreSQL.
+
+#### Lifecycle & Concurrency Contract
+
+- **Atomic Revision Advance:** Each accepted cause confirmation atomically appends one `CaseCauseConfirmation` history record and one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** The client must provide `expected_revision`. The update succeeds only if `expected_revision` matches the case's current persisted revision at transaction execution time.
+- **Stale Revisions (409 Conflict):** If `expected_revision` does not match the latest persisted revision (e.g. concurrent submissions or replays), the transaction is rejected with `409 Conflict` and no rows or revisions are committed.
+- **Member 2 Diagnostic Authority & Semantic Boundaries:**
+  - `cause_id` is validated against candidate causes for the defect. Unknown or domain-invalid causes return `422 Unprocessable Entity` before persistence.
+  - **Supporting Checks Do Not Confirm a Cause Automatically:** A supporting check result or high evidence score increases hypothesis ranking, but **never** confirms a cause automatically. Cause confirmation requires an explicit technician submission.
+  - **Cause Confirmation Does Not Resolve the Issue:** Explicitly confirming a cause sets the candidate cause conclusion to `CONFIRMED`, but **never** transitions the overall `issue_condition` to `RESOLVED`. Issue resolution requires independent post-correction recovery verification.
+  - **No Recovery Verification State:** The endpoint preserves issue resolution independently and never invents recovery or resolution state.
+- **Idempotency & Replay:** Re-submitting the same payload with an outdated `expected_revision` safely fails with `409 Conflict`.
+
+#### Request Schema (`SubmitCauseConfirmationRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `cause_id` | `string` | **Yes** | — | Identifier of the candidate cause being confirmed as root cause (e.g. `"nozzle_restriction"`, `"pressure_instability"`). |
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `confirmed_by` | `string` | No | `"technician"` | Identifier or role of the user confirming the cause (maximum length 64 characters). |
+| `notes` | `string` \| `null` | No | `null` | Optional technician notes or observations explaining the confirmation. |
+
+#### Input Validation Rules (HTTP 422)
+
+1. **Unknown or Invalid Cause:** Supplying a `cause_id` not found among candidate causes for the defect returns `422 Unprocessable Entity` (`"Cannot confirm cause '...'..."`).
+2. **Performer Length Exceeded:** Submitting `confirmed_by` longer than 64 characters returns `422 Unprocessable Entity` before persistence.
+3. **Empty Cause ID:** Submitting an empty or whitespace-only `cause_id` returns `422 Unprocessable Entity` (`"cause_id must be a non-empty string."`).
+4. **Invalid Revision Number:** Submitting `expected_revision < 1` returns `422 Unprocessable Entity` (`"expected_revision must be >= 1."`).
+5. **Malformed Case ID:** Path parameter that is not a valid UUID returns `422 Unprocessable Entity`.
+6. **Extra Forbidden Fields:** Supplying forbidden top-level fields returns `422 Unprocessable Entity`.
+
+#### Status and Error Codes
+
+- `200 OK` — Cause confirmation accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist in the database.
+- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` — Invalid input schema, empty cause, invalid/unrecognized cause ID, or `confirmed_by` exceeding 64 characters.
+- `500 Internal Server Error` — Unexpected internal diagnostic engine or database failure. Error responses are sanitized and do not echo internal exception details, stack traces, paths, or credentials.
+
+#### Representative Execution Example
+
+##### Request Payload (`POST /api/v1/cases/{case_id}/cause-confirmations`)
+```json
+{
+  "cause_id": "nozzle_restriction",
+  "expected_revision": 3,
+  "confirmed_by": "technician",
+  "notes": "Direct microscopic bore inspection confirms solder paste restriction."
+}
+```
+
+##### Response Payload (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "issue_condition": "UNRESOLVED",
+  "created_at": "2026-09-14T14:19:10.123456Z",
+  "observations": [ ... ],
+  "initial_diagnosis": { ... },
+  "diagnosis": {
+    "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+    "defect": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "cause_name": "Nozzle Restriction",
+        "score": 40.0,
+        "conclusion": "CONFIRMED",
+        "supporting_evidence": [ ... ],
+        "contradicting_evidence": [],
+        "neutral_evidence": []
+      }
+    ],
+    "analysis_revision": {
+      "revision_number": 4,
+      "defect_code": "D03_INCONSISTENT_SIZE",
+      "new_evidence_summary": "Cause 'nozzle_restriction' explicitly confirmed by technician.",
+      "changes_from_previous": []
+    },
+    "issue_condition": "UNRESOLVED",
+    "warnings": []
+  },
+  "current_revision": 4,
+  "submitted_confirmation": {
+    "cause_id": "nozzle_restriction",
+    "confirmed_by": "technician",
+    "notes": "Direct microscopic bore inspection confirms solder paste restriction.",
+    "confirmed_at": "2026-09-14T14:21:00.123456Z",
+    "resulting_revision_number": 4
+  },
+  "previous_confirmations": [
+    {
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "technician",
+      "notes": "Direct microscopic bore inspection confirms solder paste restriction.",
+      "confirmed_at": "2026-09-14T14:21:00.123456Z",
+      "resulting_revision_number": 4
+    }
+  ],
+  "previous_check_results": [
+    {
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "outcome": "air_bubbles_found",
+      "resulting_revision_number": 3
+    }
+  ],
+  "previous_answers": [
+    {
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "resulting_revision_number": 2
+    }
+  ],
+  "confirmed_cause": "nozzle_restriction",
+  "selected_cause_conclusion": "CONFIRMED",
+  "next_question": { ... },
+  "next_check": { ... }
+}
+```
+
+---
+
+### 7. Recovery Action and Post-Correction Verification Submission
+
+#### 7.1 Record Recovery Action
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/recovery-actions`
+- **Description:** Records that a corrective or recovery action has been applied by a technician or engineer. Transitions the issue condition from `UNRESOLVED` to `RECOVERY_PENDING_VERIFICATION` via the domain `StateManager`. Does **not** resolve the issue.
+
+##### Lifecycle & Concurrency Contract
+- **Atomic Revision Advance:** Each accepted recovery action atomically appends one `CaseLifecycleEvent` record (event_type: `RECOVERY_ACTION`), advances `cases.issue_condition` to `RECOVERY_PENDING_VERIFICATION`, and appends one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** Requires `expected_revision`. Stale revisions return `409 Conflict` and commit no changes.
+- **State Machine Enforcement:** Uses `StateManager.transition_issue_condition(...)`. Transitions are valid from `UNRESOLVED`. Attempting a recovery action from `RESOLVED` returns `422 Unprocessable Entity`.
+- **Independence from Cause Confirmation:** An issue may undergo recovery whether a root cause has been confirmed or not. Root cause conclusions are preserved unchanged.
+
+##### Request Schema (`SubmitRecoveryActionRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
+| `recovery_details` | `string` | **Yes** | — | Description of corrective action applied (unrestricted text). |
+| `performed_by` | `string` | No | `"technician"` | Identifier or role of actor performing the recovery (max length 64 characters). |
+
+##### Status and Error Codes
+- `200 OK` — Recovery action accepted and committed.
+- `404 Not Found` — Case ID does not exist.
+- `409 Conflict` — `expected_revision` is stale or does not match current persisted revision.
+- `422 Unprocessable Entity` — Illegal transition (e.g. attempting recovery action from `RESOLVED`), empty details, `performed_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal transition or persistence failure); raw exception details or internal paths are never reflected.
+
+##### Representative Request Example
+```json
+{
+  "expected_revision": 4,
+  "recovery_details": "Replaced worn dispensing nozzle with 0.25mm gauge needle and purged fluid line.",
+  "performed_by": "technician"
+}
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "issue_condition": "RECOVERY_PENDING_VERIFICATION",
+  "current_revision": 5,
+  "submitted_recovery_action": {
+    "event_type": "RECOVERY_ACTION",
+    "prior_issue_condition": "UNRESOLVED",
+    "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+    "resulting_revision_number": 5,
+    "actor": "technician",
+    "details": "Replaced worn dispensing nozzle with 0.25mm gauge needle and purged fluid line.",
+    "verification_passed": null,
+    "created_at": "2026-09-14T14:22:00.123456Z"
+  },
+  "lifecycle_events": [ ... ],
+  "diagnosis": {
+    "issue_condition": "RECOVERY_PENDING_VERIFICATION",
+    "analysis_revision": {
+      "revision_number": 5
+    }
+  }
+}
+```
+
+---
+
+#### 7.2 Record Recovery Verification
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/recovery-verifications`
+- **Description:** Records an explicit post-correction verification outcome (e.g. test shots or inspection). If `verification_passed = true`, transitions the issue condition to `RESOLVED`. If `verification_passed = false`, reverts the issue condition to `UNRESOLVED`.
+
+##### Lifecycle & Concurrency Contract
+- **Atomic Revision Advance:** Each accepted verification atomically appends one `CaseLifecycleEvent` record (event_type: `RECOVERY_VERIFICATION`), updates `cases.issue_condition`, and appends one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** Requires `expected_revision`. Stale revisions return `409 Conflict`.
+- **Precondition & State Machine Enforcement:** Recovery verification is accepted **only** when the current persisted issue condition is `RECOVERY_PENDING_VERIFICATION`. Verification submitted from `UNRESOLVED` or `RESOLVED` (for both `verification_passed=true` and `verification_passed=false`) returns controlled `422 Unprocessable Entity` before any lifecycle mutation.
+- **Independence from Cause Confirmation:** An issue can be resolved with or without a confirmed root cause. A confirmed cause remains confirmed even if recovery verification fails.
+- **No Recurrence API:** Recurrence transitions (`RECURRED`) are not supported by this endpoint.
+
+##### Request Schema (`SubmitRecoveryVerificationRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
+| `verification_passed` | `boolean` | **Yes** | — | Outcome: `true` transitions to `RESOLVED`, `false` transitions to `UNRESOLVED`. |
+| `verification_details` | `string` | **Yes** | — | Verification test results, observations, or measurement details (unrestricted text). |
+| `verified_by` | `string` | No | `"technician"` | Identifier or role of actor verifying the recovery (max length 64 characters). |
+
+##### Status and Error Codes
+- `200 OK` — Verification accepted and committed.
+- `404 Not Found` — Case ID does not exist.
+- `409 Conflict` — `expected_revision` is stale or replayed.
+- `422 Unprocessable Entity` — Precondition or illegal transition failure (verification requested when current condition is not `RECOVERY_PENDING_VERIFICATION`, such as from `UNRESOLVED` or `RESOLVED`), empty details, `verified_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
+
+##### Representative Request Example
+```json
+{
+  "expected_revision": 5,
+  "verification_passed": true,
+  "verification_details": "Ran 50 test dot shots; dot diameter measured at 0.45mm +/- 0.02mm, well within tolerance.",
+  "verified_by": "qa_engineer"
+}
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "issue_condition": "RESOLVED",
+  "current_revision": 6,
+  "submitted_recovery_verification": {
+    "event_type": "RECOVERY_VERIFICATION",
+    "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+    "resulting_issue_condition": "RESOLVED",
+    "resulting_revision_number": 6,
+    "actor": "qa_engineer",
+    "details": "Ran 50 test dot shots; dot diameter measured at 0.45mm +/- 0.02mm, well within tolerance.",
+    "verification_passed": true,
+    "created_at": "2026-09-14T14:25:00.123456Z"
+  },
+  "lifecycle_events": [ ... ],
+  "diagnosis": {
+    "issue_condition": "RESOLVED",
+    "analysis_revision": {
+      "revision_number": 6
+    }
+  }
+}
+```
+
+---
+
+### 8. Resolved-Issue Recurrence Reporting
+
+#### 8.1 Report Recurrence of a Resolved Issue
+
+- **Method / Path:** `POST /api/v1/cases/{case_id}/recurrences`
+- **Description:** Records explicit reporting that a previously verified `RESOLVED` issue has recurred. Transitions the case issue condition from `RESOLVED` to `RECURRED` via the domain `StateManager`. Does **not** automatically start a new recovery cycle and does **not** alter cause confirmation conclusions.
+
+##### Lifecycle & Concurrency Contract
+- **Atomic Revision Advance:** Each accepted recurrence submission atomically appends one `CaseLifecycleEvent` record (event_type: `RECURRENCE`), advances `cases.issue_condition` to `RECURRED`, and appends one new immutable `AnalysisRevision` snapshot (`revision_number = N + 1`).
+- **Optimistic Concurrency Control:** Requires `expected_revision`. Stale or replayed revisions return `409 Conflict` and commit zero mutations.
+- **Precondition & State Machine Enforcement:** Recurrence reporting is accepted **only** when the current persisted issue condition is `RESOLVED`. Recurrence requested from `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED` returns controlled `422 Unprocessable Entity` before any lifecycle mutation.
+- **Independence from Cause Conclusions:** A recurrence report leaves existing cause conclusions unchanged. A previously confirmed cause remains confirmed; an unconfirmed cause does not become confirmed merely because recurrence was reported.
+- **No Automatic Recovery or Report Generation:** Does not automatically start a new recovery cycle, enter `RECOVERY_PENDING_VERIFICATION`, or generate reports/exports.
+
+##### Request Schema (`SubmitRecurrenceRequest`)
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
+| `recurrence_details` | `string` | **Yes** | — | Description of recurred defect observations or symptoms (unrestricted non-empty text). |
+| `reported_by` | `string` | No | `"technician"` | Identifier or role of actor reporting the recurrence (max length 64 characters). |
+
+##### Status and Error Codes
+- `200 OK` — Recurrence accepted and revision N+1 committed.
+- `404 Not Found` — Case ID does not exist.
+- `409 Conflict` — `expected_revision` is stale or replayed.
+- `422 Unprocessable Entity` — Precondition or validation failure (issue condition not `RESOLVED`, e.g. `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED`; empty details; `reported_by` exceeding 64 characters; or malformed UUID).
+- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
+
+##### Representative Request Example
+```json
+{
+  "expected_revision": 6,
+  "recurrence_details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+  "reported_by": "technician_dan"
+}
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "issue_condition": "RECURRED",
+  "current_revision": 7,
+  "submitted_recurrence": {
+    "event_type": "RECURRENCE",
+    "prior_issue_condition": "RESOLVED",
+    "resulting_issue_condition": "RECURRED",
+    "resulting_revision_number": 7,
+    "actor": "technician_dan",
+    "details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+    "verification_passed": null,
+    "created_at": "2026-09-14T16:00:00.123456Z"
+  },
+  "submitted_event": {
+    "event_type": "RECURRENCE",
+    "prior_issue_condition": "RESOLVED",
+    "resulting_issue_condition": "RECURRED",
+    "resulting_revision_number": 7,
+    "actor": "technician_dan",
+    "details": "Dot size variation observed again after 2 hours of continuous dispensing.",
+    "verification_passed": null,
+    "created_at": "2026-09-14T16:00:00.123456Z"
+  },
+  "lifecycle_events": [ ... ],
+  "confirmed_cause": "nozzle_restriction",
+  "diagnosis": {
+    "issue_condition": "RECURRED",
+    "analysis_revision": {
+      "revision_number": 7
+    }
+  }
+}
+```
+
+---
+
+### 9. Durable Case Report Export
+
+#### 9.1 Export Full Case Report
+
+- **Method / Path:** `GET /api/v1/cases/{case_id}/report`
+- **Description:** Returns a complete, deterministic, and durable read-model report of a troubleshooting case. Assembles the report entirely from persistent database records and audit revision history without invoking the diagnostic engine, recalculating scores, advancing state, creating revisions, or writing audit records.
+
+##### Read-Only & Zero Recalculation Contract
+- **No Diagnostic Recalculation:** Assembles the report strictly from persisted tables (`cases`, `analysis_revisions`, `question_answer_revisions`, `check_result_revisions`, `cause_confirmation_revisions`, `case_lifecycle_events`). Diagnostic engine rules and scoring logic are never invoked.
+- **Zero Mutation:** Operates strictly within a read-only transaction. No database tables are inserted, updated, or deleted; no analysis revisions or lifecycle event records are generated.
+- **Deterministic History Ordering:** All audit event arrays (`question_answers`, `check_results`, `cause_confirmations`, `lifecycle_events`) are guaranteed to be sorted in strict ascending chronological and revision order.
+- **Empty History Handling:** Cases with no question answers, check results, cause confirmations, or lifecycle events return empty lists (`[]`) without synthetic or fabricated events.
+- **Document Rendering Notice:** Returns structured JSON only. Binary PDF, Word/DOCX, or HTML document rendering is explicitly deferred to future increments.
+
+##### Response Schema (`CaseReportResponse`)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | `string` | **Yes** | Unique case identifier. |
+| `current_revision` | `integer` | **Yes** | Current revision number of the case. |
+| `defect_code` | `string` | No | Persisted defect code identifier (e.g. 'D03_INCONSISTENT_SIZE'). |
+| `defect_name` | `string` | No | Persisted human-readable defect title. |
+| `description` | `string` | **Yes** | Problem description provided by technician. |
+| `material` | `string` | No | Dispensed fluid material name or category. |
+| `method` | `string` | No | Dispensing method (e.g. 'jetting', 'time_pressure'). |
+| `machine_context` | `object` | No | Equipment/process parameters. |
+| `issue_condition` | `string` | **Yes** | Current issue condition (`UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, `RECURRED`). |
+| `created_at` | `datetime` | **Yes** | Case creation timestamp (ISO-8601). |
+| `current_diagnosis` | `DiagnosisResult` | **Yes** | Current analysis snapshot from the latest analysis revision (aliased as `diagnosis`). |
+| `diagnosis` | `DiagnosisResult` | **Yes** | Alias for `current_diagnosis`. |
+| `question_answers` | `array[QuestionAnswerRecord]` | **Yes** | Historical question-answer submissions in ascending revision order (aliased as `question_answer_history`). |
+| `question_answer_history` | `array[QuestionAnswerRecord]` | **Yes** | Alias for `question_answers`. |
+| `check_results` | `array[CheckResultRecord]` | **Yes** | Historical troubleshooting check results in ascending revision order (aliased as `troubleshooting_check_history`). |
+| `troubleshooting_check_history` | `array[CheckResultRecord]` | **Yes** | Alias for `check_results`. |
+| `cause_confirmations` | `array[CauseConfirmationRecord]` | **Yes** | Historical cause confirmation submissions in ascending revision order (aliased as `cause_confirmation_history`). |
+| `cause_confirmation_history` | `array[CauseConfirmationRecord]` | **Yes** | Alias for `cause_confirmations`. |
+| `lifecycle_events` | `array[LifecycleEventRecord]` | **Yes** | Complete audit log of lifecycle transitions in ascending revision order (aliased as `issue_lifecycle_history`). |
+| `issue_lifecycle_history` | `array[LifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
+| `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the persisted outcome state (aliased as `current_outcome_summary`). |
+| `current_outcome_summary` | `CaseOutcomeSummary` | **Yes** | Alias for `outcome_summary`. |
+
+##### Outcome Summary Schema (`CaseOutcomeSummary`)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `issue_condition` | `string` | **Yes** | Current case issue condition (`UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, `RESOLVED`, or `RECURRED`). |
+| `current_revision` | `integer` | **Yes** | Current revision number of the case. |
+| `confirmed_causes` | `array[string]` | **Yes** | List of confirmed root causes (aliased as `currently_confirmed_causes`). |
+| `currently_confirmed_causes` | `array[string]` | **Yes** | Alias for `confirmed_causes`. |
+| `is_resolved` | `boolean` | **Yes** | Whether the case is currently in `RESOLVED` condition (aliased as `resolved`). |
+| `resolved` | `boolean` | **Yes** | Alias for `is_resolved`. |
+
+##### Status and Error Codes
+- `200 OK` — Complete report assembled and returned.
+- `404 Not Found` — Case ID does not exist in database.
+- `422 Unprocessable Entity` — Invalid case ID format (not a valid UUID).
+- `500 Internal Server Error` — Sanitized unexpected error during report assembly; raw internal details and paths are never exposed.
+
+##### Representative Request Example
+```http
+GET /api/v1/cases/514614df-ea4c-4855-be1e-98ea73135a8d/report HTTP/1.1
+Host: localhost:8000
+Accept: application/json
+```
+
+##### Representative Response Example (`200 OK`)
+```json
+{
+  "case_id": "514614df-ea4c-4855-be1e-98ea73135a8d",
+  "current_revision": 6,
+  "defect_code": "D03_INCONSISTENT_SIZE",
+  "defect_name": "Inconsistent Dot Size",
+  "description": "Dispense dots are shrinking over time during continuous operation",
+  "material": "solder_paste",
+  "method": "jetting",
+  "machine_context": null,
+  "issue_condition": "RESOLVED",
+  "created_at": "2026-09-14T10:00:00Z",
+  "current_diagnosis": {
+    "defect_category": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "issue_condition": "RESOLVED",
+    "analysis_revision": {
+      "revision_number": 6
+    },
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "name": "Nozzle Restriction / Clog",
+        "score": 45.0,
+        "is_confirmed": true,
+        "conclusion": "CONFIRMED"
+      }
+    ],
+    "unconfirmed_causes": []
+  },
+  "diagnosis": {
+    "defect_category": "D03_INCONSISTENT_SIZE",
+    "defect_name": "Inconsistent Dot Size",
+    "issue_condition": "RESOLVED",
+    "analysis_revision": {
+      "revision_number": 6
+    },
+    "ranked_causes": [
+      {
+        "cause_id": "nozzle_restriction",
+        "name": "Nozzle Restriction / Clog",
+        "score": 45.0,
+        "is_confirmed": true,
+        "conclusion": "CONFIRMED"
+      }
+    ],
+    "unconfirmed_causes": []
+  },
+  "question_answers": [
+    {
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "answer_text": null,
+      "source": "USER",
+      "answered_at": "2026-09-14T10:05:00Z",
+      "resulting_revision_number": 2
+    }
+  ],
+  "question_answer_history": [
+    {
+      "question_id": "Q01",
+      "answer_value": "after_prolonged_operation",
+      "answer_text": null,
+      "source": "USER",
+      "answered_at": "2026-09-14T10:05:00Z",
+      "resulting_revision_number": 2
+    }
+  ],
+  "check_results": [
+    {
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "finding_details": null,
+      "outcome": "air_bubbles_found",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T10:10:00Z",
+      "resulting_revision_number": 3
+    }
+  ],
+  "troubleshooting_check_history": [
+    {
+      "check_id": "ACT02",
+      "execution_status": "COMPLETED",
+      "finding": "SUPPORTS",
+      "finding_details": null,
+      "outcome": "air_bubbles_found",
+      "source": "USER_CHECK_RESULT",
+      "checked_at": "2026-09-14T10:10:00Z",
+      "resulting_revision_number": 3
+    }
+  ],
+  "cause_confirmations": [
+    {
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "lead_tech",
+      "notes": "Verified restriction via microscopic inspection",
+      "confirmed_at": "2026-09-14T10:12:00Z",
+      "resulting_revision_number": 4
+    }
+  ],
+  "cause_confirmation_history": [
+    {
+      "cause_id": "nozzle_restriction",
+      "confirmed_by": "lead_tech",
+      "notes": "Verified restriction via microscopic inspection",
+      "confirmed_at": "2026-09-14T10:12:00Z",
+      "resulting_revision_number": 4
+    }
+  ],
+  "lifecycle_events": [
+    {
+      "event_type": "RECOVERY_ACTION",
+      "prior_issue_condition": "UNRESOLVED",
+      "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_revision_number": 5,
+      "actor": "technician",
+      "details": "Replaced fluid syringe and cleaned nozzle",
+      "verification_passed": null,
+      "created_at": "2026-09-14T10:15:00Z"
+    },
+    {
+      "event_type": "RECOVERY_VERIFICATION",
+      "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_issue_condition": "RESOLVED",
+      "resulting_revision_number": 6,
+      "actor": "qa_engineer",
+      "details": "100 test shots verified within nominal dot tolerance",
+      "verification_passed": true,
+      "created_at": "2026-09-14T10:20:00Z"
+    }
+  ],
+  "issue_lifecycle_history": [
+    {
+      "event_type": "RECOVERY_ACTION",
+      "prior_issue_condition": "UNRESOLVED",
+      "resulting_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_revision_number": 5,
+      "actor": "technician",
+      "details": "Replaced fluid syringe and cleaned nozzle",
+      "verification_passed": null,
+      "created_at": "2026-09-14T10:15:00Z"
+    },
+    {
+      "event_type": "RECOVERY_VERIFICATION",
+      "prior_issue_condition": "RECOVERY_PENDING_VERIFICATION",
+      "resulting_issue_condition": "RESOLVED",
+      "resulting_revision_number": 6,
+      "actor": "qa_engineer",
+      "details": "100 test shots verified within nominal dot tolerance",
+      "verification_passed": true,
+      "created_at": "2026-09-14T10:20:00Z"
+    }
+  ],
+  "outcome_summary": {
+    "issue_condition": "RESOLVED",
+    "current_revision": 6,
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "currently_confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "is_resolved": true,
+    "resolved": true
+  },
+  "current_outcome_summary": {
+    "issue_condition": "RESOLVED",
+    "current_revision": 6,
+    "confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "currently_confirmed_causes": [
+      "nozzle_restriction"
+    ],
+    "is_resolved": true,
+    "resolved": true
+  }
+}
+```
+
+---
+
+## 10. Downloadable PDF Case Report Export
+
+### 10.1 `GET /api/v1/cases/{case_id}/report.pdf`
+Renders and downloads a deterministic, printable PDF document of a durable diagnostic case directly from the accepted persisted read model (`CaseReportResponse`).
+
+#### Guarantees and Architecture
+- **Same Report Basis**: Reuses the exact same pinned revision basis and scoping logic as the JSON case report (`build_case_report`).
+- **Zero Recalculation**: `DiagnosticEngine.diagnose()` and inference rules are never rerun.
+- **Zero Mutation**: Generates no database writes, updates no timestamps, creates no revisions or lifecycle events, and leaves durable state strictly identical before and after.
+- **No PDF Persistence**: PDFs are rendered on request in memory and streamed directly; no PDF blobs, tables, or storage buckets are introduced.
+- **Deterministic Presentation**: Sections, audit events, tables, running headers, and "Page X of Y" pagination are assembled deterministically.
+
+#### Request
+```http
+GET /api/v1/cases/514614df-ea4c-4855-be1e-98ea73135a8d/report.pdf HTTP/1.1
+Host: localhost:8000
+Accept: application/pdf
+```
+
+#### Response
+##### Headers
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="dispenseiq-case-514614df-ea4c-4855-be1e-98ea73135a8d-r6.pdf"`
+
+##### Status and Error Codes
+- `200 OK` — Complete PDF document rendered and streamed.
+- `404 Not Found` — Case ID does not exist in persistent storage.
+- `422 Unprocessable Entity` — Case ID is not a valid UUID format.
+- `500 Internal Server Error` — Unexpected rendering failure; returns sanitized JSON without leaking internal traces or credentials.
+
+##### Rendered Document Structure
+1. **Document Header**: Title, Case Identifier, Report Revision, Case Created Timestamp.
+2. **Case Identity & Process Context**: Case ID, Current Revision, Defect Category, Defect Name, Issue Condition, Created Timestamp, Fluid Material, Dispense Method, Problem Description, Machine Context.
+3. **Current Outcome Summary**: Issue Condition, Revision Basis, Confirmed Root Causes, Resolution Status (`RESOLVED` / `UNRESOLVED`).
+4. **Current Diagnosis Snapshot**: Latest persisted analysis revision snapshot, ranked causes with scores, conclusion status, confirmed indicators, diagnostic explanation, supporting/contradicting/neutral evidence per candidate cause, and recommended next steps.
+5. **Technician Question-Answer History**: Ascending revision/timestamp table of question IDs, answers, answerer source, and timestamps with item count header (`Question Answers (N)` or `None recorded.`).
+6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps with item count header (`Troubleshooting Checks (N)` or `None recorded.`).
+7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps with item count header (`Cause Confirmations (N)` or `None recorded.`).
+8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps with item count header (`Lifecycle Events (N)` or `None recorded.`).
+9. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
+
+---
+
 ## Error Handling
 
 ### HTTP 404 Not Found
@@ -1886,7 +2671,7 @@ Example (`GET /api/v1/cases/00000000-0000-0000-0000-000000000000`):
 ```
 
 ### HTTP 409 Conflict
-Returned when submitting a question answer with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
+Returned when submitting a question answer, troubleshooting check result, cause confirmation, recovery action, recovery verification, or recurrence report with an `expected_revision` that does not match the latest persisted revision of the case (optimistic concurrency violation).
 
 Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with stale `expected_revision: 1` when case is at revision 2):
 ```json
@@ -1894,7 +2679,7 @@ Example (`POST /api/v1/cases/e1b68f9a-1175-4189-aedf-24a6cd637f97/answers` with 
   "detail": "Stale revision for case 'e1b68f9a-1175-4189-aedf-24a6cd637f97': expected revision 1, but current revision is 2."
 }
 ```
-*Note: No partial writes, answer records, observation rows, or revision snapshots are committed on a 409 Conflict.*
+*Note: No partial writes, answer records, check result records, confirmation records, lifecycle event records, observation rows, or revision snapshots are committed on a 409 Conflict.*
 
 ### HTTP 422 Unprocessable Entity
 Returned when request input fails validation rules. Validation errors are returned as a structured array or error detail.
@@ -1996,6 +2781,34 @@ Example response (durable case retrieval failure):
   "detail": "An unexpected error occurred while retrieving the case."
 }
 ```
+
+Example response (recovery action failure):
+```json
+{
+  "detail": "An unexpected error occurred while recording the recovery action."
+}
+```
+
+Example response (recovery verification failure):
+```json
+{
+  "detail": "An unexpected error occurred while recording the recovery verification."
+}
+```
+
+Example response (recurrence reporting failure):
+```json
+{
+  "detail": "An unexpected error occurred while submitting the issue recurrence."
+}
+```
+
+Example response (case report generation failure):
+```json
+{
+  "detail": "An unexpected error occurred while generating the case report."
+}
+```
 *Note: Exception details, stack traces, database URLs, credentials, SQL statements, file system paths, and submitted user data are sanitized and never exposed in the response.*
 
 ---
@@ -2013,3 +2826,19 @@ Example response (durable case retrieval failure):
    - Use `POST /api/v1/diagnoses` for quick ad-hoc analysis or automated smoke checks where persistent state is not required.
    - Use `POST /api/v1/cases` when initiating a troubleshooting case that will be tracked, queried, or advanced across multiple steps or sessions.
    - When viewing an existing case, use `GET /api/v1/cases/{case_id}` to retrieve the stored diagnosis and observations. Retrieval is instant, idempotent, and performs no recalculation.
+
+4. **Recovery Actions and Verification Workflow:**
+   - When corrective actions are taken, submit `POST /api/v1/cases/{case_id}/recovery-actions` to mark the issue as `RECOVERY_PENDING_VERIFICATION`. Do not assume the issue is resolved.
+   - After testing (e.g. test shots or inspection), submit `POST /api/v1/cases/{case_id}/recovery-verifications` with `verification_passed: true` (transitions to `RESOLVED`) or `verification_passed: false` (reverts to `UNRESOLVED`).
+   - Root cause confirmation and issue resolution are independent: an issue may be resolved without a confirmed root cause, and a confirmed root cause remains confirmed even if a recovery verification fails.
+
+5. **Recurrence Reporting Workflow:**
+   - When an issue that was previously `RESOLVED` recurs in production, submit `POST /api/v1/cases/{case_id}/recurrences` with the current revision and descriptive recurrence details.
+   - Recurrence reporting transitions the condition from `RESOLVED` to `RECURRED`. It is valid **only** from `RESOLVED`; calling this endpoint on an `UNRESOLVED` or `RECOVERY_PENDING_VERIFICATION` case returns HTTP 422.
+   - Recurrence does not automatically initiate recovery or alter prior root-cause confirmation.
+
+6. **Durable Case Report Export:**
+   - Use `GET /api/v1/cases/{case_id}/report` to retrieve the comprehensive, deterministic read-model for a case.
+   - The report contains the complete case profile, latest diagnosis snapshot, complete audit history (`question_answers`, `check_results`, `cause_confirmations`, `lifecycle_events`) in strict ascending revision order, and a compact `outcome_summary`.
+   - The endpoint performs zero diagnostic recalculation and commits zero mutations.
+   - Note that deterministic binary PDF document export is supported via `GET /api/v1/cases/{case_id}/report.pdf`, rendering directly from this read model with zero mutations and zero PDF persistence.

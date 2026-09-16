@@ -369,7 +369,6 @@ _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]
     },
     "ACT03": {
         "high_variation": (ObservationType.DEPOSIT_SIZE, "inconsistent"),
-        "consistent_but_wrong_size": (ObservationType.DEPOSIT_SIZE, "undersized"),
     },
     "ACT04": {
         "pressure_unstable": (ObservationType.PRESSURE, "fluctuating"),
