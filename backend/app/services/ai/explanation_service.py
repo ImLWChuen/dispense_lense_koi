@@ -89,21 +89,24 @@ class ExplanationService:
 
         # Attempt bounded LLM generation if service is available
         if self.llm.is_available:
-            system_prompt, user_prompt = self.prompt_manager.get_diagnosis_explanation_prompt(
-                top_cause_name=top_cause_name,
-                top_cause_score=top_cause_score,
-                supporting_evidence=supporting,
-                contradicting_evidence=contradicting,
-                missing_evidence=missing,
-                confirmed_causes=confirmed,
-                recommended_action=rec_action_str,
-                recommended_question=rec_q_str,
-            )
-            raw_explanation = self.llm.generate_text(user_prompt, system_prompt=system_prompt)
-            if raw_explanation and self._validate_explanation(raw_explanation, case):
-                return raw_explanation.strip()
-            else:
-                logger.info("ExplanationService: LLM explanation unavailable or rejected; falling back to deterministic template.")
+            try:
+                system_prompt, user_prompt = self.prompt_manager.get_diagnosis_explanation_prompt(
+                    top_cause_name=top_cause_name,
+                    top_cause_score=top_cause_score,
+                    supporting_evidence=supporting,
+                    contradicting_evidence=contradicting,
+                    missing_evidence=missing,
+                    confirmed_causes=confirmed,
+                    recommended_action=rec_action_str,
+                    recommended_question=rec_q_str,
+                )
+                raw_explanation = self.llm.generate_text(user_prompt, system_prompt=system_prompt)
+                if raw_explanation and self._validate_explanation(raw_explanation, case):
+                    return raw_explanation.strip()
+                else:
+                    logger.info("ExplanationService: LLM explanation unavailable or rejected; falling back to deterministic template.")
+            except Exception as e:
+                logger.warning("ExplanationService: Exception during LLM generation (%s); falling back to deterministic template.", e)
 
         # Deterministic fallback
         return self._build_deterministic_explanation(
@@ -129,15 +132,18 @@ class ExplanationService:
             return "No rank or score changes detected in this revision."
 
         if self.llm.is_available:
-            sys_prompt, user_prompt = self.prompt_manager.get_score_change_prompt(
-                revision_from=from_rev,
-                revision_to=to_rev,
-                changes=changes,
-                new_evidence=new_evidence,
-            )
-            explanation = self.llm.generate_text(user_prompt, system_prompt=sys_prompt)
-            if explanation:
-                return explanation.strip()
+            try:
+                sys_prompt, user_prompt = self.prompt_manager.get_score_change_prompt(
+                    revision_from=from_rev,
+                    revision_to=to_rev,
+                    changes=changes,
+                    new_evidence=new_evidence,
+                )
+                explanation = self.llm.generate_text(user_prompt, system_prompt=sys_prompt)
+                if explanation:
+                    return explanation.strip()
+            except Exception as e:
+                logger.warning("ExplanationService: Exception during score change explanation (%s); falling back to deterministic template.", e)
 
         # Deterministic fallback
         lines = [f"Changes between Revision {from_rev} and Revision {to_rev}:"]
