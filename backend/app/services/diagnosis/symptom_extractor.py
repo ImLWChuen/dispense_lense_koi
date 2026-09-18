@@ -83,7 +83,7 @@ _add_rule(r"\b(worse(ns?)?\s*over\s*time|gradual(ly)?|progressive(ly)?)\b",
 
 
 # --- frequency ---
-_add_rule(r"\b(intermittent|sometimes|occasional|sporadic|random(ly)?)\b",
+_add_rule(r"\b(intermittent(ly)?|sometimes|occasional(ly)?|sporadic(ally)?|random(ly)?)\b",
           ObservationType.FREQUENCY_PATTERN, "intermittent")
 _add_rule(r"\b(always|every\s*time|consistent(ly)?|constant(ly)?|every\s*shot|all\s*the\s*time)\b",
           ObservationType.FREQUENCY_PATTERN, "consistent")
