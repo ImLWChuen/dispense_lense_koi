@@ -80,9 +80,8 @@ class Settings:
     cors_origins: list[str] = field(default_factory=lambda: list(DEFAULT_CORS_ORIGINS))
 
     # Bounded LLM Configuration
-    gemini_api_key: str | None = None
-    gemini_model: str = "gemini-1.5-flash"
-    gemini_api_base: str = "https://generativelanguage.googleapis.com/v1beta"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
     llm_timeout_seconds: float = 10.0
 
     @classmethod
@@ -99,13 +98,8 @@ class Settings:
         else:
             cors_origins = list(DEFAULT_CORS_ORIGINS)
 
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY")
-        model = os.environ.get("GEMINI_MODEL") or os.environ.get("LLM_MODEL") or "gemini-1.5-flash"
-        api_base = (
-            os.environ.get("GEMINI_API_BASE")
-            or os.environ.get("LLM_API_BASE")
-            or "https://generativelanguage.googleapis.com/v1beta"
-        ).rstrip("/")
+        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY")
+        model = os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_MODEL") or "gpt-4o-mini"
 
         raw_timeout = os.environ.get("LLM_TIMEOUT_SECONDS", "10.0")
         try:
@@ -115,9 +109,8 @@ class Settings:
 
         return cls(
             cors_origins=cors_origins,
-            gemini_api_key=api_key,
-            gemini_model=model,
-            gemini_api_base=api_base,
+            openai_api_key=api_key,
+            openai_model=model,
             llm_timeout_seconds=timeout,
         )
 

@@ -14,13 +14,18 @@ export default function NewDiagnosisPage() {
     const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [imageObservations, setImageObservations] = useState<any[]>([]);
+
+    const handleImageAnalysisComplete = (newObservations: any[]) => {
+        setImageObservations((prev) => [...prev, ...newObservations]);
+    };
 
     const handleSubmit = async (data: Record<string, unknown>) => {
         setIsSubmitting(true);
         setError(null);
 
         try {
-            const observations: Observation[] = [];
+            const observations: Observation[] = [...imageObservations];
             
             if (data.depositSize) {
                 observations.push({
@@ -98,7 +103,7 @@ export default function NewDiagnosisPage() {
                         </div>
 
                         <div>
-                            <ImageUpload />
+                            <ImageUpload onAnalysisComplete={handleImageAnalysisComplete} />
 
                             {/* Tips Card */}
                             <div className="mt-6 rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-5">
