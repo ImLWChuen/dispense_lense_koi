@@ -1,7 +1,7 @@
 """
 DispenseIQ — Bounded LLM Service
 
-Handles external LLM communication (e.g. Google Gemini API via REST).
+Handles external LLM communication using OpenAI API.
 The LLM is strictly a supporting component, not the diagnostic authority.
 
 Allowed uses:
@@ -26,14 +26,13 @@ import os
 import re
 from typing import Any
 
-import httpx
-
+from openai import OpenAI, OpenAIError, APITimeoutError
 from app.core.config import get_settings
 from app.services.ai.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 
 
@@ -44,31 +43,30 @@ class LLMService:
         self,
         api_key: str | None = None,
         model_name: str | None = None,
-        api_base: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         prompt_manager: PromptManager | None = None,
     ) -> None:
         settings = get_settings()
         self.api_key = (
             api_key
-            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
             or os.environ.get("LLM_API_KEY")
-            or settings.gemini_api_key
+            or settings.openai_api_key
         )
         self.model_name = (
             model_name
-            or os.environ.get("GEMINI_MODEL")
+            or os.environ.get("OPENAI_MODEL")
             or os.environ.get("LLM_MODEL")
-            or settings.gemini_model
+            or settings.openai_model
+            or DEFAULT_OPENAI_MODEL
         )
-        self.api_base = (
-            api_base
-            or os.environ.get("GEMINI_API_BASE")
-            or os.environ.get("LLM_API_BASE")
-            or settings.gemini_api_base
-        ).rstrip("/")
         self.timeout = timeout if timeout != DEFAULT_TIMEOUT_SECONDS else settings.llm_timeout_seconds
         self.prompt_manager = prompt_manager or PromptManager()
+
+        if self.is_available:
+            self.client = OpenAI(api_key=self.api_key, timeout=self.timeout)
+        else:
+            self.client = None
 
     @property
     def is_available(self) -> bool:
@@ -85,52 +83,30 @@ class LLMService:
         system_prompt: str | None = None,
     ) -> str | None:
         """Generate text from LLM. Returns None on failure or if unconfigured."""
-        if not self.is_available:
+        if not self.is_available or not self.client:
             logger.debug("LLMService: No API key configured; skipping LLM call.")
             return None
 
         try:
-            url = f"{self.api_base}/models/{self.model_name}:generateContent"
-            params = {"key": self.api_key}
-
-            payload: dict[str, Any] = {
-                "contents": [
-                    {
-                        "parts": [{"text": prompt}],
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 1024,
-                },
-            }
-
+            messages = []
             if system_prompt:
-                payload["systemInstruction"] = {
-                    "parts": [{"text": system_prompt}]
-                }
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, params=params, json=payload)
-                response.raise_for_status()
-                data = response.json()
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=1024,
+            )
+            
+            return response.choices[0].message.content.strip() if response.choices else None
 
-            candidates = data.get("candidates", [])
-            if not candidates:
-                logger.warning("LLMService: Empty candidate list in response")
-                return None
-
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                return None
-
-            return parts[0].get("text", "").strip()
-
-        except httpx.TimeoutException:
+        except APITimeoutError:
             logger.warning(f"LLMService: Timeout after {self.timeout}s during text generation")
             return None
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"LLMService: HTTP {e.response.status_code} from Gemini API: {e.response.text}")
+        except OpenAIError as e:
+            logger.warning(f"LLMService: OpenAI error during text generation: {e}")
             return None
         except Exception as e:
             logger.warning(f"LLMService: Unexpected error during text generation: {e}")
@@ -142,57 +118,42 @@ class LLMService:
         system_prompt: str | None = None,
     ) -> dict[str, Any] | None:
         """Generate structured JSON from LLM. Returns None on failure or invalid JSON."""
-        if not self.is_available:
+        if not self.is_available or not self.client:
             logger.debug("LLMService: No API key configured; skipping structured LLM call.")
             return None
 
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-            params = {"key": self.api_key}
-
-            payload: dict[str, Any] = {
-                "contents": [
-                    {
-                        "parts": [{"text": prompt}],
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.1,
-                    "responseMimeType": "application/json",
-                    "maxOutputTokens": 1024,
-                },
-            }
-
+            messages = []
             if system_prompt:
-                payload["systemInstruction"] = {
-                    "parts": [{"text": system_prompt}]
-                }
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, params=params, json=payload)
-                response.raise_for_status()
-                data = response.json()
-
-            candidates = data.get("candidates", [])
-            if not candidates:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=1024,
+                response_format={ "type": "json_object" }
+            )
+            
+            if not response.choices:
                 return None
 
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                return None
-
-            raw_text = parts[0].get("text", "").strip()
-            # Clean possible markdown code fences
+            raw_text = response.choices[0].message.content.strip()
+            # Clean possible markdown code fences just in case
             cleaned = re.sub(r"^```json\s*", "", raw_text, flags=re.IGNORECASE)
             cleaned = re.sub(r"\s*```$", "", cleaned)
 
             return json.loads(cleaned)
 
-        except httpx.TimeoutException:
+        except APITimeoutError:
             logger.warning(f"LLMService: Timeout after {self.timeout}s during structured generation")
             return None
         except json.JSONDecodeError as e:
             logger.warning(f"LLMService: Malformed JSON output from LLM: {e}")
+            return None
+        except OpenAIError as e:
+            logger.warning(f"LLMService: OpenAI error during structured generation: {e}")
             return None
         except Exception as e:
             logger.warning(f"LLMService: Unexpected error during structured generation: {e}")
