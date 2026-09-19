@@ -60,15 +60,9 @@ from tests.unit.test_persistence_safety import assert_safe_test_database
 
 
 @pytest.fixture(scope="session", autouse=True)
-def configure_test_environment() -> None:
+def configure_test_environment(test_database_url: str) -> None:
     """Configure and verify real PostgreSQL connection URL for tests."""
-    if not os.environ.get("DATABASE_URL"):
-        os.environ["DATABASE_URL"] = (
-            "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
-        )
-    url = get_database_url()
-    assert_safe_test_database(url)
-    reset_engine()
+    pass
 
 
 @pytest.fixture

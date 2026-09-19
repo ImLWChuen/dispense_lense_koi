@@ -2,7 +2,28 @@
 
 ## Current milestone
 
-Final backend MVP acceptance and contract hardening
+Member 3 stabilization: runnable offline baseline and lossless troubleshooting history
+
+## Accepted current task
+
+- `DLK-M3-025` — Restore safe backend startup and offline troubleshooting baseline — **accepted**
+  - reviewed commit: `f1db85435b177dd9961a14116900c03556a912de`
+  - verification: Gemini reports 401 backend tests passed; reviewer source review, task validation and committed whitespace checks passed; no independent backend rerun
+  - review: `.agents/handoff/reviews/DLK-M3-025-review.md`
+  - corrections addressed (R1–R7): restored migration environment via try/finally; isolated offline tests from real .env loading and shell overrides; exercised mocked provider timeout and error paths with exact deterministic parity assertions; rejected ambiguous development database destinations before rebinding; preserved in-process TestClient requests while blocking outbound transport; exercised actual production .env loader in isolation; gated migrations behind exit-code checked validation; verified development database nonmutation via table counts and sample identity checks
+  - task: `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-024`
+  - outcome: synchronized declared dependencies, deterministic no-key operation, frontend port-3001 CORS, and a separate fail-closed PostgreSQL test destination that preserves development records
+  - explicit exclusions: image/CV work, check-history repair, diagnostic semantic changes, frontend edits, schema/migration changes, and remote Git operations
+
+## Planned after DLK-M3-025 review
+
+- `DLK-M3-026` — Canonical lossless check-history integrity — **planned, not released**
+  - preserve stored check outcome, provenance, notes, and revision consistently across case responses and reports;
+  - retain compatibility with the teammate check-execution projection;
+  - cover legacy canonical records that do not yet have a projection;
+  - release only after DLK-M3-025 is accepted and current repository evidence is re-inspected.
 
 ## Integration accepted (R4 and R5 resolved)
 

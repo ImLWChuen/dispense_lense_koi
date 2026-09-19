@@ -21,6 +21,16 @@ from app.main import create_app
 from app.services.ai.llm_service import LLMService
 
 
+@pytest.fixture(autouse=True)
+def isolate_teammate_contracts_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate teammate integration contracts from ambient environment variables and .env loading."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
 @pytest.fixture
 def client() -> TestClient:
     """Create a FastAPI test client with CORS and routers configured."""
@@ -54,6 +64,30 @@ def test_cors_simple_request_for_nextjs_frontend(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_cors_preflight_for_nextjs_frontend_port_3001(client: TestClient) -> None:
+    """Ensure OPTIONS preflight requests from Next.js on port 3001 are approved."""
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "http://localhost:3001",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3001"
+    assert "access-control-allow-credentials" in response.headers
+
+
+def test_cors_simple_request_for_nextjs_frontend_port_3001(client: TestClient) -> None:
+    """Ensure GET requests include access-control-allow-origin for Next.js on port 3001."""
+    response = client.get(
+        "/api/v1/health",
+        headers={"Origin": "http://localhost:3001"},
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3001"
 
 
 # ===========================================================================
@@ -133,17 +167,28 @@ def test_list_actions_catalog_endpoint(client: TestClient) -> None:
 # 3. Settings & Zero-Dependency .env Loader
 # ===========================================================================
 
-def test_settings_load_defaults() -> None:
-    """Verify Settings defaults include Next.js origins and gemini model."""
-    settings = get_settings()
+def test_settings_load_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify Settings defaults include Next.js origins (port 3000 and 3001) and openai model in isolation."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LLM_TIMEOUT_SECONDS", raising=False)
+
+    settings = Settings.load()
     assert "http://localhost:3000" in settings.cors_origins
-    assert settings.gemini_model == "gemini-1.5-flash"
-    assert settings.gemini_api_base == "https://generativelanguage.googleapis.com/v1beta"
+    assert "http://127.0.0.1:3000" in settings.cors_origins
+    assert "http://localhost:3001" in settings.cors_origins
+    assert "http://127.0.0.1:3001" in settings.cors_origins
+    assert settings.openai_model == "gpt-4o-mini"
     assert settings.llm_timeout_seconds == 10.0
 
 
 def test_custom_cors_origins_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure CORS_ORIGINS parses comma-separated lists and wildcard."""
+    """Ensure CORS_ORIGINS parses comma-separated lists and wildcard in isolation."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
     monkeypatch.setenv("CORS_ORIGINS", "http://custom-frontend:3000, http://qa.internal:8080")
     settings = Settings.load()
     assert settings.cors_origins == ["http://custom-frontend:3000", "http://qa.internal:8080"]
@@ -158,22 +203,24 @@ def test_custom_cors_origins_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
 # ===========================================================================
 
 def test_llm_service_custom_model_and_api_base(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify LLMService respects custom model names and api_base for alternative models."""
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.0-flash")
-    monkeypatch.setenv("GEMINI_API_BASE", "https://proxy.internal.ai/v1")
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key-12345")
+    """Verify LLMService respects custom model names and settings for alternative models."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
     service = LLMService()
-    assert service.model_name == "gemini-2.0-flash"
-    assert service.api_base == "https://proxy.internal.ai/v1"
+    assert service.model_name == "gpt-4o"
     assert service.is_available is True
 
 
 def test_llm_service_offline_when_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify LLMService gracefully reports unavailable when unconfigured."""
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    """Verify LLMService gracefully reports unavailable when unconfigured without reading .env."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
-    service = LLMService(api_key=None)
+    service = LLMService()
     assert service.is_available is False
+    assert service.client is None
     assert service.generate_text("Test prompt") is None
