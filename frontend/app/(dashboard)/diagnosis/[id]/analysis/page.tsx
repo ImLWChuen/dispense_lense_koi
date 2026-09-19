@@ -54,14 +54,33 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
     const revisions = caseData?.analysis_revisions || [];
     
     const scoreBreakdown = diagnosis?.ranked_causes?.map(cause => {
+        const positive = Math.round(
+            cause.score_breakdown?.positive_evidence ??
+            (cause.supporting_evidence || []).reduce((sum, item) => sum + (item.score_contribution || 0), 0)
+        );
+        const contradiction = Math.round(
+            cause.score_breakdown?.contradiction_penalty ??
+            (cause.contradicting_evidence || []).reduce((sum, item) => sum + Math.abs(item.score_contribution || 0), 0)
+        );
+        const missing = Math.round(cause.score_breakdown?.missing_penalty || 0);
+        const base = Math.round(cause.score_breakdown?.base || 30);
+        const total = Math.round(cause.score);
+
         return {
             cause: cause.cause_name,
-            base: cause.score_breakdown?.base || 0,
-            question: cause.score_breakdown?.question || 0,
-            check: cause.score_breakdown?.check || 0,
-            total: Math.round(cause.score)
+            base,
+            positive,
+            contradiction,
+            missing,
+            total,
+            supportCount: (cause.supporting_evidence || []).length,
+            contradictCount: (cause.contradicting_evidence || []).length,
         };
     }) || [];
+
+    const caseShortId = caseData?.case_id
+        ? caseData.case_id.substring(0, 8).toUpperCase()
+        : resolvedParams.id.substring(0, 8).toUpperCase();
 
     return (
         <div className="min-h-screen">
@@ -74,7 +93,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · DSP-2026-0185
+                                Diagnostic workflow · DSP-{caseShortId}
                             </p>
 
                             <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
@@ -97,7 +116,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="space-y-6 xl:col-span-2">
-                            <EvidenceGraph />
+                            <EvidenceGraph causes={diagnosis?.ranked_causes || []} />
 
                             {/* Score Breakdown Table */}
                             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -107,7 +126,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                                     </h2>
 
                                     <p className="mt-1 text-xs text-gray-500">
-                                        Contribution from each evidence source
+                                        Contribution from each evidence component: Base + Supporting - Contradictions - Missing Penalty
                                     </p>
                                 </div>
 
@@ -116,7 +135,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                                         <thead>
                                             <tr className="border-b border-gray-100 text-left">
                                                 <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                    Cause
+                                                    Candidate Cause
                                                 </th>
 
                                                 <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -124,48 +143,88 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                                                 </th>
 
                                                 <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                    Questions
+                                                    Positive Evidence
                                                 </th>
 
                                                 <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                    Checks
+                                                    Contradictions
                                                 </th>
 
                                                 <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                    Total
+                                                    Missing Penalty
+                                                </th>
+
+                                                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400 text-right">
+                                                    Final Score
                                                 </th>
                                             </tr>
                                         </thead>
 
                                         <tbody>
-                                            {scoreBreakdown.map((row) => (
-                                                <tr
-                                                    key={row.cause}
-                                                    className="border-b border-gray-50 last:border-0"
-                                                >
-                                                    <td className="px-6 py-3 text-sm font-medium text-gray-900">
-                                                        {row.cause}
-                                                    </td>
-
-                                                    <td className="px-6 py-3 text-sm text-gray-600">
-                                                        {row.base}
-                                                    </td>
-
-                                                    <td className="px-6 py-3 text-sm text-gray-600">
-                                                        +{row.question}
-                                                    </td>
-
-                                                    <td className="px-6 py-3 text-sm text-gray-600">
-                                                        +{row.check}
-                                                    </td>
-
-                                                    <td className="px-6 py-3">
-                                                        <span className="text-sm font-bold text-[#5848e8]">
-                                                            {row.total}
-                                                        </span>
+                                            {scoreBreakdown.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="px-6 py-8 text-center text-xs text-gray-400">
+                                                        No scoring data available.
                                                     </td>
                                                 </tr>
-                                            ))}
+                                            ) : (
+                                                scoreBreakdown.map((row) => (
+                                                    <tr
+                                                        key={row.cause}
+                                                        className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition"
+                                                    >
+                                                        <td className="px-6 py-3.5 text-sm font-semibold text-gray-900">
+                                                            {row.cause}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 text-sm text-gray-600">
+                                                            {row.base}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 text-sm font-medium">
+                                                            {row.positive > 0 ? (
+                                                                <span className="text-[#6d5dfc]">
+                                                                    +{row.positive}
+                                                                    <span className="ml-1 text-[11px] text-gray-400">
+                                                                        ({row.supportCount} {row.supportCount === 1 ? "rule" : "rules"})
+                                                                    </span>
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400">0</span>
+                                                            )}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 text-sm font-medium">
+                                                            {row.contradiction > 0 ? (
+                                                                <span className="text-red-500">
+                                                                    -{row.contradiction}
+                                                                    <span className="ml-1 text-[11px] text-gray-400">
+                                                                        ({row.contradictCount} {row.contradictCount === 1 ? "rule" : "rules"})
+                                                                    </span>
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400">0</span>
+                                                            )}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 text-sm font-medium">
+                                                            {row.missing > 0 ? (
+                                                                <span className="text-amber-600">
+                                                                    -{row.missing}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400">0</span>
+                                                            )}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 text-right">
+                                                            <span className="inline-flex items-center justify-center rounded-lg bg-[#eeebff] px-2.5 py-1 text-sm font-bold text-[#5848e8]">
+                                                                {row.total}%
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>

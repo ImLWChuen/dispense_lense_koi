@@ -1,8 +1,12 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
     AlertTriangle,
     CheckCircle2,
     Clock3,
     Stethoscope,
+    RefreshCw,
 } from "lucide-react";
 
 import Header from "@/components/layout/Header";
@@ -13,8 +17,58 @@ import RecentCases from "@/components/dashboard/RecentCases";
 import DefectDistribution from "@/components/dashboard/DefectDistribution";
 import CauseDistribution from "@/components/dashboard/CauseDistribution";
 import AiInsights from "@/components/dashboard/AiInsights";
+import { analyticsApi, DashboardAnalyticsResponse } from "@/lib/api/analytics";
 
 export default function DashboardPage() {
+    const [data, setData] = useState<DashboardAnalyticsResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [lastSyncTime, setLastSyncTime] = useState<string>("Just now");
+
+    const fetchDashboard = async (showLoading: boolean = true) => {
+        try {
+            if (showLoading) setIsLoading(true);
+            const res = await analyticsApi.getDashboardAnalytics();
+            setData(res);
+            setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        } catch (err) {
+            console.error("Failed to fetch dashboard data:", err);
+        } finally {
+            if (showLoading) setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchDashboard(true);
+
+        // Global real-time SSE listener + 15s heartbeat polling fallback
+        const unsubscribe = analyticsApi.subscribeToEvents((event) => {
+            console.log("Dashboard global sync event received:", event);
+            setIsSyncing(true);
+            fetchDashboard(false);
+            setTimeout(() => setIsSyncing(false), 1500);
+        });
+
+        const pollInterval = setInterval(() => {
+            fetchDashboard(false);
+        }, 15000);
+
+        return () => {
+            unsubscribe();
+            clearInterval(pollInterval);
+        };
+    }, []);
+
+    const handleManualRefresh = () => {
+        setIsSyncing(true);
+        fetchDashboard(false).finally(() => {
+            setTimeout(() => setIsSyncing(false), 800);
+        });
+    };
+
+    const kpis = data?.kpis;
+    const accuracy = kpis?.ai_accuracy_rate ?? 100;
+
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -23,59 +77,84 @@ export default function DashboardPage() {
                 <Header />
 
                 <PageContainer>
-                    <div>
-                        <p className="text-sm font-medium text-[#6d5dfc]">
-                            Operations overview
-                        </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-[#6d5dfc]">
+                                Operations overview
+                            </p>
 
-                        <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                            Good morning, Sarah
-                        </h1>
+                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                                Diagnostic Dashboard
+                            </h1>
 
-                        <p className="mt-2 text-sm text-gray-500">
-                            Monitor dispensing defects, active diagnoses and
-                            troubleshooting performance.
-                        </p>
+                            <p className="mt-2 text-sm text-gray-500">
+                                Monitor live dispensing defects, active diagnoses and troubleshooting performance across operations.
+                            </p>
+                        </div>
+
+                        {/* Global Sync Indicator & Refresh Button */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span>Live Sync</span>
+                                <span className="text-emerald-500 font-mono text-[11px]">({lastSyncTime})</span>
+                            </div>
+
+                            <button
+                                onClick={handleManualRefresh}
+                                disabled={isSyncing}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                                title="Refresh dashboard data"
+                            >
+                                <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
+                                Refresh
+                            </button>
+                        </div>
                     </div>
+
                     <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <KpiCard
                             title="Active Diagnoses"
-                            value="12"
+                            value={isLoading ? "..." : String(kpis?.active_diagnoses ?? 0)}
                             description="currently in progress"
-                            trend="+3"
+                            trend={kpis?.active_diagnoses_trend || "0"}
                             icon={<Stethoscope size={20} />}
                         />
 
                         <KpiCard
                             title="Open Defects"
-                            value="7"
+                            value={isLoading ? "..." : String(kpis?.open_defects ?? 0)}
                             description="awaiting resolution"
-                            trend="-2"
+                            trend={kpis?.open_defects_trend || "0"}
                             icon={<AlertTriangle size={20} />}
                         />
 
                         <KpiCard
                             title="Resolved Cases"
-                            value="184"
-                            description="this month"
-                            trend="+12%"
+                            value={isLoading ? "..." : String(kpis?.resolved_cases ?? 0)}
+                            description="verified resolved cases"
+                            trend={kpis?.resolved_cases_trend || "0%"}
                             icon={<CheckCircle2 size={20} />}
                         />
 
                         <KpiCard
                             title="Avg. Diagnosis Time"
-                            value="8.4 min"
-                            description="vs 14.2 min baseline"
-                            trend="-41%"
+                            value={isLoading ? "..." : `${kpis?.avg_diagnosis_time_minutes ?? 0} min`}
+                            description="from creation to resolution"
+                            trend={kpis?.avg_time_trend || "0%"}
                             icon={<Clock3 size={20} />}
                         />
                     </div>
+
                     <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
                         <div className="relative overflow-hidden rounded-2xl bg-[#171525] p-7 text-white xl:col-span-2">
                             <div className="relative z-10 max-w-xl">
-      <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80">
-        AI-assisted diagnosis
-      </span>
+                                <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80">
+                                    AI-assisted diagnosis
+                                </span>
 
                                 <h2 className="mt-4 text-2xl font-bold tracking-tight">
                                     Something wrong with the dispensing process?
@@ -98,44 +177,52 @@ export default function DashboardPage() {
                             <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#6d5dfc]/20 blur-3xl" />
                         </div>
 
-                        <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                             <p className="text-sm font-semibold text-gray-900">
                                 AI Diagnostic Status
                             </p>
 
                             <p className="mt-1 text-xs text-gray-500">
-                                Current system performance
+                                Current engine accuracy & consistency
                             </p>
 
                             <div className="mt-6">
                                 <div className="flex items-end justify-between">
                                     <span className="text-3xl font-bold text-gray-900">
-                                         92%
+                                        {isLoading ? "..." : `${accuracy}%`}
                                     </span>
 
                                     <span className="text-xs font-medium text-green-600">
-                                        Good
+                                        {accuracy >= 90 ? "Excellent" : accuracy >= 75 ? "Good" : "Normal"}
                                     </span>
                                 </div>
 
                                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
-                                    <div className="h-full w-[92%] rounded-full bg-[#6d5dfc]" />
+                                    <div
+                                        className="h-full rounded-full bg-[#6d5dfc] transition-all duration-500"
+                                        style={{ width: `${Math.min(100, accuracy)}%` }}
+                                    />
                                 </div>
 
                                 <p className="mt-3 text-xs leading-5 text-gray-500">
-                                    Based on recent benchmark scenarios and verified
-                                    engineer outcomes.
+                                    Based on verified engineer cause confirmations and closed diagnostic cases.
                                 </p>
                             </div>
                         </div>
                     </div>
-                    <RecentCases />
+
+                    <RecentCases cases={data?.recent_cases} />
+
                     <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-                        <DefectDistribution />
-                        <CauseDistribution />
+                        <DefectDistribution data={data?.defect_distribution} />
+                        <CauseDistribution data={data?.cause_distribution} />
                     </div>
+
                     <div className="mt-6">
-                        <AiInsights />
+                        <AiInsights
+                            insightText={data?.ai_insight_text}
+                            trendText={data?.ai_insight_trend}
+                        />
                     </div>
                 </PageContainer>
             </div>

@@ -64,6 +64,7 @@ export interface DiagnosisResult {
     next_check?: any;
     issue_condition: "UNRESOLVED" | "RECOVERY_PENDING_VERIFICATION" | "RESOLVED" | "RECURRED";
     analysis_revision?: AnalysisRevision;
+    explanation?: string;
 }
 
 export interface QuestionAnswerRecord {

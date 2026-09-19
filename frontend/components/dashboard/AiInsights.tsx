@@ -1,10 +1,19 @@
+import Link from "next/link";
 import {
     ArrowRight,
     Lightbulb,
     TrendingUp,
 } from "lucide-react";
 
-export default function AiInsights() {
+interface AiInsightsProps {
+    insightText?: string | null;
+    trendText?: string | null;
+}
+
+export default function AiInsights({ insightText, trendText }: AiInsightsProps) {
+    const text = insightText || "Continuous diagnostic monitoring active across all equipment. AI patterns and root-cause trends will populate automatically as cases progress.";
+    const trend = trendText || "Real-time analysis";
+
     return (
         <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6">
             <div className="flex items-start gap-4">
@@ -19,32 +28,32 @@ export default function AiInsights() {
                         </h2>
 
                         <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[10px] font-semibold text-[#5848e8]">
-              PATTERN DETECTED
-            </span>
+                            PATTERN DETECTED
+                        </span>
                     </div>
 
                     <p className="mt-2 text-sm leading-6 text-gray-600">
-                        Stringing defects have increased across Dispensing
-                        Line A over the last 7 days. Recent verified cases
-                        show material viscosity as the most common
-                        contributing factor.
+                        {text}
                     </p>
 
                     <div className="mt-4 flex items-center gap-3">
                         <div className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
                             <TrendingUp size={14} />
-                            18% increase
+                            {trend}
                         </div>
 
                         <span className="text-xs text-gray-400">
-              compared with previous period
-            </span>
+                            computed from active cases
+                        </span>
                     </div>
 
-                    <button className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#5848e8] hover:text-[#6d5dfc]">
+                    <Link
+                        href="/cases"
+                        className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#5848e8] hover:text-[#6d5dfc]"
+                    >
                         View related cases
                         <ArrowRight size={15} />
-                    </button>
+                    </Link>
                 </div>
             </div>
         </div>
