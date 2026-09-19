@@ -37,10 +37,14 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
 
             const data = await res.json();
             
+            const detectedSummary = data.length > 0
+                ? `Detected: ${data.map((d: any) => `${d.observation_type.replace(/_/g, ' ')}: ${d.value}`).join(', ')}`
+                : 'Normal (no defect features detected)';
+
             setFiles((prev) => prev.map(f => f.name === file.name ? {
                 ...f, 
                 status: 'analyzed', 
-                message: `Detected: ${data[0]?.value || 'Unknown'}` 
+                message: detectedSummary 
             } : f));
 
             if (onAnalysisComplete && data.length > 0) {

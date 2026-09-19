@@ -26,7 +26,13 @@ import os
 import re
 from typing import Any
 
-from openai import OpenAI, OpenAIError, APITimeoutError
+try:
+    from openai import OpenAI, OpenAIError, APITimeoutError
+except ImportError:
+    OpenAI = None  # type: ignore
+    OpenAIError = Exception  # type: ignore
+    APITimeoutError = Exception  # type: ignore
+
 from app.core.config import get_settings
 from app.services.ai.prompt_manager import PromptManager
 
@@ -63,15 +69,15 @@ class LLMService:
         self.timeout = timeout if timeout != DEFAULT_TIMEOUT_SECONDS else settings.llm_timeout_seconds
         self.prompt_manager = prompt_manager or PromptManager()
 
-        if self.is_available:
+        if self.is_available and OpenAI is not None:
             self.client = OpenAI(api_key=self.api_key, timeout=self.timeout)
         else:
             self.client = None
 
     @property
     def is_available(self) -> bool:
-        """True if an API key is configured."""
-        return bool(self.api_key and self.api_key.strip())
+        """True if an API key is configured and openai library is installed."""
+        return bool(self.api_key and self.api_key.strip() and OpenAI is not None)
 
     # -----------------------------------------------------------------------
     # Core generation methods

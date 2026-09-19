@@ -698,11 +698,29 @@ class DiagnosticEngine:
         case = self.prepare_case(case_or_request)
         warnings: list[str] = []
 
-        # 2. Extract symptoms if needed
-        if not case.observations and case.description:
+        # 2. Extract symptoms from description if observations are not yet extracted from text
+        # (i.e. no observations, or existing observations are solely from image/vision analysis)
+        has_text_observations = any(
+            (o.source not in (EvidenceSource.IMAGE, "IMAGE")) for o in case.observations
+        )
+        if not has_text_observations and case.description:
             extraction = self.extractor.extract(case.description)
-            case.observations.extend(extraction.observations)
             warnings.extend(extraction.warnings)
+
+            # Avoid adding duplicate observations if vision already supplied them
+            existing_signatures = {
+                (
+                    str(o.observation_type.value if hasattr(o.observation_type, "value") else o.observation_type).lower().strip(),
+                    str(o.value.value if hasattr(o.value, "value") else o.value).lower().strip()
+                )
+                for o in case.observations
+            }
+            for ext in extraction.observations:
+                ext_t = str(ext.observation_type.value if hasattr(ext.observation_type, "value") else ext.observation_type).lower().strip()
+                ext_v = str(ext.value.value if hasattr(ext.value, "value") else ext.value).lower().strip()
+                if (ext_t, ext_v) not in existing_signatures:
+                    case.observations.append(ext)
+                    existing_signatures.add((ext_t, ext_v))
 
         # 3. Identify defect
         defect_code = case.defect_code
