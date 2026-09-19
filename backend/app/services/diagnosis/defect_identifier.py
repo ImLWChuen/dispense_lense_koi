@@ -52,11 +52,25 @@ def _has_observation(
     obs_type: str,
     values: set[str],
 ) -> list[Observation]:
-    """Return observations matching the given type and value set."""
-    return [
-        o for o in observations
-        if o.observation_type == obs_type and o.value in values
-    ]
+    """Return observations matching the given type and value set with alias normalization."""
+    matched = []
+    for o in observations:
+        ot = o.observation_type.value if hasattr(o.observation_type, "value") else str(o.observation_type)
+        val = str(o.value).lower().strip()
+
+        # Normalize common vision/client aliases
+        if val in ("too_small", "undersize", "small"):
+            val = "undersized"
+        elif val in ("too_large", "oversize", "large"):
+            val = "oversized"
+        elif val in ("bubble", "bubbles", "air_bubble", "air_bubbles"):
+            val = "visible_bubbles"
+        elif val in ("spread", "spreading"):
+            val = "excessive_spread"
+
+        if ot == obs_type and val in values:
+            matched.append(o)
+    return matched
 
 
 # ---------------------------------------------------------------------------

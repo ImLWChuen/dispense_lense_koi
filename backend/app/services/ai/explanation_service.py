@@ -25,6 +25,7 @@ from app.schemas.diagnosis import (
     AnalysisRevision,
     CandidateCause,
     CauseConclusion,
+    EvidenceSource,
     IssueCondition,
     Question,
     StructuredCase,
@@ -242,7 +243,11 @@ class ExplanationService:
             )
             if top_cause.supporting_evidence:
                 supp_count = len(top_cause.supporting_evidence)
-                lines.append(f"It is supported by {supp_count} observation(s).")
+                img_count = sum(1 for e in top_cause.supporting_evidence if getattr(e, "source", None) in (EvidenceSource.IMAGE, "IMAGE"))
+                if img_count > 0:
+                    lines.append(f"It is supported by {supp_count} observation(s) (including {img_count} visual/image inspection measurement(s)).")
+                else:
+                    lines.append(f"It is supported by {supp_count} observation(s).")
             if top_cause.contradicting_evidence:
                 lines.append(
                     f"Warning: {len(top_cause.contradicting_evidence)} contradicting evidence item(s) noted."
