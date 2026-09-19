@@ -20,8 +20,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from tests.fixtures.synthetic_images import (
+    create_blank_image,
     create_centered_dot_image,
+    create_empty_image,
     create_proportional_dot_image,
+    encode_image,
 )
 
 
@@ -349,3 +352,89 @@ def test_image_analyze_rejects_mode_incompatible_limits(client: TestClient) -> N
     )
     assert resp2.status_code == 422
     assert "PROCESS_LIMITS mode must not include reference_limits" in resp2.json()["detail"]
+
+
+def test_image_analyze_uniform_black_frame_returns_unreliable_no_d04(client: TestClient) -> None:
+    """R8 regression: Completely uniform black frame (e.g. occluded lens) returns UNRELIABLE and no D04 observation."""
+    black_img = encode_image(create_blank_image(200, 200, bg_color=0))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("black.png", black_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert not any(o["observation_type"] == "deposit_presence" for o in data["observations"])
+
+
+def test_image_analyze_uniform_mid_gray_frame_returns_unreliable_no_d04(client: TestClient) -> None:
+    """R8 regression: Completely uniform mid-gray frame (e.g. unpowered/unlit sensor) returns UNRELIABLE and no D04 observation."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("gray.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert not any(o["observation_type"] == "deposit_presence" for o in data["observations"])
+
+
+def test_image_analyze_uniform_white_frame_returns_unreliable_no_d04(client: TestClient) -> None:
+    """R8 regression: Completely uniform white frame (e.g. overexposed capture) returns UNRELIABLE and no D04 observation."""
+    white_img = encode_image(create_blank_image(200, 200, bg_color=255))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("white.png", white_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert not any(o["observation_type"] == "deposit_presence" for o in data["observations"])
+
+
+def test_image_analyze_defensible_empty_target_returns_calibrated_d04_missing(client: TestClient) -> None:
+    """R8 verification: Defensible empty target with established background context returns CALIBRATED and D04 missing."""
+    empty_img = create_empty_image(200)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("empty.png", empty_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    assert obs["observation_type"] == "deposit_presence"
+    assert obs["value"] == "missing"

@@ -22,10 +22,12 @@ from app.services.vision.segmentation import (
     SegmentationStatus,
 )
 from tests.fixtures.synthetic_images import (
+    create_blank_image,
     create_centered_dot_image,
     create_empty_image,
     create_multi_roi_image,
     create_noisy_image,
+    encode_image,
 )
 
 
@@ -150,3 +152,17 @@ def test_segment_exact_mask_pixel_counts_overflow() -> None:
     expected_overflow = 398.0 / 1957.0
     actual_overflow = result.deposit_outside_target_px / result.deposit_area_px
     assert abs(actual_overflow - expected_overflow) < 1e-6
+
+
+def test_segment_completely_uniform_frame_returns_unreliable() -> None:
+    """R8: Completely uniform frames (black, mid-gray, white) return UNRELIABLE with quality 0.0 and is_missing=False."""
+    for bg_val in [0, 64, 128, 255]:
+        img_bytes = encode_image(create_blank_image(200, 200, bg_color=bg_val))
+        img, dims = decode_and_validate_image(img_bytes)
+        roi = NormalizedROI(roi_id="roi_1", x=0.25, y=0.25, width=0.5, height=0.5)
+        px_roi, win_roi = normalize_roi_to_pixels(roi, dims.width, dims.height)
+
+        result = segment_roi(img, px_roi, win_roi)
+        assert result.status == SegmentationStatus.UNRELIABLE
+        assert result.quality_score == 0.0
+        assert result.is_missing is False

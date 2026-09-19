@@ -101,7 +101,18 @@ def segment_roi(
             # Do NOT treat as missing; proceed to thresholding and segmentation.
             pass
         elif surrounding_std < 2.5:
-            # Both target and surroundings are uniform flat background -> genuine missing deposit.
+            # Both target and surroundings are uniform: no background or reference basis exists to distinguish
+            # empty target from occluded lens, camera failure, overexposure, or flooded material.
+            return SegmentationResult(
+                status=SegmentationStatus.UNRELIABLE,
+                target_area_px=target_area,
+                quality_score=0.0,
+                is_missing=False,
+                warnings=["Target and surroundings are both uniform; cannot establish background or missing deposit without reference."],
+            )
+        elif surrounding_std >= 5.0 and contrast_to_surroundings < 15.0:
+            # Background basis is established by surrounding fiducials/substrate features,
+            # and target ROI matches substrate with no deposit present -> genuine missing deposit.
             return SegmentationResult(
                 status=SegmentationStatus.SUCCESS,
                 deposit_area_px=0.0,
@@ -110,15 +121,16 @@ def segment_roi(
                 target_area_px=target_area,
                 quality_score=1.0,
                 is_missing=True,
-                warnings=["No deposit detected; region is uniform background."],
+                warnings=["No deposit detected inside target ROI; established background indicates missing deposit."],
             )
         else:
-            # Target is flat but surrounding window is non-uniform/noisy; polarity cannot be distinguished.
+            # Target is flat but surrounding window is ambiguous; polarity cannot be distinguished.
             return SegmentationResult(
                 status=SegmentationStatus.UNRELIABLE,
                 target_area_px=target_area,
                 quality_score=0.0,
-                warnings=["Low target contrast against non-uniform background; polarity/background cannot be distinguished."],
+                is_missing=False,
+                warnings=["Low target contrast against ambiguous background; polarity/background cannot be distinguished."],
             )
 
     # Blurring to reduce high-frequency raster noise
@@ -143,24 +155,13 @@ def segment_roi(
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
     if not contours:
-        if target_std < 2.5 and surrounding_std < 2.5:
-            return SegmentationResult(
-                status=SegmentationStatus.SUCCESS,
-                deposit_area_px=0.0,
-                deposit_inside_target_px=0.0,
-                deposit_outside_target_px=0.0,
-                target_area_px=target_area,
-                quality_score=1.0,
-                is_missing=True,
-                warnings=["No contours found on uniform background."],
-            )
         return SegmentationResult(
             status=SegmentationStatus.UNRELIABLE,
             deposit_area_px=0.0,
             deposit_inside_target_px=0.0,
             deposit_outside_target_px=0.0,
             target_area_px=target_area,
-            quality_score=0.2,
+            quality_score=0.0,
             is_missing=False,
             warnings=["No contours found in analysis window."],
         )
@@ -204,26 +205,15 @@ def segment_roi(
         candidates.append((cand_score, idx, cnt, c_mask, c_total_pixels, c_inside_pixels))
 
     if not candidates:
-        if target_std < 2.5 and surrounding_std < 2.5:
-            return SegmentationResult(
-                status=SegmentationStatus.SUCCESS,
-                deposit_area_px=0.0,
-                deposit_inside_target_px=0.0,
-                deposit_outside_target_px=0.0,
-                target_area_px=target_area,
-                quality_score=1.0,
-                is_missing=True,
-                warnings=["No candidate contours overlapped the target ROI on uniform background."],
-            )
         return SegmentationResult(
             status=SegmentationStatus.UNRELIABLE,
             deposit_area_px=0.0,
             deposit_inside_target_px=0.0,
             deposit_outside_target_px=0.0,
             target_area_px=target_area,
-            quality_score=0.2,
+            quality_score=0.0,
             is_missing=False,
-            warnings=["No candidate contours overlapped the target ROI in noisy or ambiguous window."],
+            warnings=["No candidate contours overlapped the target ROI in analysis window."],
         )
 
     # Sort candidates by score descending

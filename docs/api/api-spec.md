@@ -2731,8 +2731,8 @@ Extracts resolution-independent geometric features from dispensing deposit image
 
 - **Analysis Modes (`mode`):**
   - `"FEATURES_ONLY"`: Computes resolution-independent features without evaluation. Returns `status="UNCALIBRATED"` and `observations=[]`.
-  - `"PROCESS_LIMITS"`: Evaluates ROI coverage, overflow, and multi-dot variance against explicit process thresholds. Returns `status="CALIBRATED"`.
-  - `"REFERENCE_IMAGE"`: Compares current deposits against the paired `reference_file`. Returns `status="CALIBRATED"` or `status="UNRELIABLE_REFERENCE"`.
+  - `"PROCESS_LIMITS"`: Evaluates ROI coverage, overflow, and multi-dot variance against explicit process thresholds. Returns `status="CALIBRATED"` or `status="UNRELIABLE"`.
+  - `"REFERENCE_IMAGE"`: Compares current deposits against the paired `reference_file`. Returns `status="CALIBRATED"` or `status="UNRELIABLE"`.
 
 ##### Profile Validation & Safety Rules
 - **Unique & Non-Blank ROI IDs:** Each ROI in `rois` must contain a non-empty, non-whitespace `roi_id` unique across the request. Duplicate or blank IDs return `422 Unprocessable Content`.

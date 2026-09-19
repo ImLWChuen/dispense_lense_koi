@@ -280,15 +280,15 @@ Proposed commit message: `feat(vision): add calibrated image evidence pipeline`
 
 ### Summary
 
-Implemented Phase 1 calibrated vision and evidence-safety foundation for task DLK-M3-026, and corrected all findings R1–R7 from review `.agents/handoff/reviews/DLK-M3-026-review.md`:
+Implemented Phase 1 calibrated vision and evidence-safety foundation for task DLK-M3-026, and corrected all findings R1–R9 from review `.agents/handoff/reviews/DLK-M3-026-review.md`:
 - Typed, calibrated vision pipeline: Built robust image schemas (`app/schemas/image.py`), magic-byte and dimension-bounded preprocessing (`app/services/vision/preprocessing.py`), local Otsu/adaptive segmentation with target proximity candidate scoring (`app/services/vision/segmentation.py`), resolution-independent geometric and coverage measurement (`app/services/vision/measurement.py`), and calibrated defect classification mapping to canonical D01-D05 observations while enforcing diagnostic neutrality for D06 (`app/services/vision/defect_classifier.py`).
 - Image API modernization: Implemented multipart `POST /api/v1/images/analyze` handling raw files and JSON profile payloads with strict 10 MB and 4096px/16M-pixel limits, offloaded CPU-bound OpenCV operations using `anyio.to_thread.run_sync`, and sanitized client/server error responses (`app/api/images.py`).
 - Lossless persistence in PostgreSQL: Added forward Alembic migration `0008_observation_metadata.py` adding `metadata` JSONB column to `case_observations`. Mapped `ObservationModel.observation_metadata` and exposed `CaseObservationResponse.metadata`, preserving all vision metadata across initial case save, revision append, structured-case reconstruction, and report assembly (`app/models/case.py`, `app/schemas/case.py`, `app/db/repository.py`, `app/api/cases.py`).
 - Evidence extraction & intake safety: Hardened `symptom_extractor.py` with clause-level negation detection (`no`, `not`, `without`, `never`) and hypothesis span masking. Refactored `evidence_engine.py` to enforce strict type-safe semantic deduplication. Updated `engine.py` intake merge to safely extract description facts on initial intake only (`not case.analysis_revisions`), preventing duplicate observations and re-extraction across revisions. Qualified `location_pattern` rule to prevent "across all boards" false positives.
 - Provenance-aware bounded LLM explanation: Formatted top candidate cause evidence with provenance tags (`[IMAGE]`, `[USER]`, `[USER_CHECK_RESULT]`) in `explanation_service.py` and strictly enforced absence of raw image bytes, URLs, or filesystem paths in `prompt_manager.py`.
-- Documentation: Documented Section 11 (`POST /api/v1/images/analyze`) and profile validation rules in `docs/api/api-spec.md`.
+- Documentation: Documented Section 11 (`POST /api/v1/images/analyze`), actual status enums (`CALIBRATED`, `UNCALIBRATED`, `UNRELIABLE`), and profile validation rules in `docs/api/api-spec.md`.
 
-#### Review Findings R1–R7 Corrections
+#### Review Findings R1–R9 Corrections
 - **R1 (Internal Failure Sanitization):** Replaced broad `ValueError` 422 catch in `backend/app/api/images.py` with specific `ImageValidationError` handling. Unexpected internal worker and classifier failures now fall through to the logged 500 handler returning sanitized `"An unexpected error occurred during image analysis."` without leaking filesystem paths or internal details. Added regression test `test_image_analyze_internal_pipeline_failure_returns_sanitized_500`.
 - **R2 (Target Uniformity, Border Dominance & Candidate Ambiguity):** In `backend/app/services/vision/segmentation.py`, eliminated premature missing inferences from uniform target crops by comparing deposit contrast against background pixels. Rejected border-dominant or clipped candidates (`border_ratio > 0.20` or `border_pixels >= 30 and border_ratio > 0.15`), indistinguishably ambiguous candidate pairs (`abs(score1 - score2) < 0.15` and `diff < 0.1 * area`), and low-contrast ambiguity (`deposit_contrast < 15.0`) as `UNRELIABLE`. Added unit tests `test_segment_uniform_deposit_inside_contrasting_window`, `test_segment_clipped_border_candidate`, and `test_segment_indistinguishably_ambiguous_candidates`.
 - **R3 (Consistent Mask Arithmetic):** Derived `total_deposit_pixels`, `deposit_inside_target_px`, and `deposit_outside_target_px` strictly from the same binary mask in `segmentation.py`, guaranteeing mathematical exactness `inside + outside == total`. Added exact count regression test `test_segment_exact_mask_pixel_counts_overflow`.
@@ -296,12 +296,14 @@ Implemented Phase 1 calibrated vision and evidence-safety foundation for task DL
 - **R5 (Bounded Streaming Uploads):** Implemented `_read_bounded_upload` in `backend/app/api/images.py` reading upload content in 64 KB chunks, immediately raising HTTP 413 if accumulated bytes exceed 10 MB without buffering excess bytes in memory. Applied to both primary and reference files. Added regression tests `test_read_bounded_upload_aborts_mid_stream_without_full_buffer` and `test_image_analyze_rejects_oversized_reference_file`.
 - **R6 (Profile & Schema Validations):** Added validations to `AnalysisProfile` in `backend/app/schemas/image.py` requiring unique non-blank `roi_id` values, non-empty `ProcessLimits`, and mode exclusivity (rejecting mode-incompatible limits with 422). Added API regression tests for each validation and updated `docs/api/api-spec.md`.
 - **R7 (Mixed-Evidence Benchmark Intake):** Reverted description suppression in `backend/app/evaluation/benchmark.py`, keeping the full production intake contract intact (`DiagnosisRequest(description=scenario.description, observations=obs_list)`). Added regression test `test_benchmark_mixed_evidence_intake_preserves_both_description_and_observations`.
+- **R8 (Uniform Frames Ambiguity & Established Background Basis):** In `backend/app/services/vision/segmentation.py`, treated completely uniform frames (where `target_std < 2.5 and surrounding_std < 2.5`) as `UNRELIABLE` with `quality_score=0.0` and `is_missing=False`, avoiding spurious missing-deposit inferences when cameras are occluded, unpowered, or overexposed. Gated defensible missing-deposit detection strictly on an established background basis with visible substrate/fiducials (`surrounding_std >= 5.0 and contrast_to_surroundings < 15.0`). Removed all fallback paths in `not contours` and `not candidates` that defaulted to `SUCCESS, is_missing=True` on flat frames. Replaced plain-white `create_empty_image` fixture in `backend/tests/fixtures/synthetic_images.py` with an established background context fixture containing corner fiducials outside the target ROI. Added unit tests for uniform black, mid-gray, and white frames (`test_segment_completely_uniform_frame_returns_unreliable`), production API regressions for uniform black, mid-gray, and white frames returning `UNRELIABLE` with no D04 observation (`test_image_analyze_uniform_black_frame_returns_unreliable_no_d04`, `test_image_analyze_uniform_mid_gray_frame_returns_unreliable_no_d04`, `test_image_analyze_uniform_white_frame_returns_unreliable_no_d04`), and verified defensible empty target returns `CALIBRATED` with D04 (`test_image_analyze_defensible_empty_target_returns_calibrated_d04_missing`).
+- **R9 (Document Actual Status Enum):** In `docs/api/api-spec.md`, replaced the invalid documented status `UNRELIABLE_REFERENCE` with the actual `UNRELIABLE` enum (`AnalysisStatus`). Documented `UNRELIABLE` as a valid return status for both `PROCESS_LIMITS` and `REFERENCE_IMAGE` modes. Inspected the Image API specification and verified no other enum inconsistencies exist.
 
 ### Files changed
 
 - `backend/app/schemas/image.py`: Added typed models (`AnalysisMode`, `AnalysisStatus`, `AnalysisProfile`, `RoiInput`, `RoiMeasurement`, `AggregateMeasurements`, `ImageAnalysisResponse`) and strict profile/limit validations.
 - `backend/app/services/vision/preprocessing.py`: Added magic-byte verification, 10 MB payload limits, 4096px / 16M-pixel bounds, and `ImageValidationError`.
-- `backend/app/services/vision/segmentation.py`: Added local Otsu/adaptive candidate segmentation, target proximity scoring, border dominance / ambiguity rejection, and consistent mask pixel arithmetic.
+- `backend/app/services/vision/segmentation.py`: Added local Otsu/adaptive candidate segmentation, target proximity scoring, border dominance / ambiguity rejection, consistent mask pixel arithmetic, and strict uniform frame ambiguity handling (`UNRELIABLE` when both target and surroundings are uniform).
 - `backend/app/services/vision/measurement.py`: Replaced raw pixel cutoffs with resolution-independent coverage ratio, overflow ratio, circularity, solidity, aspect ratio, hole ratio, and size CV.
 - `backend/app/services/vision/defect_classifier.py`: Added calibrated rule mapping for `FEATURES_ONLY`, `PROCESS_LIMITS`, and `REFERENCE_IMAGE` to canonical observations with D06 neutrality and strict D04 presence limit gating.
 - `backend/app/api/images.py`: Implemented multipart file upload, profile parsing, bounded chunked streaming upload reads, thread offloading, and sanitized 422/500 responses.
@@ -316,21 +318,22 @@ Implemented Phase 1 calibrated vision and evidence-safety foundation for task DL
 - `backend/app/evaluation/benchmark.py`: Restored full mixed-evidence intake contract passing both scenario description and initial observations to diagnostic engine.
 - `backend/app/services/ai/explanation_service.py`: Added provenance formatting to top cause evidence summaries.
 - `backend/app/services/ai/prompt_manager.py`: Added provenance integrity rules and prohibited image bytes/paths.
+- `backend/tests/fixtures/synthetic_images.py`: Added corner fiducials outside target ROI in `create_empty_image` to establish a defensible substrate background basis for missing-deposit testing.
 - `backend/tests/unit/test_vision_preprocessing.py`: Added unit tests for magic bytes, bounds, and ROI windows.
-- `backend/tests/unit/test_vision_segmentation.py`: Added unit tests for local Otsu segmentation, border dominance, candidate ambiguity, and exact mask pixel counts.
+- `backend/tests/unit/test_vision_segmentation.py`: Added unit tests for local Otsu segmentation, border dominance, candidate ambiguity, exact mask pixel counts, and completely uniform frames returning `UNRELIABLE`.
 - `backend/tests/unit/test_vision_measurement.py`: Added unit tests for resolution invariance and metric calculations.
 - `backend/tests/unit/test_vision_defect_classifier.py`: Added unit tests for calibrated defect classification and negative omitted limit checks.
 - `backend/tests/unit/test_symptom_extractor.py`: Added negation and hypothesis isolation tests.
 - `backend/tests/unit/test_evidence_engine.py`: Added type-safe deduplication tests.
 - `backend/tests/unit/test_ai_outputs.py`: Added provenance formatting and image data exclusion tests.
 - `backend/tests/unit/test_evaluation_framework.py`: Added regression test for mixed-evidence intake preservation.
-- `backend/tests/integration/test_image_api.py`: Added integration tests for multipart analyze endpoint, payload limits, sanitized 500 on internal failure, bounded streaming reads, empty process limits, duplicate/blank ROI IDs, and mode incompatibility.
+- `backend/tests/integration/test_image_api.py`: Added integration tests for multipart analyze endpoint, payload limits, sanitized 500 on internal failure, bounded streaming reads, empty process limits, duplicate/blank ROI IDs, mode incompatibility, uniform black/gray/white frames returning `UNRELIABLE`, and defensible empty target detection.
 - `backend/tests/integration/test_image_diagnosis_integration.py`: Added integration tests for baseline parity, calibrated score alteration, D04 presence gating, and D06 neutrality.
 - `backend/tests/integration/test_image_driven_case_workflow.py`: Added end-to-end integration tests for image analysis -> case persistence -> revision append -> report generation.
 - `backend/tests/integration/test_persistence.py`: Adjusted dynamic assertions for intake merge behavior.
-- `docs/api/api-spec.md`: Documented Section 11 (`POST /api/v1/images/analyze`) request/response contract, profile validation rules, error codes, and frontend integration notes.
-- `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`: Marked acceptance criteria and completed implementation report with R1–R7 resolutions.
-- `.agents/handoff/QUEUE.md`: Maintained task status as implemented.
+- `docs/api/api-spec.md`: Documented Section 11 (`POST /api/v1/images/analyze`) request/response contract, profile validation rules, actual `UNRELIABLE` status enum, error codes, and frontend integration notes.
+- `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`: Marked acceptance criteria and completed implementation report with R1–R9 resolutions.
+- `.agents/handoff/QUEUE.md`: Maintained task status as implemented (ready for review).
 
 ### Decisions made
 
@@ -342,6 +345,7 @@ Implemented Phase 1 calibrated vision and evidence-safety foundation for task DL
 - Qualified the `location_pattern` rule in `symptom_extractor` to require nozzle/point/position keywords for `across all`, resolving false positive matches on phrases like "across all boards".
 - Enforced consistent binary mask arithmetic for all ROI segmentation metrics so `inside + outside == total` is mathematically exact.
 - Bounded candidate ambiguity detection by comparing top two contour candidate scores and areas, rejecting indistinguishable candidates with `UNRELIABLE`.
+- Required an established background context (`surrounding_std >= 5.0` with low contrast to target) to infer a missing deposit; completely uniform frames (`target_std < 2.5` and `surrounding_std < 2.5`) return `UNRELIABLE` without score-bearing D04 observations regardless of brightness value.
 
 ### Verification results
 
@@ -350,13 +354,14 @@ Implemented Phase 1 calibrated vision and evidence-safety foundation for task DL
   - `test_symptom_extractor.py`: Negated description `"No bubbles are visible"` failed by producing positive `visible_bubbles` observation; hypothesis `"I think the nozzle is blocked"` incorrectly produced an objective `blocked` observation.
   - `test_evidence_engine.py`: Conflicting pressure observations with similar wording were erroneously deduplicated.
   - Review R1–R7 probes: Internal pipeline failure leaked private path; uniform target crop returned false missing deposit; contour geometry vs pixel mask arithmetic caused 18% discrepancy in overflow calculation; D04 fired on missing presence limit; oversized upload buffered full file; profile accepted empty limits and duplicate ROI IDs; benchmark runner suppressed descriptions.
+  - Review R8–R9 probes: Completely uniform black, mid-gray, and white frames returned `CALIBRATED` with D04 missing deposits under `min_presence_ratio`; `docs/api/api-spec.md` documented non-existent `UNRELIABLE_REFERENCE` status enum.
 - Final test results:
-  - Focused vision unit tests: 27 passed in 0.35s (`test_vision_preprocessing.py`, `test_vision_segmentation.py`, `test_vision_measurement.py`, `test_vision_defect_classifier.py`).
-  - Focused diagnosis/evidence/LLM unit tests: 31 passed in 1.14s (`test_diagnosis_engine.py`, `test_evidence_engine.py`, `test_ai_outputs.py`, `test_evaluation_framework.py`).
+  - Focused vision unit tests: 28 passed in 0.36s (`test_vision_preprocessing.py`, `test_vision_segmentation.py`, `test_vision_measurement.py`, `test_vision_defect_classifier.py`).
+  - Focused diagnosis/evidence/LLM unit tests: 31 passed in 1.07s (`test_diagnosis_engine.py`, `test_evidence_engine.py`, `test_ai_outputs.py`, `test_evaluation_framework.py`).
   - Defect classifier & cause ranker unit tests: 11 passed in 0.80s (`test_defect_classifier.py`, `test_cause_ranker.py`).
-  - Image API integration tests: 20 passed in 1.52s (`test_image_api.py`, `test_image_diagnosis_integration.py`).
-  - Image-driven case workflow & persistence tests: 37 passed in 9.50s (`test_image_driven_case_workflow.py`, `test_persistence.py`).
-  - Full backend test suite: 461 passed, 0 failed, 41 warnings in 51.82s.
+  - Image API and diagnosis integration tests: 24 passed in 1.55s (`test_image_api.py`, `test_image_diagnosis_integration.py`).
+  - Image-driven case workflow & persistence tests: 37 passed in 9.59s (`test_image_driven_case_workflow.py`, `test_persistence.py`).
+  - Full backend test suite: 466 passed, 0 failed, 41 warnings in 51.76s.
   - Task validator: `VALID: .agents\handoff\tasks\DLK-M3-026-calibrated-vision-evidence-foundation.md`.
   - Git diff check: Passed with zero trailing whitespace or formatting warnings (`git diff --check` exits with 0).
   - Database safety: Run against disposable PostgreSQL test database (`dispenselens_test`); development database (`dispenselens`) untouched.
@@ -371,4 +376,4 @@ Implemented Phase 1 calibrated vision and evidence-safety foundation for task DL
 
 ### Proposed commit message
 
-fix(vision): resolve DLK-M3-026 review findings R1-R7
+fix(vision): resolve DLK-M3-026 review findings R8-R9

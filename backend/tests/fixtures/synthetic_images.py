@@ -94,8 +94,20 @@ def create_noisy_image(
 
 def create_empty_image(
     size: int,
+    bg_color: int = 245,
     fmt: str = ".png",
 ) -> bytes:
-    """Create an image with no deposit (pure background)."""
-    img = create_blank_image(size, size, 255)
+    """Create a defensible missing-deposit image with established substrate/fiducial context but no deposit in target."""
+    img = create_blank_image(size, size, bg_color)
+    # Draw fiducial markings in the window margins outside the target ROI [0.25, 0.75].
+    # This establishes background context (proving the camera is focused on an inspection substrate),
+    # while the target ROI itself is empty bare substrate.
+    fiducial_color = (60, 60, 60)
+    p1 = int(size * 0.20)
+    p2 = int(size * 0.80)
+    r = max(3, int(size * 0.025))
+    cv2.circle(img, (p1, p1), r, fiducial_color, -1)
+    cv2.circle(img, (p2, p1), r, fiducial_color, -1)
+    cv2.circle(img, (p1, p2), r, fiducial_color, -1)
+    cv2.circle(img, (p2, p2), r, fiducial_color, -1)
     return encode_image(img, fmt)
