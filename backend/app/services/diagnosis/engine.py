@@ -698,11 +698,31 @@ class DiagnosticEngine:
         case = self.prepare_case(case_or_request)
         warnings: list[str] = []
 
-        # 2. Extract symptoms if needed
-        if not case.observations and case.description:
+        # 2. Extract symptoms on initial intake (when no prior revisions exist)
+        if not case.analysis_revisions and case.description and case.description.strip():
             extraction = self.extractor.extract(case.description)
-            case.observations.extend(extraction.observations)
             warnings.extend(extraction.warnings)
+
+            # Helper to normalize observation type
+            def _norm_type(t: Any) -> str:
+                v = getattr(t, "value", str(t))
+                return "location_pattern" if v == "spatial_pattern" else v
+
+            existing_obs_signatures = {
+                (
+                    _norm_type(o.observation_type),
+                    getattr(o.value, "value", str(o.value)),
+                )
+                for o in case.observations
+            }
+            for extracted_obs in extraction.observations:
+                sig = (
+                    _norm_type(extracted_obs.observation_type),
+                    getattr(extracted_obs.value, "value", str(extracted_obs.value)),
+                )
+                if sig not in existing_obs_signatures:
+                    case.observations.append(extracted_obs)
+                    existing_obs_signatures.add(sig)
 
         # 3. Identify defect
         defect_code = case.defect_code

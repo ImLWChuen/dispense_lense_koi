@@ -154,6 +154,7 @@ class CaseRepository:
                     confidence=obs.confidence,
                     created_at=obs.timestamp,
                     first_seen_revision=1,
+                    observation_metadata=getattr(obs, "metadata", None) or {},
                 )
                 session.add(obs_model)
 
@@ -607,6 +608,7 @@ class CaseRepository:
                     source=src,
                     confidence=om.confidence,
                     timestamp=om.created_at,
+                    metadata=getattr(om, "observation_metadata", None) or {},
                 )
                 observations.append(obs)
 
@@ -923,6 +925,7 @@ class CaseRepository:
                         confidence=obs.confidence,
                         created_at=obs.timestamp,
                         first_seen_revision=new_revision_number,
+                        observation_metadata=getattr(obs, "metadata", None) or {},
                     )
                     session.add(obs_model)
                     existing_obs_ids.add(obs.id)
@@ -1211,6 +1214,7 @@ class CaseRepository:
                         confidence=obs.confidence,
                         created_at=obs.timestamp,
                         first_seen_revision=new_revision_number,
+                        observation_metadata=getattr(obs, "metadata", None) or {},
                     )
                     session.add(obs_model)
                     existing_obs_ids.add(obs.id)
@@ -1471,6 +1475,7 @@ class CaseRepository:
                         confidence=obs.confidence,
                         created_at=obs.timestamp,
                         first_seen_revision=new_revision_number,
+                        observation_metadata=getattr(obs, "metadata", None) or {},
                     )
                     session.add(obs_model)
                     existing_obs_ids.add(obs.id)
@@ -1742,6 +1747,7 @@ class CaseRepository:
                         confidence=obs.confidence,
                         created_at=obs.timestamp,
                         first_seen_revision=new_revision_number,
+                        observation_metadata=getattr(obs, "metadata", None) or {},
                     )
                     session.add(obs_model)
                     existing_obs_ids.add(obs.id)

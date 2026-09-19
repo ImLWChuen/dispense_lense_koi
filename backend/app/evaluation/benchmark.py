@@ -64,7 +64,7 @@ class BenchmarkRunner:
                 )
 
         request = DiagnosisRequest(
-            description=scenario.description,
+            description=scenario.description if not obs_list else "",
             observations=obs_list,
         )
 

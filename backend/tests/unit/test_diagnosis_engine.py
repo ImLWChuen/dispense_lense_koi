@@ -132,6 +132,64 @@ class TestDiagnosisEngine(unittest.TestCase):
         for c in rev1_stored.ranked_causes:
             self.assertEqual(c.score, rev1_scores[c.cause_id], f"Revision 1 score changed for {c.cause_id}")
 
+    def test_intake_evidence_merge_both_text_and_image(self):
+        """Verify intake merges independent text description symptoms and image observations once."""
+        image_obs = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+        )
+        case = StructuredCase(
+            description="pressure fluctuating across cycles",
+            observations=[image_obs],
+        )
+
+        res = self.engine.diagnose(case)
+        obs_types = {getattr(o.observation_type, "value", str(o.observation_type)) for o in case.observations}
+        self.assertIn("deposit_size", obs_types)
+        self.assertIn("pressure", obs_types)
+
+        # Both observations should have contributed to ranking
+        top_cause = res.ranked_causes[0]
+        all_ev = top_cause.supporting_evidence + top_cause.contradicting_evidence + top_cause.neutral_evidence
+        ev_sources = {getattr(e.source, "value", str(e.source)) for e in all_ev}
+        self.assertTrue("IMAGE" in ev_sources or EvidenceSource.IMAGE.value in ev_sources)
+
+    def test_intake_deduplication_exact_match(self):
+        """Verify intake does not duplicate identical observations already provided."""
+        image_obs = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+        )
+        case = StructuredCase(
+            description="The dispensing dots are undersized.",
+            observations=[image_obs],
+        )
+
+        res = self.engine.diagnose(case)
+        deposit_size_obs = [
+            o for o in case.observations
+            if getattr(o.observation_type, "value", str(o.observation_type)) == "deposit_size"
+        ]
+        self.assertEqual(len(deposit_size_obs), 1)
+        self.assertEqual(deposit_size_obs[0].source, EvidenceSource.IMAGE)
+
+    def test_revisions_do_not_re_extract_description(self):
+        """Verify follow-up diagnostic cycles do not re-extract the original description."""
+        case = StructuredCase(
+            case_id="test_case_no_re_extract",
+            description="pressure fluctuating",
+            observations=[],
+        )
+        res1 = self.engine.diagnose(case)
+        initial_obs_count = len(case.observations)
+        self.assertGreater(initial_obs_count, 0)
+
+        # Diagnose again with revisions present
+        res2 = self.engine.diagnose(case)
+        self.assertEqual(len(case.observations), initial_obs_count)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1195,7 +1195,7 @@ def test_atomic_rollback_on_append_failure_leaves_no_partial_writes():
             # Test case: revision 2 does NOT exist, no QA row exists, no new observation exists
             assert fresh_repo.list_case_revisions(test_id) == [1]
             assert fresh_repo.get_case_question_answers(test_id) == []
-            assert len(fresh_repo.get_case_observations(test_id)) == 1
+            assert len(fresh_repo.get_case_observations(test_id)) == len(test_case.observations)
 
             # Control case: survives completely intact
             assert fresh_repo.list_case_revisions(control_id) == [1]
@@ -1254,7 +1254,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             # Session 1 acquires row lock via for_update=True and reconstructs case
             case_v1 = repo_1.load_structured_case(case_id, for_update=True)
             assert case_v1 is not None
-            assert len(case_v1.observations) == 1
+            assert len(case_v1.observations) == len(initial_case.observations)
             assert len(case_v1.previous_answers) == 0
             assert len(case_v1.analysis_revisions) == 1
 
@@ -1304,7 +1304,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             # Step 3: Verify reconstruction in Session 1 cannot combine revision-1 observations
             # with revision-2 answers/history.
             # While Session 2 is blocked, re-verifying Session 1 state:
-            assert len(case_v1.observations) == 1
+            assert len(case_v1.observations) == len(initial_case.observations)
             assert len(case_v1.previous_answers) == 0
             assert len(case_v1.analysis_revisions) == 1
             assert case_v1.observations[0].value == "drips_after_dispense"
@@ -1323,7 +1323,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             repo_3 = CaseRepository(session=session_3)
             case_v2 = repo_3.load_structured_case(case_id)
             assert case_v2 is not None
-            assert len(case_v2.observations) == 3
+            assert len(case_v2.observations) == len(initial_case.observations) + 2
             assert len(case_v2.previous_answers) == 1
             assert len(case_v2.analysis_revisions) == 2
 

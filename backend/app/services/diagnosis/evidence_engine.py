@@ -69,6 +69,13 @@ def _get_semantic_group(obs_type: str, value: str) -> str | None:
     return None
 
 
+def _normalize_obs_type(t: Any) -> str:
+    val = t.value if hasattr(t, "value") else str(t)
+    if val == "spatial_pattern":
+        return "location_pattern"
+    return val
+
+
 def _is_duplicate(
     obs: Observation,
     existing_observations: list[Observation],
@@ -78,34 +85,29 @@ def _is_duplicate(
     Returns:
         (is_duplicate, duplicate_of_id)
     """
+    obs_type_norm = _normalize_obs_type(obs.observation_type)
     obs_group = _get_semantic_group(obs.observation_type, obs.value)
 
     for existing in existing_observations:
         if existing.id == obs.id:
             continue
 
-        # Same type + same value → definite duplicate
-        if (existing.observation_type == obs.observation_type
-                and existing.value == obs.value):
+        existing_type_norm = _normalize_obs_type(existing.observation_type)
+
+        # Observations of different types are never duplicates
+        if existing_type_norm != obs_type_norm:
+            continue
+
+        # Same type + identical value → duplicate
+        if existing.value == obs.value:
             return True, existing.id
 
-        # Same semantic group → likely duplicate
+        # Same semantic group within same type → duplicate
         if obs_group:
             existing_group = _get_semantic_group(
                 existing.observation_type, existing.value
             )
             if existing_group == obs_group:
-                return True, existing.id
-
-        # Fuzzy text similarity on the original text (if both have it)
-        if (obs.original_text and existing.original_text
-                and obs.original_text != existing.original_text):
-            ratio = SequenceMatcher(
-                None,
-                obs.original_text.lower(),
-                existing.original_text.lower(),
-            ).ratio()
-            if ratio > 0.85:
                 return True, existing.id
 
     return False, None

@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     UUID,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -203,6 +204,14 @@ class ObservationModel(Base):
         nullable=False,
         default=1,
         comment="First analysis revision number that incorporated this observation",
+    )
+    observation_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        comment="Structured metadata for observation (e.g. image measurement, analysis status, ROI)",
     )
 
     case: Mapped[CaseModel] = relationship(
