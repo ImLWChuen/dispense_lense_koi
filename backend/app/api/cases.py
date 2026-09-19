@@ -63,6 +63,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_obs_metadata(obs: Any) -> dict[str, Any]:
+    meta = getattr(obs, "observation_metadata", None)
+    if isinstance(meta, dict):
+        return meta
+    meta = getattr(obs, "metadata", None)
+    if isinstance(meta, dict):
+        return meta
+    return {}
+
+
 def get_diagnosis_engine() -> DiagnosticEngine:
     """Dependency provider returning an instance of the diagnostic engine."""
     return DiagnosticEngine()
@@ -127,6 +137,7 @@ def create_durable_case(
                 timestamp=obs.timestamp,
                 created_at=obs.timestamp,
                 first_seen_revision=1,
+                metadata=_get_obs_metadata(obs),
             )
             for obs in case.observations
         ]
@@ -215,6 +226,7 @@ def list_durable_cases(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
             ]
@@ -392,6 +404,7 @@ def get_durable_case(
                 timestamp=obs.created_at,
                 created_at=obs.created_at,
                 first_seen_revision=obs.first_seen_revision,
+                metadata=_get_obs_metadata(obs),
             )
             for obs in obs_models
         ]
@@ -563,6 +576,7 @@ def submit_case_answer(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -819,6 +833,7 @@ def submit_case_check_result(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -1100,6 +1115,7 @@ def submit_case_check(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -1377,6 +1393,7 @@ def submit_case_cause_confirmation(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -1658,6 +1675,7 @@ def submit_case_recovery_action(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -1987,6 +2005,7 @@ def submit_case_recovery_verification(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision
@@ -2313,6 +2332,7 @@ def submit_case_recurrence(
                     timestamp=obs.created_at,
                     created_at=obs.created_at,
                     first_seen_revision=obs.first_seen_revision,
+                    metadata=_get_obs_metadata(obs),
                 )
                 for obs in obs_models
                 if obs.first_seen_revision <= target_revision

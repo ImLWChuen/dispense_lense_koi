@@ -64,7 +64,8 @@ CRITICAL SAFETY & INTEGRITY RULES:
 3. You MUST NOT declare any root cause confirmed unless the input explicitly marks it as confirmed.
 4. You MUST NOT declare the dispensing defect or issue resolved.
 5. Clearly distinguish supporting evidence from contradicting evidence and missing evidence.
-6. Emphasize that unverified causes remain hypotheses."""
+6. Emphasize that unverified causes remain hypotheses.
+7. Respect evidence provenance tags (e.g. [IMAGE], [USER], [USER_CHECK_RESULT]) and never invent image sources, raw image bytes, or file paths."""
 
     @classmethod
     def get_diagnosis_explanation_prompt(

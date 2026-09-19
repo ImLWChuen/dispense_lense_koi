@@ -13,7 +13,6 @@ Design rules:
 
 from __future__ import annotations
 
-from difflib import SequenceMatcher
 from typing import Any
 
 from app.knowledge import (
@@ -128,21 +127,10 @@ def _is_duplicate(
         if ex_t == obs_t and ex_v == obs_v:
             return True, existing.id
 
-        # Same semantic group → likely duplicate
+        # Same semantic group within same type → duplicate
         if obs_group:
             existing_group = _get_semantic_group(ex_t, ex_v)
             if existing_group == obs_group:
-                return True, existing.id
-
-        # Fuzzy text similarity on the original text (if both have it)
-        if (obs.original_text and existing.original_text
-                and obs.original_text != existing.original_text):
-            ratio = SequenceMatcher(
-                None,
-                obs.original_text.lower(),
-                existing.original_text.lower(),
-            ).ratio()
-            if ratio > 0.85:
                 return True, existing.id
 
     return False, None

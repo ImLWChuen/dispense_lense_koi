@@ -78,9 +78,14 @@ class ExplanationService:
         top_cause_name = top_cause.cause_name if top_cause else None
         top_cause_score = top_cause.score if top_cause else None
 
-        # Build evidence lists from top cause
-        supporting = [e.explanation or e.observation_id for e in top_cause.supporting_evidence] if top_cause else []
-        contradicting = [e.explanation or e.observation_id for e in top_cause.contradicting_evidence] if top_cause else []
+        def _format_evidence_item(e: Any) -> str:
+            src = getattr(e.source, "value", str(e.source)) if hasattr(e, "source") and e.source else "UNKNOWN"
+            text = e.explanation or e.observation_id
+            return f"[{src}] {text}"
+
+        # Build evidence lists from top cause with provenance
+        supporting = [_format_evidence_item(e) for e in top_cause.supporting_evidence] if top_cause else []
+        contradicting = [_format_evidence_item(e) for e in top_cause.contradicting_evidence] if top_cause else []
         missing = top_cause.missing_evidence if top_cause else []
 
         confirmed = [c.cause_name for c in ranking.ranked_causes if c.conclusion == CauseConclusion.CONFIRMED]
