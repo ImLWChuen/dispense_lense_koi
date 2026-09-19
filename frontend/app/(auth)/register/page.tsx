@@ -9,12 +9,12 @@ export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<boolean>(false);
-
+    
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
-
+    
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -22,7 +22,7 @@ export default function RegisterPage() {
         setIsLoading(true);
         setError(null);
         setSuccess(false);
-
+        
         try {
             const response = await fetch("http://127.0.0.1:800/api/v1/auth/register", {
                 method: "POST",
@@ -46,7 +46,7 @@ export default function RegisterPage() {
             setTimeout(() => {
                 router.push("/login");
             }, 2000);
-
+            
         } catch (err: any) {
             setError(err.message || "An unexpected error occurred.");
         } finally {
@@ -79,7 +79,7 @@ export default function RegisterPage() {
                             {error}
                         </div>
                     )}
-
+                    
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">

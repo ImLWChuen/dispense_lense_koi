@@ -5,7 +5,7 @@ import { useAuth } from "@/components/providers/AuthContext";
 
 export default function Header() {
     const { user, logout } = useAuth();
-
+    
     // Fallback if no user loaded yet
     const firstName = user?.first_name || "Guest";
     const lastName = user?.last_name || "";
@@ -50,9 +50,9 @@ export default function Header() {
                             {role}
                         </p>
                     </div>
-
+                    
                     {user && (
-                        <button
+                        <button 
                             onClick={logout}
                             className="ml-2 rounded-xl p-2 text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"
                             title="Sign out"

@@ -18,7 +18,7 @@ export default function LoginPage() {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-
+        
         try {
             const formData = new URLSearchParams();
             formData.append("username", email);
@@ -38,7 +38,7 @@ export default function LoginPage() {
             }
 
             const data = await response.json();
-
+            
             // fetch user data using token
             const userResponse = await fetch("http://127.0.0.1:800/api/v1/auth/me", {
                 headers: {
@@ -46,7 +46,7 @@ export default function LoginPage() {
                 },
             });
             const userData = await userResponse.json();
-
+            
             login(data.access_token, userData);
             router.push("/dashboard");
         } catch (err: any) {
@@ -76,7 +76,7 @@ export default function LoginPage() {
                         {error}
                     </div>
                 )}
-
+                
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                         Email address
