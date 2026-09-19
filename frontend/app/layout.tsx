@@ -7,6 +7,8 @@ export const metadata: Metadata = {
       "AI-assisted industrial dispensing defect diagnosis and troubleshooting platform.",
 };
 
+import { AuthProvider } from "@/components/providers/AuthContext";
+
 export default function RootLayout({
                                      children,
                                    }: Readonly<{
@@ -14,7 +16,9 @@ export default function RootLayout({
 }>) {
   return (
       <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
       </html>
   );
 }
