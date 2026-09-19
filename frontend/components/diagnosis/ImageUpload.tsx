@@ -18,7 +18,7 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
             size: `${(file.size / 1024).toFixed(1)} KB`,
             status: 'uploading' as const
         };
-        
+
         setFiles((prev) => [...prev, fileObj]);
         const index = files.length; // Actually we should match by name or generate ID, but this is simple
 
@@ -36,11 +36,15 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
             }
 
             const data = await res.json();
-            
+
+            const detectedSummary = data.length > 0
+                ? `Detected: ${data.map((d: any) => `${d.observation_type.replace(/_/g, ' ')}: ${d.value}`).join(', ')}`
+                : 'Normal (no defect features detected)';
+
             setFiles((prev) => prev.map(f => f.name === file.name ? {
-                ...f, 
-                status: 'analyzed', 
-                message: `Detected: ${data[0]?.value || 'Unknown'}` 
+                ...f,
+                status: 'analyzed',
+                message: detectedSummary
             } : f));
 
             if (onAnalysisComplete && data.length > 0) {
@@ -49,9 +53,9 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
 
         } catch (err: any) {
             setFiles((prev) => prev.map(f => f.name === file.name ? {
-                ...f, 
-                status: 'error', 
-                message: err.message || 'Error analyzing' 
+                ...f,
+                status: 'error',
+                message: err.message || 'Error analyzing'
             } : f));
         }
     };
@@ -64,7 +68,7 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
             await processFile(file);
         }
     };
-    
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const selectedFiles = Array.from(e.target.files);
@@ -102,13 +106,13 @@ export default function ImageUpload({ onAnalysisComplete }: ImageUploadProps) {
                         : "border-gray-300 bg-gray-50 hover:border-gray-400"
                 }`}
             >
-                <input 
-                    type="file" 
-                    className="hidden" 
-                    ref={fileInputRef} 
+                <input
+                    type="file"
+                    className="hidden"
+                    ref={fileInputRef}
                     onChange={handleFileChange}
                     accept="image/*"
-                    multiple 
+                    multiple
                 />
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]">
                     <Upload size={22} />

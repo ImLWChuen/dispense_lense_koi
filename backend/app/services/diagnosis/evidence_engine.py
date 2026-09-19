@@ -13,7 +13,6 @@ Design rules:
 
 from __future__ import annotations
 
-from difflib import SequenceMatcher
 from typing import Any
 
 from app.knowledge import (
@@ -46,12 +45,12 @@ from app.utils.scoring import (
 # Semantic groups: observations in the same group with similar values
 # are considered duplicates.
 _SEMANTIC_GROUPS: dict[str, set[str]] = {
-    "deposit_size_small": {"undersized", "small", "too_little", "insufficient", "below_target"},
-    "deposit_size_large": {"oversized", "large", "too_much", "excessive", "above_target"},
+    "deposit_size_small": {"undersized", "small", "too_little", "insufficient", "below_target", "too_small", "undersize"},
+    "deposit_size_large": {"oversized", "large", "too_much", "excessive", "above_target", "too_large", "oversize"},
     "deposit_size_variable": {"inconsistent", "variable", "varying", "uneven"},
     "deposit_missing": {"missing", "absent", "no_deposit"},
-    "bubble_air": {"visible_bubbles", "air_entrapment"},
-    "spread_excess": {"excessive_spread", "flat_spread", "bleeding"},
+    "bubble_air": {"visible_bubbles", "air_entrapment", "bubble", "bubbles", "air_bubble", "air_bubbles"},
+    "spread_excess": {"excessive_spread", "flat_spread", "bleeding", "spread", "spreading"},
     "time_prolonged": {"after_prolonged_operation", "worsens_over_time"},
     "frequency_intermittent": {"intermittent", "sporadic"},
     "frequency_consistent": {"consistent", "constant"},
@@ -60,20 +59,50 @@ _SEMANTIC_GROUPS: dict[str, set[str]] = {
 }
 
 
+def _to_evidence_source(src: Any) -> EvidenceSource:
+    """Safely convert a source value to EvidenceSource enum."""
+    if isinstance(src, EvidenceSource):
+        return src
+    if isinstance(src, str):
+        try:
+            return EvidenceSource(src)
+        except ValueError:
+            return EvidenceSource.USER
+    return EvidenceSource.USER
+
+
+def _normalize_type_and_val(obs_type: Any, val: Any) -> tuple[str, str]:
+    """Normalize observation type and value for canonical rule matching."""
+    t = str(obs_type.value if hasattr(obs_type, "value") else obs_type).strip().lower()
+    v = str(val.value if hasattr(val, "value") else val).strip().lower()
+
+    if t == "spatial_pattern":
+        t = "location_pattern"
+
+    # Normalize common vision/client/synonym aliases
+    if v in ("too_small", "undersize", "small", "too_little", "below_target"):
+        v = "undersized"
+    elif v in ("too_large", "oversize", "large", "too_much", "excessive", "above_target"):
+        v = "oversized"
+    elif v in ("bubble", "bubbles", "air_bubble", "air_bubbles", "air_entrapment"):
+        v = "visible_bubbles"
+    elif v in ("spread", "spreading", "flat_spread", "bleeding"):
+        v = "excessive_spread"
+    elif v in ("systemic",):
+        v = "all_points"
+    elif v in ("localized",):
+        v = "specific_nozzle"
+
+    return t, v
+
+
 def _get_semantic_group(obs_type: str, value: str) -> str | None:
     """Return the semantic group key for an observation, if any."""
-    normalized_type = "location_pattern" if obs_type == "spatial_pattern" else obs_type
+    normalized_type, normalized_val = _normalize_type_and_val(obs_type, value)
     for group_key, values in _SEMANTIC_GROUPS.items():
-        if value in values:
+        if normalized_val in values:
             return f"{normalized_type}:{group_key}"
     return None
-
-
-def _normalize_obs_type(t: Any) -> str:
-    val = t.value if hasattr(t, "value") else str(t)
-    if val == "spatial_pattern":
-        return "location_pattern"
-    return val
 
 
 def _is_duplicate(
@@ -85,28 +114,22 @@ def _is_duplicate(
     Returns:
         (is_duplicate, duplicate_of_id)
     """
-    obs_type_norm = _normalize_obs_type(obs.observation_type)
-    obs_group = _get_semantic_group(obs.observation_type, obs.value)
+    obs_t, obs_v = _normalize_type_and_val(obs.observation_type, obs.value)
+    obs_group = _get_semantic_group(obs_t, obs_v)
 
     for existing in existing_observations:
         if existing.id == obs.id:
             continue
 
-        existing_type_norm = _normalize_obs_type(existing.observation_type)
+        ex_t, ex_v = _normalize_type_and_val(existing.observation_type, existing.value)
 
-        # Observations of different types are never duplicates
-        if existing_type_norm != obs_type_norm:
-            continue
-
-        # Same type + identical value → duplicate
-        if existing.value == obs.value:
+        # Same normalized type + same normalized value → definite duplicate
+        if ex_t == obs_t and ex_v == obs_v:
             return True, existing.id
 
         # Same semantic group within same type → duplicate
         if obs_group:
-            existing_group = _get_semantic_group(
-                existing.observation_type, existing.value
-            )
+            existing_group = _get_semantic_group(ex_t, ex_v)
             if existing_group == obs_group:
                 return True, existing.id
 
@@ -141,12 +164,13 @@ class EvidenceEngine:
     ) -> list[CandidateCause]:
         """Evaluate all observations against all candidate causes for a defect.
 
-        Args:
-            observations: Structured observations from symptom extraction.
-            defect_code: The identified defect code (e.g. "D03_INCONSISTENT_SIZE").
-
-        Returns:
-            List of CandidateCause objects with evidence and scores.
+        Steps for each cause:
+        1. Look up static rules linking observations to this cause.
+        2. Filter out semantic duplicates (only the first contributes score).
+        3. Score supporting / contradicting evidence.
+        4. Identify missing evidence and apply penalties.
+        5. Calculate total score and clamp to [0, 100].
+        6. Return causes sorted by score descending.
         """
         # 1. Retrieve applicable causes for this defect
         cause_defs = get_causes_for_defect(defect_code)
@@ -180,12 +204,13 @@ class EvidenceEngine:
                 is_dup, dup_of = _is_duplicate(obs, processed_observations)
                 processed_observations.append(obs)
 
-                # Find matching rules
+                obs_t, obs_v = _normalize_type_and_val(obs.observation_type, obs.value)
+
+                # Find matching rules (comparing normalized types & values)
                 matching_rules = [
                     r for r in all_rules
                     if (r.cause_id == cause_def.id
-                        and r.observation_type == obs.observation_type
-                        and r.observation_value == obs.value)
+                        and _normalize_type_and_val(r.observation_type, r.observation_value) == (obs_t, obs_v))
                 ]
 
                 if not matching_rules:
@@ -195,7 +220,7 @@ class EvidenceEngine:
                         cause_id=cause_def.id,
                         relation=EvidenceRelation.NEUTRAL,
                         strength=EvidenceStrength.WEAK,
-                        source=EvidenceSource(obs.source) if isinstance(obs.source, str) else obs.source,
+                        source=_to_evidence_source(obs.source),
                         explanation=f"No evidence rule links '{obs.observation_type}={obs.value}' to '{cause_def.name}'.",
                         is_duplicate=is_dup,
                         duplicate_of=dup_of,
@@ -227,7 +252,7 @@ class EvidenceEngine:
                     cause_id=cause_def.id,
                     relation=EvidenceRelation(best_rule.relation.value if isinstance(best_rule.relation, EvidenceRelation) else best_rule.relation),
                     strength=EvidenceStrength(best_rule.strength.value if isinstance(best_rule.strength, EvidenceStrength) else best_rule.strength),
-                    source=EvidenceSource(obs.source) if isinstance(obs.source, str) else obs.source,
+                    source=_to_evidence_source(obs.source),
                     explanation=best_rule.explanation,
                     is_duplicate=is_dup,
                     duplicate_of=dup_of,
@@ -251,15 +276,15 @@ class EvidenceEngine:
             cause_rules = [
                 r for r in all_rules
                 if r.cause_id == cause_def.id
-                and not r.observation_type.startswith("check_")
-                and r.observation_type != "check_result"
-                and not r.observation_type.startswith("question_")
-                and r.observation_type != "question_answer"
-                and r.observation_type != "spatial_pattern"
+                and not str(r.observation_type).startswith("check_")
+                and str(r.observation_type) != "check_result"
+                and not str(r.observation_type).startswith("question_")
+                and str(r.observation_type) != "question_answer"
+                and str(r.observation_type) != "spatial_pattern"
             ]
-            observed_types = {(o.observation_type, o.value) for o in observations}
+            observed_types = {_normalize_type_and_val(o.observation_type, o.value) for o in observations}
             for rule in cause_rules:
-                if (rule.observation_type, rule.observation_value) not in observed_types:
+                if _normalize_type_and_val(rule.observation_type, rule.observation_value) not in observed_types:
                     if rule.relation == EvidenceRelation.SUPPORTS:
                         missing_desc = f"{rule.observation_type}={rule.observation_value} has not been observed."
                         if missing_desc not in missing_evidence:
