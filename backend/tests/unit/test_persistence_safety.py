@@ -116,28 +116,44 @@ def assert_safe_test_database(url: str, dev_url: str | None = None) -> None:
 
     # 5. Separation check: if development database URL is present, must not target the same database
     if dev_url and isinstance(dev_url, str) and dev_url.strip():
+        dev_str = dev_url.strip()
         try:
-            parsed_dev = make_url(dev_url.strip())
-            dev_host = (parsed_dev.host or "").lower()
-            test_host = (parsed.host or "").lower()
-            loopback_hosts = {"localhost", "127.0.0.1", "::1"}
-            same_host = (
-                (dev_host in loopback_hosts and test_host in loopback_hosts)
-                or (dev_host == test_host)
+            parsed_dev = make_url(dev_str)
+        except Exception as exc:
+            raise RuntimeError(
+                "Database safety check failed: development DATABASE_URL could not be parsed or is invalid."
+            ) from exc
+
+        # Reject ambiguous development URLs containing destination query overrides
+        if parsed_dev.query:
+            for q_key in parsed_dev.query.keys():
+                key_lower = str(q_key).strip().lower()
+                if key_lower in FORBIDDEN_DESTINATION_QUERY_KEYS:
+                    raise RuntimeError(
+                        f"Database safety check failed: development DATABASE_URL contains ambiguous destination query parameter '{key_lower}'."
+                    )
+
+        dev_host = (parsed_dev.host or "").lower()
+        test_host = (parsed.host or "").lower()
+        loopback_hosts = {"localhost", "127.0.0.1", "::1"}
+        same_host = (
+            (dev_host in loopback_hosts and test_host in loopback_hosts)
+            or (dev_host == test_host)
+        )
+        try:
+            dev_port = int(parsed_dev.port or 5432)
+        except (ValueError, TypeError) as exc:
+            raise RuntimeError(
+                "Database safety check failed: development DATABASE_URL contains an invalid port."
+            ) from exc
+        test_port = int(parsed.port or 5432)
+        dev_db = (parsed_dev.database or "").strip().lower()
+        test_db = (parsed.database or "").strip().lower()
+        if same_host and dev_port == test_port and dev_db == test_db:
+            raise RuntimeError(
+                f"Database safety check failed: TEST_DATABASE_URL resolves to the same database target ('{test_db}') "
+                "as the development DATABASE_URL. A separate disposable test database is required."
             )
-            dev_port = parsed_dev.port or 5432
-            test_port = parsed.port or 5432
-            dev_db = (parsed_dev.database or "").strip().lower()
-            test_db = (parsed.database or "").strip().lower()
-            if same_host and dev_port == test_port and dev_db == test_db:
-                raise RuntimeError(
-                    f"Database safety check failed: TEST_DATABASE_URL resolves to the same database target ('{test_db}') "
-                    "as the development DATABASE_URL. A separate disposable test database is required."
-                )
-        except RuntimeError:
-            raise
-        except Exception:
-            pass
 
 
 # ===========================================================================
@@ -389,3 +405,38 @@ def test_adversarial_query_redirection_exposes_no_credentials():
     err = str(exc_info.value)
     assert "super_secret_pw_999" not in err
     assert "top_secret_user" not in err
+
+
+def test_dev_url_with_dbname_query_override_rejected():
+    """A development URL with a query-level 'dbname' override attempting to point to test DB is rejected."""
+    test_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test"
+    dev_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens?dbname=dispenselens_test"
+    with pytest.raises(RuntimeError, match="development DATABASE_URL contains ambiguous destination query parameter 'dbname'"):
+        assert_safe_test_database(test_url, dev_url=dev_url)
+
+
+def test_dev_url_with_destination_query_overrides_rejected():
+    """A development URL with host/port/service query overrides must be rejected as ambiguous."""
+    test_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test"
+    for param in ["host=10.0.0.1", "hostaddr=10.0.0.1", "port=5433", "service=dev_service", "database=other_db"]:
+        dev_url = f"postgresql+psycopg://user:pass@localhost:5432/dispenselens?{param}"
+        with pytest.raises(RuntimeError, match="development DATABASE_URL contains ambiguous destination query parameter"):
+            assert_safe_test_database(test_url, dev_url=dev_url)
+
+
+def test_dev_url_malformed_fails_closed():
+    """A malformed development URL fails closed before testing proceeds."""
+    test_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test"
+    with pytest.raises(RuntimeError, match="development DATABASE_URL could not be parsed or is invalid"):
+        assert_safe_test_database(test_url, dev_url="not-a-valid-database-url")
+
+
+def test_dev_url_query_override_exposes_no_credentials():
+    """Rejection of ambiguous development URLs must never leak development credentials."""
+    test_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test"
+    dev_url = "postgresql+psycopg://dev_admin:ultra_secret_pass_1234@localhost:5432/dispenselens?dbname=dispenselens_test"
+    with pytest.raises(RuntimeError) as exc_info:
+        assert_safe_test_database(test_url, dev_url=dev_url)
+    err = str(exc_info.value)
+    assert "ultra_secret_pass_1234" not in err
+    assert "dev_admin" not in err

@@ -160,12 +160,14 @@ def test_symptom_extractor_handles_llm_timeout_gracefully():
 
 def test_explanation_service_offline_fallback(monkeypatch: pytest.MonkeyPatch):
     """When no LLM API key is present, ExplanationService returns deterministic template."""
+    monkeypatch.setattr("app.core.config._load_env_file", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
-    offline_llm = LLMService(api_key="")
+    offline_llm = LLMService()
     assert not offline_llm.is_available
+    assert offline_llm.client is None
 
     service = ExplanationService(llm_service=offline_llm)
     case = StructuredCase(description="Dots undersized")
@@ -176,6 +178,12 @@ def test_explanation_service_offline_fallback(monkeypatch: pytest.MonkeyPatch):
     explanation = service.explain_diagnosis(ranking, case)
     assert "highest-supported hypothesis" in explanation
     assert "with evidence support" in explanation
+
+    # Also verify default ExplanationService() instantiation without explicit llm_service
+    default_service = ExplanationService()
+    assert not default_service.llm.is_available
+    default_explanation = default_service.explain_diagnosis(ranking, case)
+    assert default_explanation == explanation
 
 
 def test_explanation_service_rejects_unconfirmed_root_cause_claim():

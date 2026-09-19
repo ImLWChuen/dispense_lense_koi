@@ -22,7 +22,7 @@ from tests.unit.test_persistence_safety import assert_safe_test_database
 _ORIGINAL_DEV_DATABASE_URL: Final[str | None] = os.environ.get("DATABASE_URL")
 
 
-def bootstrap_test_database() -> str:
+def bootstrap_test_database(dev_url: str | None = None) -> str:
     """Validate TEST_DATABASE_URL and bind it to DATABASE_URL for pytest execution.
 
     Fails closed if TEST_DATABASE_URL is missing, invalid, or conflicts with development.
@@ -36,7 +36,8 @@ def bootstrap_test_database() -> str:
         )
 
     # Validate test database destination safety and separation from development
-    assert_safe_test_database(test_url, dev_url=_ORIGINAL_DEV_DATABASE_URL)
+    check_dev_url = dev_url if dev_url is not None else os.environ.get("DATABASE_URL")
+    assert_safe_test_database(test_url, dev_url=check_dev_url)
 
     # Bind application's DATABASE_URL to the validated test destination
     os.environ["DATABASE_URL"] = test_url

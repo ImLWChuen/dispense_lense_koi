@@ -74,27 +74,45 @@ docker exec -i dispenselens-postgres psql -U dispenselens_user -d postgres -tc "
 docker exec -i dispenselens-postgres psql -U dispenselens_user -d postgres -c "CREATE DATABASE dispenselens_test;"
 ```
 
-### 4. Apply Migrations
+### 4. Apply Migrations to Disposable Test Database
 
-Run from the `backend/` directory:
+Before running tests, ensure the disposable test database is migrated to `head`.
+Validate the test URL before Alembic, save the original `DATABASE_URL`, temporarily bind the test URL inside `try/finally`, and restore its original value or absence before pytest:
 
 ```powershell
-# Apply migrations to development database:
-$env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
-.\.venv\Scripts\python.exe -m alembic upgrade head
+# Ensure TEST_DATABASE_URL is set
+$env:TEST_DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
 
-# Apply migrations to disposable test database (safe test isolation):
-$env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
-.\.venv\Scripts\python.exe -m alembic upgrade head
+# Validate test database destination safety prior to Alembic execution
+.\.venv\Scripts\python.exe -c "from tests.unit.test_persistence_safety import assert_safe_test_database; import os; assert_safe_test_database(os.environ['TEST_DATABASE_URL'])"
+
+# Temporarily present TEST_DATABASE_URL to Alembic and restore original environment upon completion
+$origDb = $env:DATABASE_URL
+try {
+    $env:DATABASE_URL = $env:TEST_DATABASE_URL
+    .\.venv\Scripts\python.exe -m alembic upgrade head
+} finally {
+    if ($null -ne $origDb) { $env:DATABASE_URL = $origDb } else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
+}
 ```
+
+> **Optional: Development Database Migrations**
+> If you are setting up or upgrading the development database (`dispenselens`) for manual runtime usage, run:
+> ```powershell
+> $env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
+> .\.venv\Scripts\python.exe -m alembic upgrade head
+> ```
 
 ## Running Tests
 
-Automated tests require `TEST_DATABASE_URL` for database-backed suites. Unit and health tests run independently without requiring a database connection or `TEST_DATABASE_URL`.
+Automated tests require `TEST_DATABASE_URL` for database-backed suites. The centralized test bootstrap validates destination safety and separation from `DATABASE_URL` before binding within the pytest runner. Unit and health tests run independently without requiring a database connection or `TEST_DATABASE_URL`.
 
 ```powershell
 # Ensure test database target is set in PowerShell session:
 $env:TEST_DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
+
+# If DATABASE_URL is set in your shell for development, ensure it targets the development database (not the test database):
+$env:DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens"
 
 # Run non-database checks (health endpoint, test safety, runtime baseline)
 .\.venv\Scripts\python.exe -m pytest tests/integration/test_health_api.py -q
