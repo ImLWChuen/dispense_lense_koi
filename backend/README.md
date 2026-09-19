@@ -83,14 +83,20 @@ Validate the test URL before Alembic, save the original `DATABASE_URL`, temporar
 # Ensure TEST_DATABASE_URL is set
 $env:TEST_DATABASE_URL = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
 
-# Validate test database destination safety prior to Alembic execution
-.\.venv\Scripts\python.exe -c "from tests.unit.test_persistence_safety import assert_safe_test_database; import os; assert_safe_test_database(os.environ['TEST_DATABASE_URL'])"
+# Validate test database destination safety and development separation prior to Alembic execution
+$origDb = $env:DATABASE_URL
+.\.venv\Scripts\python.exe -c "from tests.unit.test_persistence_safety import assert_safe_test_database; import os; assert_safe_test_database(os.environ.get('TEST_DATABASE_URL', ''), dev_url=os.environ.get('DATABASE_URL'))"
+if ($LASTEXITCODE -ne 0) {
+    throw "Test database safety validation failed (exit code $LASTEXITCODE). Migration aborted."
+}
 
 # Temporarily present TEST_DATABASE_URL to Alembic and restore original environment upon completion
-$origDb = $env:DATABASE_URL
 try {
     $env:DATABASE_URL = $env:TEST_DATABASE_URL
     .\.venv\Scripts\python.exe -m alembic upgrade head
+    if ($LASTEXITCODE -ne 0) {
+        throw "Alembic migration failed (exit code $LASTEXITCODE)."
+    }
 } finally {
     if ($null -ne $origDb) { $env:DATABASE_URL = $origDb } else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
 }

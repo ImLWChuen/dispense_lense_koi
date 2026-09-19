@@ -23,7 +23,7 @@ from openai import APITimeoutError, OpenAIError
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, _load_env_file as _real_load_env_file, get_settings
 from app.main import create_app
 from app.schemas.diagnosis import DiagnosisRequest
 from app.services.ai.explanation_service import ExplanationService
@@ -62,13 +62,16 @@ def test_stateless_diagnosis_offline_without_api_keys() -> None:
         "method": "jetting",
     }
 
-    # Block provider construction and all outbound HTTP traffic around the complete request
+    # Block provider construction and all outbound HTTP transport traffic around the complete request
+    # while preserving TestClient's in-process ASGI transport
     with patch("app.services.ai.llm_service.OpenAI") as mock_openai_cls, \
-         patch("httpx.Client.send", side_effect=RuntimeError("Outbound network disabled")), \
-         patch("httpcore.ConnectionPool.handle_request", side_effect=RuntimeError("Outbound network disabled")):
+         patch("httpx.HTTPTransport.handle_request", side_effect=RuntimeError("Outbound network disabled")) as mock_http_transport, \
+         patch("httpcore.ConnectionPool.handle_request", side_effect=RuntimeError("Outbound network disabled")) as mock_httpcore:
         response = client.post("/api/v1/diagnoses", json=payload)
         assert response.status_code == 200
         mock_openai_cls.assert_not_called()
+        mock_http_transport.assert_not_called()
+        mock_httpcore.assert_not_called()
 
     data = response.json()
     assert data["defect"] == "D03_INCONSISTENT_SIZE"
@@ -193,7 +196,18 @@ def test_llm_provider_error_preserves_deterministic_diagnostic_authority() -> No
 
 def test_load_env_file_synthetic_scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Zero-dependency .env loader parses synthetic .env files correctly and respects shell precedence."""
-    from app.core import config
+    # Control all environment keys under test to prevent ambient interference
+    tested_keys = [
+        "OPENAI_API_KEY",
+        "LLM_API_KEY",
+        "OPENAI_MODEL",
+        "LLM_MODEL",
+        "CORS_ORIGINS",
+        "LLM_TIMEOUT_SECONDS",
+        "PRE_EXISTING_KEY",
+    ]
+    for k in tested_keys:
+        monkeypatch.delenv(k, raising=False)
 
     env_content = (
         "# Synthetic test comment\n"
@@ -213,28 +227,22 @@ def test_load_env_file_synthetic_scenario(tmp_path: Path, monkeypatch: pytest.Mo
     # Point candidate resolution to tmp_path
     monkeypatch.chdir(tmp_path)
     # Restore the real _load_env_file implementation
-    monkeypatch.setattr(config, "_load_env_file", config.__dict__.get("_original_load_env_file", config._load_env_file))
+    monkeypatch.setattr("app.core.config._load_env_file", _real_load_env_file)
 
-    # Read the synthetic file directly using config loader logic
-    with open(test_env_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            key = key.strip()
-            val = val.strip()
-            if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
-                val = val[1:-1]
-            if key and key not in os.environ:
-                monkeypatch.setenv(key, val)
+    orig_env = os.environ.copy()
+    try:
+        # Invoke the real loader against the temporary synthetic .env
+        _real_load_env_file()
 
-    settings = Settings.load()
-    assert settings.openai_api_key == "synthetic-key-999"
-    assert settings.openai_model == "gpt-4o-custom"
-    assert settings.cors_origins == ["http://custom:3000", "http://custom:3001"]
-    assert settings.llm_timeout_seconds == 25.0
-    assert os.environ["PRE_EXISTING_KEY"] == "shell_authority_value"
+        settings = Settings.load()
+        assert settings.openai_api_key == "synthetic-key-999"
+        assert settings.openai_model == "gpt-4o-custom"
+        assert settings.cors_origins == ["http://custom:3000", "http://custom:3001"]
+        assert settings.llm_timeout_seconds == 25.0
+        assert os.environ["PRE_EXISTING_KEY"] == "shell_authority_value"
+    finally:
+        os.environ.clear()
+        os.environ.update(orig_env)
 
 
 # ===========================================================================

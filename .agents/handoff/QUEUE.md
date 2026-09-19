@@ -7,9 +7,9 @@ Member 3 stabilization: runnable offline baseline and lossless troubleshooting h
 ## Implemented, pending review
 
 - `DLK-M3-025` — Restore safe backend startup and offline troubleshooting baseline — **implemented**
-  - reviewed commit: `fc356381df5926b43330c1594f300ba6710332e4`
+  - reviewed commit: `9de39950086ae0dbfae62f28d456f2a61b57423e`
   - review: `.agents/handoff/reviews/DLK-M3-025-review.md`
-  - corrections addressed: restored migration environment via try/finally; isolated offline tests from real .env loading and shell overrides; exercised mocked provider timeout and error paths with exact deterministic parity assertions; rejected ambiguous development database destinations before rebinding
+  - corrections addressed (R1–R7): restored migration environment via try/finally; isolated offline tests from real .env loading and shell overrides; exercised mocked provider timeout and error paths with exact deterministic parity assertions; rejected ambiguous development database destinations before rebinding; preserved in-process TestClient requests while blocking outbound transport; exercised actual production .env loader in isolation; gated migrations behind exit-code checked validation; verified development database nonmutation via table counts and sample identity checks
   - task: `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-024`

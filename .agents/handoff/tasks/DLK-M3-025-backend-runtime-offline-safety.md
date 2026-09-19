@@ -196,30 +196,33 @@ Complete this section before the local commit.
 
 ### Summary
 
-- Addressed review findings R1–R4 from `.agents/handoff/reviews/DLK-M3-025-review.md`:
+- Addressed review findings R1–R7 from `.agents/handoff/reviews/DLK-M3-025-review.md`:
   - **R1 (Migration environment restoration):** Updated `backend/README.md` to cleanly separate optional development database setup from disposable test migrations. Provided an explicit, non-destructive PowerShell pattern that validates destination safety, saves `$origDb = $env:DATABASE_URL`, temporarily presents `$env:TEST_DATABASE_URL` inside a `try` block, and reliably restores the original environment (or removes the variable) in a `finally` block before any test runner execution.
-  - **R2 (Test isolation from .env loading):** Isolated offline unit and configuration tests from real developer `.env` files and shell variables. Added autouse fixtures in `test_runtime_baseline.py` and `test_teammate_integration_contracts.py` stubbing `_load_env_file()` and clearing API key aliases and CORS overrides. Added a synthetic `.env` parsing test (`test_load_env_file_synthetic_scenario`) using `tmp_path` to verify zero-dependency file parsing, quote stripping, and shell environment precedence with zero process leakage via `monkeypatch.setenv`. Blocked OpenAI client instantiation and outbound network access (`httpx.Client.send`, `httpcore.ConnectionPool.handle_request`) across the complete offline diagnosis flow.
+  - **R2 (Test isolation from .env loading):** Isolated offline unit and configuration tests from real developer `.env` files and shell variables. Added autouse fixtures in `test_runtime_baseline.py` and `test_teammate_integration_contracts.py` stubbing `_load_env_file()` and clearing API key aliases and CORS overrides. Added a synthetic `.env` parsing test (`test_load_env_file_synthetic_scenario`) using `tmp_path` to verify zero-dependency file parsing, quote stripping, and shell environment precedence with zero process leakage via `monkeypatch.setenv`. Blocked OpenAI client instantiation across the complete offline diagnosis flow.
   - **R3 (Exercised mocked provider failures):** Added `test_llm_timeout_preserves_deterministic_diagnostic_authority` and `test_llm_provider_error_preserves_deterministic_diagnostic_authority` in `test_runtime_baseline.py`. Configured an active `LLMService(api_key="synthetic-configured-key")` and mocked `client.chat.completions.create` to raise `APITimeoutError` and `OpenAIError`. Verified that the real `generate_text` exception handlers are exercised and that candidate causes, numerical scores, conclusions, `issue_condition`, and fallback explanation match the unconfigured baseline with exact deterministic parity.
-  - **R4 (Rejection of ambiguous development destinations):** Hardened `assert_safe_test_database()` in `backend/tests/unit/test_persistence_safety.py` to parse `dev_url`, fail closed on `make_url` parse errors or invalid ports, and reject destination query overrides (e.g., `dbname`, `host`, `hostaddr`, `port`, `service`, `database`). Integrated this check into `bootstrap_test_database()` in `conftest.py` so rejection occurs before environment rebinding or engine creation. Added 4 connection-free regression tests.
+  - **R4 (Rejection of ambiguous development destinations):** Hardened `assert_safe_test_database()` in `backend/tests/unit/test_persistence_safety.py` to parse `dev_url`, fail closed on `make_url` parse errors or invalid ports, and reject destination query overrides (e.g., `dbname`, `host`, `hostaddr`, `port`, `service`, `database`). Integrated this check into `bootstrap_test_database()` in `conftest.py` so rejection occurs before environment rebinding or engine creation. Added connection-free regression tests.
+  - **R5 (In-process TestClient request preservation):** Removed global `httpx.Client.send` patch in `test_stateless_diagnosis_offline_without_api_keys`. Targeted patches specifically to `httpx.HTTPTransport.handle_request` and `httpcore.ConnectionPool.handle_request` to block outbound HTTP transport without interfering with Starlette `TestClient`'s in-process ASGI transport. Asserted that neither `OpenAI` client instantiation nor outbound HTTP transport methods were called during the complete stateless request.
+  - **R6 (Real .env loader execution without duplicated parser):** Captured the real production loader `_real_load_env_file` before test fixture patching. Controlled all tested environment keys, pointed candidate resolution to `tmp_path`, invoked `_real_load_env_file()` directly against the synthetic `.env`, asserted proper parsing, quote-stripping, and shell variable precedence, and restored all environment mutations in a `finally` block with zero copied parser logic.
+  - **R7 (Exit-code checked validation gating migrations):** Updated `backend/README.md` to pass `dev_url=os.environ.get('DATABASE_URL')` to `assert_safe_test_database`, immediately check `$LASTEXITCODE`, and throw before binding or running Alembic migrations. Checked Alembic exit code inside `try` with `finally` restoration. Added `test_migration_safety_gate_blocks_execution_on_rejected_destination` regression test and demonstrated with a synthetic rejected URL and migration stub that migration execution is never invoked upon validation failure.
 - Synchronized declared dependencies in `backend/.venv` via `pip install -e ".[dev]"`; verified consistency with `pip check` ("No broken requirements found") and application import (`from app.main import app; print(app.title)` printed "DispenseLens API").
-- Verified offline deterministic troubleshooting operation without AI keys: stateless diagnosis produces deterministic ranked causes, numerical scores, and explanation; verified zero OpenAI client instantiation or network calls when unconfigured.
+- Verified offline deterministic troubleshooting operation without AI keys: stateless diagnosis produces deterministic ranked causes, numerical scores, and explanation; verified zero OpenAI client instantiation or outbound network calls when unconfigured.
 - Added Next.js frontend port 3001 origins (`http://localhost:3001` and `http://127.0.0.1:3001`) to default CORS origins in `backend/app/core/config.py`.
-- Applied Alembic migrations to head (`0007_check_execution_history`) on `dispenselens_test`. Proved comprehensive zero-mutation across all 9 public tables and individual records in `dispenselens`.
-- Ran all focused checks (41 passed), safety tests (23 passed), acceptance suites (50 passed), and the complete backend test suite (400 passed, 0 failed, 32 warnings).
+- Applied Alembic migrations to head (`0007_check_execution_history`) on `dispenselens_test`. Verified development database nonmutation via table row counts and sample identity checks showing no records or tables in `dispenselens` were altered.
+- Ran all focused checks (41 passed), safety tests (24 passed), acceptance suites (50 passed), and the complete backend test suite (401 passed, 0 failed, 32 warnings).
 
 ### Files changed
 
 - `backend/app/core/config.py`: Added `http://localhost:3001` and `http://127.0.0.1:3001` to `DEFAULT_CORS_ORIGINS`.
 - `backend/tests/conftest.py`: Added centralized session bootstrap fixture `test_database_url` enforcing `TEST_DATABASE_URL` fail-closed safety, pre-rebinding validation against active `DATABASE_URL`, and lazy SQLAlchemy engine rebinding.
-- `backend/tests/unit/test_persistence_safety.py`: Restricted `ALLOWED_TEST_DB_EXACT` to disposable names (`test`, `dispenselens_test`), removing `dispenselens`; added dev-separation conflict check and fail-closed rejection for ambiguous or malformed development database destinations. Added 4 regression tests.
+- `backend/tests/unit/test_persistence_safety.py`: Restricted `ALLOWED_TEST_DB_EXACT` to disposable names (`test`, `dispenselens_test`), removing `dispenselens`; added dev-separation conflict check and fail-closed rejection for ambiguous or malformed development database destinations. Added regression tests including migration safety gate verification.
 - `backend/tests/unit/test_teammate_integration_contracts.py`: Added `isolate_teammate_contracts_env` autouse fixture; updated contract assertions from stale Gemini settings to merged OpenAI settings (`openai_api_key`, `openai_model`) and verified port 3001 CORS inclusion.
 - `backend/tests/unit/test_ai_outputs.py`: Isolated `test_explanation_service_offline_fallback` from shell environment variables and verified default `ExplanationService()` instantiation fallback.
-- `backend/tests/unit/test_runtime_baseline.py`: Added 14 focused unit tests covering offline diagnosis, no-client creation, mocked provider timeout/error resilience, synthetic `.env` parsing, CORS preflight/GET on port 3001, test DB bootstrap fail-closed behavior on plain dispenselens and ambiguous/malformed dev URLs, and non-DB endpoint independence.
+- `backend/tests/unit/test_runtime_baseline.py`: Added 14 focused unit tests covering offline diagnosis, no-client creation, mocked provider timeout/error resilience, synthetic `.env` parsing with real loader, CORS preflight/GET on port 3001, test DB bootstrap fail-closed behavior on plain dispenselens and ambiguous/malformed dev URLs, and non-DB endpoint independence.
 - `backend/tests/integration/test_*.py` (11 files: `test_case_api.py`, `test_case_report_api.py`, `test_case_report_pdf_api.py`, `test_cause_confirmation_api.py`, `test_check_execution_api.py`, `test_check_result_api.py`, `test_mvp_backend_acceptance.py`, `test_persistence.py`, `test_question_answer_api.py`, `test_recovery_verification_api.py`, `test_recurrence_api.py`): Removed duplicated per-module development database fallbacks and delegated to `test_database_url`.
 - `.env.example`, `backend/.env.example`: Documented `TEST_DATABASE_URL`, added port 3001 to CORS origins, and aligned LLM section with OpenAI.
-- `backend/README.md`: Documented repeatable PowerShell commands for dependency synchronization, non-destructive test database creation, safe migration workflow using `try...finally` environment restoration, test execution via `TEST_DATABASE_URL`, and port 8000/3001 server execution.
-- `.agents/handoff/QUEUE.md`: Updated `DLK-M3-025` status to `implemented` with addressed review items R1–R4.
-- `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`: Completed task packet report with fresh verification results and comprehensive database nonmutation evidence.
+- `backend/README.md`: Documented repeatable PowerShell commands for dependency synchronization, non-destructive test database creation, safe migration workflow using `try...finally` environment restoration and exit-code validation gating, test execution via `TEST_DATABASE_URL`, and port 8000/3001 server execution.
+- `.agents/handoff/QUEUE.md`: Updated `DLK-M3-025` status to `implemented` with addressed review items R1–R7.
+- `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`: Completed task packet report with fresh verification results and database nonmutation evidence.
 
 ### Decisions made
 
@@ -227,6 +230,9 @@ Complete this section before the local commit.
 - **R2 (Layered Test Isolation):** Layered environment isolation with autouse fixtures in unit test suites to disable `_load_env_file()` and strip API key / CORS environment variables, while exercising synthetic `.env` parsing in an isolated `tmp_path` using `monkeypatch.setenv` to prevent cross-test contamination.
 - **R3 (Actual Provider Failure Exercise):** Exercised `LLMService.generate_text` error paths using mocked `OpenAI` client raising `APITimeoutError` and `OpenAIError`, verifying deterministic parity against the unconfigured baseline across all candidate causes, numerical scores, conclusions, revision numbering, and issue condition.
 - **R4 (Fail-Closed Ambiguous Dev Destination Rejection):** Rejected any `dev_url` with query parameters targeting destination overrides (`dbname`, `host`, `port`, `service`) or parsing errors before environment rebinding or engine creation, preventing subtle connection redirection to test databases.
+- **R5 (Transport-Level Outbound Blocking):** Replaced global `httpx.Client.send` patch with mocks on `httpx.HTTPTransport.handle_request` and `httpcore.ConnectionPool.handle_request`, allowing Starlette's `_TestClientTransport` in-process dispatch while guaranteeing no outbound network traffic occurs.
+- **R6 (Direct Production Loader Invocation):** Captured `_real_load_env_file` before patching to execute the actual production parser against synthetic temporary files, eliminating duplicated parsing logic and ensuring environment mutations are cleaned up in `finally`.
+- **R7 (Exit-Code Validation Gating):** Enforced that the migration workflow checks `$LASTEXITCODE` immediately after Python validation runs with `dev_url`, throwing before environment binding or Alembic invocation if safety checks fail.
 - Preserved existing development database `dispenselens` without mutating any existing records or schema.
 
 ### Verification results
@@ -234,22 +240,30 @@ Complete this section before the local commit.
 - Step 1 (Dependency synchronization): `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"` -> Successful editable installation.
 - Step 2 (Dependency check): `.\.venv\Scripts\python.exe -m pip check` -> "No broken requirements found."
 - Step 3 (Application import): `.\.venv\Scripts\python.exe -c "from app.main import app; print(app.title)"` -> "DispenseLens API".
-- Step 4 (Focused checks): `.\.venv\Scripts\python.exe -m pytest -q tests/integration/test_health_api.py tests/unit/test_ai_outputs.py tests/unit/test_teammate_integration_contracts.py tests/unit/test_runtime_baseline.py` -> 41 passed in 1.96s.
-- Step 5 (Safety checks): `.\.venv\Scripts\python.exe -m pytest -q tests/unit/test_persistence_safety.py` -> 23 passed in 0.03s.
-- Step 6 & 7 (Alembic on test database with environment restoration):
+- Step 4 (Focused checks): `.\.venv\Scripts\python.exe -m pytest -q tests/integration/test_health_api.py tests/unit/test_ai_outputs.py tests/unit/test_teammate_integration_contracts.py tests/unit/test_runtime_baseline.py` -> 41 passed in 2.01s.
+- Step 5 (Safety checks): `.\.venv\Scripts\python.exe -m pytest -q tests/unit/test_persistence_safety.py` -> 24 passed in 0.03s.
+- Step 6 & 7 (Alembic on test database with exit-code validation gating and environment restoration):
   Command:
   ```powershell
   $origDb = $env:DATABASE_URL
+  .\.venv\Scripts\python.exe -c "from tests.unit.test_persistence_safety import assert_safe_test_database; import os; assert_safe_test_database(os.environ.get('TEST_DATABASE_URL', ''), dev_url=os.environ.get('DATABASE_URL'))"
+  if ($LASTEXITCODE -ne 0) {
+      throw "Test database safety validation failed (exit code $LASTEXITCODE). Migration aborted."
+  }
   try {
       $env:DATABASE_URL = $env:TEST_DATABASE_URL
       .\.venv\Scripts\python.exe -m alembic upgrade head
+      if ($LASTEXITCODE -ne 0) {
+          throw "Alembic migration failed (exit code $LASTEXITCODE)."
+      }
   } finally {
       if ($null -ne $origDb) { $env:DATABASE_URL = $origDb } else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
   }
   ```
   Result: Successfully upgraded `dispenselens_test` to `0007_check_execution_history (head)`.
+  Demonstrated migration gating with synthetic rejected URL: when `TEST_DATABASE_URL` targeted `dispenselens` or included `?dbname=...`, the validator exited with code 1, threw "Test database safety validation failed", and migration was never invoked (`Migration invoked: False`).
 - Development Database Nonmutation Evidence:
-  Comprehensive schema, table row counts, and record inspections were captured before and after verification against the development database `dispenselens`:
+  Table row counts and record identity checks captured before and after verification demonstrate that no records or tables in the development database `dispenselens` were altered:
 
 | Table Name | Pre-Verification Row Count | Post-Verification Row Count | Pre-Verification Sample / Identity | Post-Verification Sample / Identity | Status |
 |---|---|---|---|---|---|
@@ -264,9 +278,9 @@ Complete this section before the local commit.
 | `case_question_answers` | 0 | 0 | None | None | Clean |
 
 - Step 8 (Focused real-PostgreSQL integration):
-  `.\.venv\Scripts\python.exe -m pytest -q tests/integration/test_persistence.py tests/integration/test_mvp_backend_acceptance.py` -> 50 passed in 12.72s.
+  `.\.venv\Scripts\python.exe -m pytest -q tests/integration/test_persistence.py tests/integration/test_mvp_backend_acceptance.py` -> 50 passed in 14.08s.
 - Step 9 (Full backend suite):
-  `.\.venv\Scripts\python.exe -m pytest -q` -> 400 passed, 32 warnings in 51.54s.
+  `.\.venv\Scripts\python.exe -m pytest -q` -> 401 passed, 32 warnings in 56.33s.
 - Step 10 (Task validation): `backend/.venv/Scripts/python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md` -> VALID.
 - Step 11 (Whitespace check): `git diff --check` -> Clean with zero errors.
 - Step 12 (Git status check): Cleanly staged only authorized files; `.agents.zip`, reviews, and generated artifacts remain unstaged.
@@ -278,4 +292,4 @@ Complete this section before the local commit.
 
 ### Proposed commit message
 
-`fix(backend): address review findings R1-R4 for offline safety baseline`
+`fix(backend): resolve review findings R5-R7 for offline safety baseline`

@@ -440,3 +440,29 @@ def test_dev_url_query_override_exposes_no_credentials():
     err = str(exc_info.value)
     assert "ultra_secret_pass_1234" not in err
     assert "dev_admin" not in err
+
+
+def test_migration_safety_gate_blocks_execution_on_rejected_destination():
+    """Demonstrate that migration execution is strictly gated by assert_safe_test_database
+    and never invokes the migration step when presented with a rejected destination URL.
+    """
+    dev_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens"
+    rejected_urls = [
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens",  # plain development DB (same target)
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test?dbname=dispenselens",  # query redirection
+        "postgresql+psycopg://user:pass@remote.db.com:5432/dispenselens_test",  # remote host
+        "not-a-valid-database-url",  # malformed URL
+    ]
+
+    for rejected_url in rejected_urls:
+        migration_invoked = False
+
+        def migration_stub():
+            nonlocal migration_invoked
+            migration_invoked = True
+
+        with pytest.raises(RuntimeError):
+            assert_safe_test_database(rejected_url, dev_url=dev_url)
+            migration_stub()
+
+        assert migration_invoked is False, f"Migration stub must not be invoked for rejected URL: {rejected_url}"
