@@ -4,10 +4,11 @@
 
 Member 3 stabilization: runnable offline baseline and lossless troubleshooting history
 
-## Implemented, pending review
+## Accepted current task
 
-- `DLK-M3-025` — Restore safe backend startup and offline troubleshooting baseline — **implemented**
-  - reviewed commit: `9de39950086ae0dbfae62f28d456f2a61b57423e`
+- `DLK-M3-025` — Restore safe backend startup and offline troubleshooting baseline — **accepted**
+  - reviewed commit: `f1db85435b177dd9961a14116900c03556a912de`
+  - verification: Gemini reports 401 backend tests passed; reviewer source review, task validation and committed whitespace checks passed; no independent backend rerun
   - review: `.agents/handoff/reviews/DLK-M3-025-review.md`
   - corrections addressed (R1–R7): restored migration environment via try/finally; isolated offline tests from real .env loading and shell overrides; exercised mocked provider timeout and error paths with exact deterministic parity assertions; rejected ambiguous development database destinations before rebinding; preserved in-process TestClient requests while blocking outbound transport; exercised actual production .env loader in isolation; gated migrations behind exit-code checked validation; verified development database nonmutation via table counts and sample identity checks
   - task: `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`
