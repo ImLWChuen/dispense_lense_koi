@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { User, Bell, Shield, Palette } from "lucide-react";
+import { User, Bell, Shield, Palette, LogOut } from "lucide-react";
 
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import { useAuth } from "@/components/providers/AuthContext";
 
 export default function SettingsPage() {
+    const { user, logout } = useAuth();
     const [activeTab, setActiveTab] = useState("profile");
 
     const tabs = [
@@ -65,8 +67,8 @@ export default function SettingsPage() {
                                     
                                     <form className="space-y-6">
                                         <div className="flex items-center gap-6 mb-8">
-                                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eeebff] text-2xl font-bold text-[#5848e8]">
-                                                SM
+                                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eeebff] text-2xl font-bold uppercase text-[#5848e8]">
+                                                {(user?.first_name?.[0] || "S") + (user?.last_name?.[0] || "M")}
                                             </div>
                                             <div>
                                                 <button type="button" className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50">
@@ -79,15 +81,15 @@ export default function SettingsPage() {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                                                <input type="text" defaultValue="Sarah" className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
+                                                <input type="text" defaultValue={user?.first_name || "Sarah"} className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                                                <input type="text" defaultValue="Mitchell" className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
+                                                <input type="text" defaultValue={user?.last_name || "Mitchell"} className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                                                <input type="email" defaultValue="sarah.mitchell@example.com" className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
+                                                <input type="email" defaultValue={user?.email || "sarah.mitchell@example.com"} className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white" />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
@@ -95,7 +97,15 @@ export default function SettingsPage() {
                                             </div>
                                         </div>
 
-                                        <div className="pt-4 border-t border-gray-100 flex justify-end">
+                                        <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                                            <button 
+                                                type="button" 
+                                                onClick={logout}
+                                                className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100"
+                                            >
+                                                <LogOut size={16} />
+                                                Log Out
+                                            </button>
                                             <button type="button" className="rounded-xl bg-[#6d5dfc] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5848e8]">
                                                 Save Changes
                                             </button>
