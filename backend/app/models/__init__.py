@@ -10,6 +10,7 @@ from app.models.case import (
     ObservationModel,
     QuestionAnswerModel,
 )
+from app.models.user import UserModel
 
 __all__ = [
     "CaseModel",
@@ -20,4 +21,5 @@ __all__ = [
     "CheckExecutionModel",
     "CaseCauseConfirmationModel",
     "CaseLifecycleEventModel",
+    "UserModel",
 ]
