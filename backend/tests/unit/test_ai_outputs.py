@@ -158,9 +158,13 @@ def test_symptom_extractor_handles_llm_timeout_gracefully():
 # 3. Explanation Service Tests
 # ===========================================================================
 
-def test_explanation_service_offline_fallback():
+def test_explanation_service_offline_fallback(monkeypatch: pytest.MonkeyPatch):
     """When no LLM API key is present, ExplanationService returns deterministic template."""
-    offline_llm = LLMService(api_key=None)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    offline_llm = LLMService(api_key="")
     assert not offline_llm.is_available
 
     service = ExplanationService(llm_service=offline_llm)

@@ -24,8 +24,8 @@ ALLOWED_TEST_HOSTS: Final[frozenset[str]] = frozenset({
 })
 
 ALLOWED_TEST_DB_EXACT: Final[frozenset[str]] = frozenset({
-    "dispenselens",
     "test",
+    "dispenselens_test",
 })
 
 ALLOWED_TEST_DB_PREFIXES: Final[tuple[str, ...]] = ("test_", "test-")
@@ -45,12 +45,13 @@ FORBIDDEN_DESTINATION_QUERY_KEYS: Final[frozenset[str]] = frozenset({
 })
 
 
-def assert_safe_test_database(url: str) -> None:
+def assert_safe_test_database(url: str, dev_url: str | None = None) -> None:
     """Validate that the given database URL points to an approved local test destination.
 
     Must be executed before any database connection or destructive test operation.
-    Fails closed if the destination is remote, missing, malformed, targets a non-test database,
-    or attempts connection redirection via query parameters.
+    Fails closed if the destination is remote, missing, malformed, targets a non-test database
+    (such as the plain development 'dispenselens' database), targets the same database as
+    the development DATABASE_URL, or attempts connection redirection via query parameters.
     Does NOT echo credential-bearing URLs in rejection messages.
 
     Raises:
@@ -113,6 +114,31 @@ def assert_safe_test_database(url: str) -> None:
             "Database safety check failed: query parameters are not permitted on test database URLs."
         )
 
+    # 5. Separation check: if development database URL is present, must not target the same database
+    if dev_url and isinstance(dev_url, str) and dev_url.strip():
+        try:
+            parsed_dev = make_url(dev_url.strip())
+            dev_host = (parsed_dev.host or "").lower()
+            test_host = (parsed.host or "").lower()
+            loopback_hosts = {"localhost", "127.0.0.1", "::1"}
+            same_host = (
+                (dev_host in loopback_hosts and test_host in loopback_hosts)
+                or (dev_host == test_host)
+            )
+            dev_port = parsed_dev.port or 5432
+            test_port = parsed.port or 5432
+            dev_db = (parsed_dev.database or "").strip().lower()
+            test_db = (parsed.database or "").strip().lower()
+            if same_host and dev_port == test_port and dev_db == test_db:
+                raise RuntimeError(
+                    f"Database safety check failed: TEST_DATABASE_URL resolves to the same database target ('{test_db}') "
+                    "as the development DATABASE_URL. A separate disposable test database is required."
+                )
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
 
 # ===========================================================================
 # Connection-Free Safety Unit Tests
@@ -121,11 +147,11 @@ def assert_safe_test_database(url: str) -> None:
 def test_approved_local_destinations_pass():
     """Approved local hosts and disposable database names must pass cleanly."""
     valid_urls = [
-        "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens",
-        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens",
-        "postgresql+psycopg://user:pass@[::1]:5432/dispenselens",
-        "postgresql+psycopg://user:pass@dispenselens-postgres:5432/dispenselens",
-        "postgresql+psycopg://user:pass@postgres:5432/dispenselens",
+        "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test",
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens_test",
+        "postgresql+psycopg://user:pass@[::1]:5432/dispenselens_test",
+        "postgresql+psycopg://user:pass@dispenselens-postgres:5432/dispenselens_test",
+        "postgresql+psycopg://user:pass@postgres:5432/dispenselens_test",
         "postgresql+psycopg://user:pass@localhost:5432/test",
         "postgresql+psycopg://user:pass@localhost:5432/test_case_db",
         "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test",
@@ -148,12 +174,12 @@ def test_reproduction_finding_r1_remote_contest_url_rejected():
 
 
 def test_remote_host_with_disposable_db_name_rejected():
-    """A remote host must be rejected even if the database name is 'test' or 'dispenselens'."""
+    """A remote host must be rejected even if the database name is 'test' or 'dispenselens_test'."""
     remote_urls = [
-        "postgresql+psycopg://user:secret@production.example.com:5432/dispenselens",
+        "postgresql+psycopg://user:secret@production.example.com:5432/dispenselens_test",
         "postgresql+psycopg://user:secret@aws-rds.postgres.com/test",
         "postgresql+psycopg://user:secret@192.168.1.100/test_db",
-        "postgresql+psycopg://user:secret@db.internal.corp/dispenselens",
+        "postgresql+psycopg://user:secret@db.internal.corp/dispenselens_test",
     ]
     for url in remote_urls:
         with pytest.raises(RuntimeError) as exc_info:
@@ -170,7 +196,7 @@ def test_misleading_credentials_or_query_parameters_do_not_trick_guard():
         "postgresql+psycopg://localhost_admin:postgres_pass@production.example.com:5432/test",
         "postgresql+psycopg://user:localhost_pass@production.company.com/test_db",
         # 'test' in host, 'localhost' in query param
-        "postgresql+psycopg://user:pass@test-server.remote.io:5432/dispenselens?host=localhost",
+        "postgresql+psycopg://user:pass@test-server.remote.io:5432/dispenselens_test?host=localhost",
     ]
     for url in adversarial_urls:
         with pytest.raises(RuntimeError) as exc_info:
@@ -179,10 +205,11 @@ def test_misleading_credentials_or_query_parameters_do_not_trick_guard():
 
 
 def test_non_disposable_database_names_on_local_host_rejected():
-    """Non-test database names (like 'contest' or 'production') must be rejected even on localhost."""
+    """Non-test database names (like 'contest', 'dispenselens', or 'production') must be rejected even on localhost."""
     non_test_urls = [
         "postgresql+psycopg://user:pass@localhost:5432/contest",
         "postgresql+psycopg://user:pass@localhost:5432/production",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens",  # Plain development db rejected
         "postgresql+psycopg://user:pass@127.0.0.1:5432/attest",
         "postgresql+psycopg://user:pass@127.0.0.1:5432/latest",
         "postgresql+psycopg://user:pass@localhost:5432/my_project",
@@ -194,10 +221,40 @@ def test_non_disposable_database_names_on_local_host_rejected():
         assert "does not meet the disposable test database naming policy" in str(exc_info.value)
 
 
+def test_plain_development_database_name_dispenselens_rejected():
+    """The plain development database name 'dispenselens' must no longer pass test safety checks."""
+    dev_urls = [
+        "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens",
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens",
+        "postgresql+psycopg://user:pass@dispenselens-postgres:5432/dispenselens",
+    ]
+    for url in dev_urls:
+        with pytest.raises(RuntimeError) as exc_info:
+            assert_safe_test_database(url)
+        assert "database name 'dispenselens' does not meet the disposable test database naming policy" in str(exc_info.value)
+
+
+def test_same_target_as_development_database_rejected():
+    """TEST_DATABASE_URL resolving to the same database target as development DATABASE_URL must be rejected."""
+    dev_url = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
+    test_url_same_host = "postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"
+    test_url_loopback = "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens_test"
+
+    with pytest.raises(RuntimeError, match="resolves to the same database target"):
+        assert_safe_test_database(test_url_same_host, dev_url=dev_url)
+
+    with pytest.raises(RuntimeError, match="resolves to the same database target"):
+        assert_safe_test_database(test_url_loopback, dev_url=dev_url)
+
+    # Different database targets must pass
+    different_dev_url = "postgresql+psycopg://user:pass@localhost:5432/dispenselens"
+    assert_safe_test_database(test_url_same_host, dev_url=different_dev_url)
+
+
 def test_missing_host_rejected():
     """URLs lacking a host (e.g. domain sockets or malformed syntax) must fail closed."""
     with pytest.raises(RuntimeError, match="database host is missing"):
-        assert_safe_test_database("postgresql+psycopg:///dispenselens")
+        assert_safe_test_database("postgresql+psycopg:///dispenselens_test")
 
 
 def test_missing_database_name_rejected():
@@ -245,8 +302,8 @@ def test_query_parameter_host_override_on_local_authority_rejected():
     """A URL with an approved local authority plus query-level 'host' must be rejected before connection."""
     urls = [
         "postgresql+psycopg://user:pass@localhost:5432/test_db?host=production.example.com",
-        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens?host=remote.database.net",
-        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?host=localhost",  # query override forbidden
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens_test?host=remote.database.net",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test?host=localhost",  # query override forbidden
     ]
     for url in urls:
         with pytest.raises(RuntimeError) as exc_info:
@@ -260,7 +317,7 @@ def test_query_parameter_hostaddr_override_on_local_authority_rejected():
     """A URL with an approved local authority plus remote 'hostaddr' must be rejected before connection."""
     urls = [
         "postgresql+psycopg://user:pass@localhost:5432/test_db?hostaddr=203.0.113.10",
-        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens?hostaddr=198.51.100.25",
+        "postgresql+psycopg://user:pass@127.0.0.1:5432/dispenselens_test?hostaddr=198.51.100.25",
     ]
     for url in urls:
         with pytest.raises(RuntimeError) as exc_info:
@@ -274,7 +331,7 @@ def test_query_parameter_dbname_override_on_local_authority_rejected():
     urls = [
         "postgresql+psycopg://user:pass@localhost:5432/test_db?dbname=production",
         "postgresql+psycopg://user:pass@localhost:5432/test_db?database=prod_db",
-        "postgresql+psycopg://user:pass@localhost:5432/test_db?dbname=dispenselens",  # cannot bypass via query
+        "postgresql+psycopg://user:pass@localhost:5432/test_db?dbname=dispenselens_test",  # cannot bypass via query
     ]
     for url in urls:
         with pytest.raises(RuntimeError) as exc_info:
@@ -315,9 +372,9 @@ def test_query_parameter_port_or_target_session_attrs_rejected():
 def test_arbitrary_query_parameters_fail_closed():
     """Any other query parameters on test database URLs fail closed."""
     urls = [
-        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?sslmode=disable",
-        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?connect_timeout=10",
-        "postgresql+psycopg://user:pass@localhost:5432/dispenselens?application_name=test",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test?sslmode=disable",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test?connect_timeout=10",
+        "postgresql+psycopg://user:pass@localhost:5432/dispenselens_test?application_name=test",
     ]
     for url in urls:
         with pytest.raises(RuntimeError, match="query parameters are not permitted on test database URLs"):
