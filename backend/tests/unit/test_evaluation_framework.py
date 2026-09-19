@@ -22,7 +22,7 @@ from app.evaluation.metrics import (
     evaluate_duplicate_handling,
     evaluate_model_failure_handling,
 )
-from app.evaluation.scenarios import SCENARIOS
+from app.evaluation.scenarios import SCENARIOS, EvaluationScenario
 from app.services.diagnosis.engine import DiagnosticEngine
 
 
@@ -125,3 +125,40 @@ def test_benchmark_runner_full_execution() -> None:
     assert summary.contradiction_handling_pass_rate == 100.0
     assert summary.duplicate_evidence_pass_rate == 100.0
     assert summary.model_failure_resilience_rate == 100.0
+
+
+def test_benchmark_mixed_evidence_intake_preserves_both_description_and_observations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R7 regression: verify BenchmarkRunner passes both description and observations intact to engine."""
+    from app.schemas.diagnosis import DiagnosisRequest
+
+    runner = BenchmarkRunner()
+    captured_requests: list[DiagnosisRequest] = []
+    original_diagnose = runner.engine.diagnose
+
+    def spy_diagnose(req: DiagnosisRequest):
+        captured_requests.append(req)
+        return original_diagnose(req)
+
+    monkeypatch.setattr(runner.engine, "diagnose", spy_diagnose)
+
+    test_scenario = EvaluationScenario(
+        id="TEST_MIXED_001",
+        defect_code="D01_TOO_LITTLE",
+        name="Mixed evidence test scenario",
+        description="Fluid deposit dot diameter is too small and underfills target.",
+        initial_observations=[{"type": "deposit_size", "value": "undersized"}],
+        expected_defect="D01_TOO_LITTLE",
+        expected_top_causes=["nozzle_restriction"],
+        acceptable_causes=["nozzle_restriction", "air_supply_issue"],
+    )
+
+    metrics = runner.run_scenario(test_scenario)
+    assert len(captured_requests) == 1
+    req = captured_requests[0]
+    assert req.description == "Fluid deposit dot diameter is too small and underfills target."
+    assert len(req.observations) == 1
+    assert req.observations[0].observation_type == "deposit_size"
+    assert req.observations[0].value == "undersized"
+    assert metrics["identified_defect"] == "D01_TOO_LITTLE"

@@ -137,6 +137,7 @@ class CaseObservationResponse(BaseModel):
     timestamp: datetime
     created_at: datetime
     first_seen_revision: int = 1
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DurableCaseResponse(BaseModel):

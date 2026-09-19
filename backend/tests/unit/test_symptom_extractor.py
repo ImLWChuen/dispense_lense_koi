@@ -134,3 +134,30 @@ def test_llm_fallback_when_deterministic_finds_nothing() -> None:
     assert result.observations[0].value == "undersized"
     assert result.extraction_method == "llm"
     assert "suspected regulator" in result.user_hypotheses
+
+
+def test_negation_bubbles_suppressed(extractor: SymptomExtractor) -> None:
+    """Ensure negated bubbles statement does not extract visible_bubbles observation."""
+    result = extractor.extract("No bubbles are visible in the dispensing dots.")
+    bubble_obs = [o for o in result.observations if o.observation_type == ObservationType.BUBBLE_PRESENCE]
+    assert len(bubble_obs) == 0
+
+
+def test_hypothesis_masking_prevents_blockage_observation(extractor: SymptomExtractor) -> None:
+    """Ensure 'I think the nozzle is blocked' does not produce nozzle_condition=blocked observation."""
+    result = extractor.extract("Dots are too small. I think the nozzle is blocked.")
+    assert "nozzle is blocked" in [h.lower() for h in result.user_hypotheses]
+    nozzle_obs = [o for o in result.observations if o.observation_type == ObservationType.NOZZLE_CONDITION]
+    assert len(nozzle_obs) == 0
+    # But objective dot size must still be extracted
+    size_obs = [o for o in result.observations if o.observation_type == ObservationType.DEPOSIT_SIZE]
+    assert len(size_obs) == 1
+    assert size_obs[0].value == "undersized"
+
+
+def test_negation_without_and_never(extractor: SymptomExtractor) -> None:
+    """Ensure 'without air bubbles' and 'never leaking' are recognized as negated."""
+    result = extractor.extract("Dispensing dots are undersized, without air bubbles. The valve is never leaking.")
+    assert any(o.observation_type == ObservationType.DEPOSIT_SIZE and o.value == "undersized" for o in result.observations)
+    assert not any(o.observation_type == ObservationType.BUBBLE_PRESENCE for o in result.observations)
+    assert not any(o.value == "leaking_dripping" for o in result.observations)

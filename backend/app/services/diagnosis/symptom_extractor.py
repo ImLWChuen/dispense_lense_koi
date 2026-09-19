@@ -91,7 +91,7 @@ _add_rule(r"\b(always|every\s*time|consistent(ly)?|constant(ly)?|every\s*shot|al
 # --- location ---
 _add_rule(r"\b(one\s*nozzle|specific\s*nozzle|single\s*nozzle|same\s*location|one\s*position)\b",
           ObservationType.LOCATION_PATTERN, "specific_nozzle")
-_add_rule(r"\b(all\s*(nozzles?|points?|locations?|positions?)|every\s*(nozzle|point|location)|across\s*all)\b",
+_add_rule(r"\b(all\s*(nozzles?|points?|locations?|positions?)|every\s*(nozzle|point|location)|across\s*all\s*(?:dispensing\s*)?(?:nozzles?|points?|locations?|positions?))\b",
           ObservationType.LOCATION_PATTERN, "all_points")
 
 # --- material ---
@@ -109,7 +109,7 @@ _add_rule(r"\b(cold|cool|low\s*temp|temperature\s*(dropped|decreased|low))\b",
           ObservationType.TEMPERATURE, "low")
 
 # --- pressure ---
-_add_rule(r"\b(pressure\s*(fluctuat|unstable|varying|inconsistent|drop))\b",
+_add_rule(r"\b(pressure\s*(fluctuat\w*|unstable|varying|inconsistent|drop\w*))\b",
           ObservationType.PRESSURE, "fluctuating")
 _add_rule(r"\b(pressure\s*(stable|constant|steady|normal))\b",
           ObservationType.PRESSURE, "stable")
@@ -141,6 +141,25 @@ _HYPOTHESIS_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?:i\s*)?suspect\s+(?:the\s+)?(.+?)(?:\.|$)", re.IGNORECASE), ""),
     (re.compile(r"(?:probably|likely)\s+(?:a\s+|the\s+)?(.+?)(?:\.|$)", re.IGNORECASE), ""),
 ]
+
+
+# ---------------------------------------------------------------------------
+# Negation detection
+# ---------------------------------------------------------------------------
+
+_NEGATION_REGEX = re.compile(
+    r"\b(no|not|without|never|neither|nor|n't)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_match_negated(text: str, match_start: int) -> bool:
+    """Check if a match is locally negated by looking backward within the sentence or clause."""
+    lookback_window = text[max(0, match_start - 50) : match_start]
+    # Split by clause-ending punctuation
+    clauses = re.split(r"[\.\,\;\!\?]", lookback_window)
+    clause_before = clauses[-1]
+    return bool(_NEGATION_REGEX.search(clause_before))
 
 
 # ---------------------------------------------------------------------------
@@ -187,17 +206,32 @@ class SymptomExtractor:
         warnings: list[str] = []
         seen_keys: set[tuple[str, str]] = set()
 
-        # --- 1. Extract user hypotheses (do NOT create observations) ---
+        # --- 1. Extract user hypotheses and mask them from objective observation matching ---
+        masked_description = description
         for pattern, _ in _HYPOTHESIS_PATTERNS:
-            match = pattern.search(description)
-            if match:
+            for match in pattern.finditer(description):
                 hypothesis_text = match.group(1).strip()
                 if hypothesis_text and hypothesis_text not in user_hypotheses:
                     user_hypotheses.append(hypothesis_text)
+                start, end = match.span()
+                masked_description = (
+                    masked_description[:start]
+                    + " " * (end - start)
+                    + masked_description[end:]
+                )
 
-        # --- 2. Extract structured observations via keyword rules ---
+        # --- 2. Extract structured observations via keyword rules with negation checks ---
         for regex, obs_type, value in _KEYWORD_RULES:
-            if regex.search(description):
+            matches = list(regex.finditer(masked_description))
+            if not matches:
+                continue
+
+            has_non_negated_match = any(
+                not _is_match_negated(masked_description, m.start())
+                for m in matches
+            )
+
+            if has_non_negated_match:
                 key = (obs_type.value if isinstance(obs_type, ObservationType) else obs_type, value)
                 if key not in seen_keys:
                     seen_keys.add(key)

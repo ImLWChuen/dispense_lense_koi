@@ -257,3 +257,44 @@ def test_engine_delegates_to_explanation_service():
 
     assert result.explanation == "Custom explanation from explanation service"
     assert mock_service.explain_diagnosis.called
+
+
+def test_explanation_service_includes_evidence_provenance():
+    """ExplanationService includes evidence provenance tags [IMAGE] and [USER] in prompt payload."""
+    from app.schemas.diagnosis import EvidenceSource
+    recorded_prompts: list[tuple[str, str]] = []
+
+    class CapturingLLM(DummyLLMService):
+        def generate_text(self, prompt: str, system_prompt: str | None = None) -> str | None:
+            recorded_prompts.append((system_prompt or "", prompt))
+            return "Findings: Evaluated with provenance.\nEvidence: [IMAGE] undersized detected.\nNext Step: None."
+
+    capturing_llm = CapturingLLM()
+    service = ExplanationService(llm_service=capturing_llm)
+
+    case = StructuredCase(description="Dots undersized", issue_condition=IssueCondition.UNRESOLVED)
+    ranker = CauseRanker()
+    obs = [
+        Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+        ),
+        Observation(
+            observation_type=ObservationType.RUNTIME_PATTERN,
+            value="after_prolonged_operation",
+            source=EvidenceSource.USER,
+        ),
+    ]
+    ranking = ranker.rank(obs, "D01_TOO_LITTLE")
+
+    explanation = service.explain_diagnosis(ranking, case)
+    assert len(recorded_prompts) == 1
+    sys_prompt, user_prompt = recorded_prompts[0]
+
+    # Verify provenance tag in user prompt context
+    assert "[IMAGE]" in user_prompt
+    # Verify raw image data or paths are not included
+    assert ".png" not in user_prompt
+    assert "data:image" not in user_prompt
+    assert "base64" not in user_prompt

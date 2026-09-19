@@ -104,6 +104,62 @@ class TestEvidenceEngine(unittest.TestCase):
         self.assertEqual(len(dup_ev), 1)
         self.assertEqual(dup_ev[0].score_contribution, 0.0)
 
+    def test_conflicting_pressure_observations_not_suppressed_as_duplicates(self):
+        """Ensure 'Pressure is stable' and 'Pressure is fluctuating' are not marked duplicates."""
+        obs_stable = Observation(
+            observation_type=ObservationType.PRESSURE,
+            value="stable",
+            original_text="Pressure is stable.",
+            source=EvidenceSource.USER,
+        )
+        obs_unstable = Observation(
+            observation_type=ObservationType.PRESSURE,
+            value="fluctuating",
+            original_text="Pressure is fluctuating.",
+            source=EvidenceSource.USER,
+        )
+        candidates = self.engine.evaluate([obs_stable, obs_unstable], self.defect_code)
+        air = next((c for c in candidates if c.cause_id == "pressure_instability"), None)
+        if air:
+            dup_ev = [e for e in air.evidence if e.is_duplicate]
+            self.assertEqual(len(dup_ev), 0)
+
+    def test_image_undersized_and_user_oversized_distinct_conflicting_facts(self):
+        """IMAGE undersized and USER oversized are conflicting facts, not duplicates."""
+        obs_img = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+        )
+        obs_user = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="oversized",
+            source=EvidenceSource.USER,
+        )
+        candidates = self.engine.evaluate([obs_img, obs_user], self.defect_code)
+        for c in candidates:
+            dup_ev = [e for e in c.evidence if e.is_duplicate]
+            self.assertEqual(len(dup_ev), 0)
+
+    def test_image_undersized_and_text_blockage_independent(self):
+        """IMAGE undersized and nozzle blockage are independent evidence, not duplicates."""
+        obs_img = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            original_text="Nozzle deposit is small",
+            source=EvidenceSource.IMAGE,
+        )
+        obs_blockage = Observation(
+            observation_type=ObservationType.NOZZLE_CONDITION,
+            value="blocked",
+            original_text="Nozzle deposit is blocked",
+            source=EvidenceSource.USER,
+        )
+        candidates = self.engine.evaluate([obs_img, obs_blockage], self.defect_code)
+        for c in candidates:
+            dup_ev = [e for e in c.evidence if e.is_duplicate]
+            self.assertEqual(len(dup_ev), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

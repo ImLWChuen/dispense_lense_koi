@@ -2,7 +2,19 @@
 
 ## Current milestone
 
-Member 3 stabilization: runnable offline baseline and lossless troubleshooting history
+Phase 1: calibrated vision and evidence-safety foundation
+
+## Current task requiring review
+
+- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **implemented (ready for review)**
+  - task: `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`
+  - review: `.agents/handoff/reviews/DLK-M3-026-review.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-025`
+  - outcome: calibrated and resolution-independent image features, canonical score-bearing observations only with explicit comparison basis, lossless metadata persistence, safe mixed evidence, and provenance-aware bounded explanations
+  - corrections addressed (R1–R9): sanitized internal pipeline failures to 500 without leaking private details; refined target uniformity, border dominance, and candidate ambiguity handling; consistent binary mask arithmetic; strict gating of D04 on explicit presence limit; bounded streaming reads up to 10 MB in 64 KB chunks; strict profile validation (non-empty ProcessLimits, mode exclusivity, unique non-blank roi_id); restored mixed-evidence benchmark intake contract; treated completely uniform frames as UNRELIABLE without an established background/reference basis; documented the actual UNRELIABLE status enum in API specification
+  - review stop: do not begin frontend Phase 2 until this task is reviewed and accepted
+  - explicit exclusions: frontend changes, D06 score-bearing classification, knowledge/weight changes, lifecycle changes, image/blob storage, remote Git operations
 
 ## Accepted current task
 
@@ -17,13 +29,13 @@ Member 3 stabilization: runnable offline baseline and lossless troubleshooting h
   - outcome: synchronized declared dependencies, deterministic no-key operation, frontend port-3001 CORS, and a separate fail-closed PostgreSQL test destination that preserves development records
   - explicit exclusions: image/CV work, check-history repair, diagnostic semantic changes, frontend edits, schema/migration changes, and remote Git operations
 
-## Planned after DLK-M3-025 review
+## Deferred after the calibrated-vision programme
 
-- `DLK-M3-026` — Canonical lossless check-history integrity — **planned, not released**
+- Canonical lossless check-history integrity — **planned, not released**
   - preserve stored check outcome, provenance, notes, and revision consistently across case responses and reports;
   - retain compatibility with the teammate check-execution projection;
   - cover legacy canonical records that do not yet have a projection;
-  - release only after DLK-M3-025 is accepted and current repository evidence is re-inspected.
+  - assign a new task ID only after the active calibrated-vision task is reviewed.
 
 ## Integration accepted (R4 and R5 resolved)
 
@@ -63,4 +75,4 @@ Do not release these within DLK-M3-024:
 - authentication/authorization
 - frontend implementation
 
-The scoped competition-critical Member 3 backend milestone is accepted. No task is currently ready. Member 1 integration follow-up remains documented in `docs/api/frontend-backend-contract.md`; any new backend integration defect requires a bounded follow-up task.
+The earlier competition-critical Member 3 backend MVP milestone was accepted. `DLK-M3-026` now starts the separately approved calibrated-vision programme. Member 1 integration follow-up remains documented in `docs/api/frontend-backend-contract.md`; any new backend integration defect requires a bounded follow-up task.
