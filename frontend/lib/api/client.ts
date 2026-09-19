@@ -1,10 +1,10 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 export class ApiError extends Error {
     constructor(
         public status: number,
         public message: string,
-        public data?: any
+        public data?: unknown
     ) {
         super(message);
         this.name = "ApiError";
@@ -16,11 +16,12 @@ export const apiClient = {
         return this.request<T>(path, { ...options, method: "GET" });
     },
 
-    async post<T>(path: string, data?: any, options: RequestInit = {}): Promise<T> {
+    async post<T>(path: string, data?: unknown, options: RequestInit = {}): Promise<T> {
+        const isFormData = data instanceof FormData;
         return this.request<T>(path, {
             ...options,
             method: "POST",
-            body: data ? JSON.stringify(data) : undefined,
+            body: isFormData ? data : (data !== undefined ? JSON.stringify(data) : undefined),
         });
     },
 
@@ -28,7 +29,7 @@ export const apiClient = {
         const url = `${API_BASE_URL}${path}`;
         const headers = new Headers(options.headers);
 
-        if (options.body && !headers.has("Content-Type")) {
+        if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
             headers.set("Content-Type", "application/json");
         }
 
@@ -38,16 +39,35 @@ export const apiClient = {
         });
 
         if (!response.ok) {
-            let errorMessage = "An error occurred while fetching the data.";
-            let errorData;
+            let errorMessage = "An error occurred while communicating with the server.";
+            let errorData: unknown;
 
             try {
                 errorData = await response.json();
-                if (errorData.detail) {
-                    errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+                if (errorData && typeof errorData === "object" && "detail" in errorData) {
+                    const detail = (errorData as { detail: unknown }).detail;
+                    if (typeof detail === "string") {
+                        errorMessage = detail;
+                    } else if (Array.isArray(detail)) {
+                        const messages = detail
+                            .map((d: { msg?: string; loc?: (string | number)[] }) => {
+                                const field = d.loc ? d.loc.filter((x) => x !== "body").join(".") : "";
+                                return field ? `${field}: ${d.msg}` : d.msg;
+                            })
+                            .filter(Boolean);
+                        errorMessage = messages.length > 0 ? messages.join("; ") : "Invalid input parameters.";
+                    } else {
+                        errorMessage = JSON.stringify(detail);
+                    }
                 }
-            } catch (e) {
-                // Ignore parse errors if the response is not JSON
+            } catch {
+                // Ignore parse errors if response is not JSON
+            }
+
+            if (response.status === 413) {
+                errorMessage = "Payload too large. Uploaded file must not exceed 10 MB.";
+            } else if (response.status === 500) {
+                errorMessage = "An unexpected error occurred during processing. Please try again.";
             }
 
             throw new ApiError(response.status, errorMessage, errorData);

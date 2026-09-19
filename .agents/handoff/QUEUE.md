@@ -2,18 +2,30 @@
 
 ## Current milestone
 
-Phase 1: calibrated vision and evidence-safety foundation
+Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
-## Current task requiring review
+## Active task
 
-- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **implemented (ready for review)**
+- `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **implemented (ready for review)**
+  - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-026`
+  - outcome: typed multipart image client, stable upload/ROI/calibration state, calibrated-only case evidence, persisted image evidence presentation, backend-derived evidence analysis, and canonical new-diagnosis form values
+  - stop point: return for ChatGPT review after one local implementation commit; do not begin Phase 3
+  - explicit exclusions: backend changes, dashboard/reports/cases/analytics, troubleshooting/verification corrections, dependencies, raw image persistence, and remote Git operations
+
+## Accepted calibrated-vision task
+
+- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`
   - review: `.agents/handoff/reviews/DLK-M3-026-review.md`
+  - reviewed commit: `6e52628f4e6e192a5044dc9de07b0f01b9cdc213`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-025`
   - outcome: calibrated and resolution-independent image features, canonical score-bearing observations only with explicit comparison basis, lossless metadata persistence, safe mixed evidence, and provenance-aware bounded explanations
   - corrections addressed (R1–R9): sanitized internal pipeline failures to 500 without leaking private details; refined target uniformity, border dominance, and candidate ambiguity handling; consistent binary mask arithmetic; strict gating of D04 on explicit presence limit; bounded streaming reads up to 10 MB in 64 KB chunks; strict profile validation (non-empty ProcessLimits, mode exclusivity, unique non-blank roi_id); restored mixed-evidence benchmark intake contract; treated completely uniform frames as UNRELIABLE without an established background/reference basis; documented the actual UNRELIABLE status enum in API specification
-  - review stop: do not begin frontend Phase 2 until this task is reviewed and accepted
+  - reviewer verification: 83 focused checks, 37 PostgreSQL workflow/persistence checks, and 466 full backend tests passed; task validation and committed whitespace checks passed
+  - next dependency: active `DLK-M3-027`
   - explicit exclusions: frontend changes, D06 score-bearing classification, knowledge/weight changes, lifecycle changes, image/blob storage, remote Git operations
 
 ## Accepted current task
