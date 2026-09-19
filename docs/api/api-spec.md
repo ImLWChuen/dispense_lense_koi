@@ -2734,6 +2734,16 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - `"PROCESS_LIMITS"`: Evaluates ROI coverage, overflow, and multi-dot variance against explicit process thresholds. Returns `status="CALIBRATED"`.
   - `"REFERENCE_IMAGE"`: Compares current deposits against the paired `reference_file`. Returns `status="CALIBRATED"` or `status="UNRELIABLE_REFERENCE"`.
 
+##### Profile Validation & Safety Rules
+- **Unique & Non-Blank ROI IDs:** Each ROI in `rois` must contain a non-empty, non-whitespace `roi_id` unique across the request. Duplicate or blank IDs return `422 Unprocessable Content`.
+- **Mode Exclusivity & Requirements:**
+  - `FEATURES_ONLY`: Neither `process_limits` nor `reference_limits` may be provided.
+  - `PROCESS_LIMITS`: Requires non-empty `process_limits` and strictly forbids `reference_limits`.
+  - `REFERENCE_IMAGE`: Requires `reference_limits` and `reference_file` multipart upload; strictly forbids `process_limits`.
+- **Non-Empty Limits:** When `process_limits` is defined, at least one limit threshold (`min_coverage_ratio`, `max_coverage_ratio`, `max_overflow_ratio`, `max_size_cv`, `min_presence_ratio`) must be non-null. Empty limit objects `{}` return `422 Unprocessable Content`.
+- **Bounded Streaming Limit:** Enforces 10 MB per file using chunked streaming reads; requests exceeding the limit abort immediately with `413 Payload Too Large`.
+- **Sanitized Failure Boundary:** Input/decode errors return standard HTTP 422 with sanitized validation messages. Internal worker or classifier pipeline crashes return sanitized HTTP 500 without leaking private details, file paths, or credentials.
+
 #### Response Schema (`ImageAnalysisResponse`)
 
 ```json

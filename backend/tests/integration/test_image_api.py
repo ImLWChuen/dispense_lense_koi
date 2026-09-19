@@ -172,3 +172,180 @@ def test_image_analyze_rejects_invalid_profile(client: TestClient) -> None:
         data={"profile": json.dumps(invalid_profile)},
     )
     assert response.status_code == 422
+
+
+def test_image_analyze_internal_pipeline_failure_returns_sanitized_500(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1 regression: Internal worker/classifier failure returns sanitized 500 without leaking private details or paths."""
+    from app.api import images
+
+    def mock_run_pipeline(*args, **kwargs):
+        raise ValueError("Internal classifier failure at C:/private/model/path/weights.onnx: division by zero")
+
+    monkeypatch.setattr(images, "_sync_analyze_image", mock_run_pipeline)
+
+    img_bytes = create_centered_dot_image(size=100, dot_radius=15)
+    profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6}],
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 500
+    data = response.json()
+    assert data["detail"] == "An unexpected error occurred during image analysis."
+    assert "C:/private/model/path" not in response.text
+    assert "division by zero" not in response.text
+
+
+@pytest.mark.anyio
+async def test_read_bounded_upload_aborts_mid_stream_without_full_buffer() -> None:
+    """R5 regression: Chunked streaming upload exceeding 10 MB aborts immediately upon crossing threshold."""
+    from fastapi import HTTPException, UploadFile
+    from app.api.images import _read_bounded_upload, MAX_FILE_SIZE_BYTES
+
+    # Custom stream that generates 20 MB of data but tracks how many bytes were actually read
+    class ChunkedStream(io.RawIOBase):
+        def __init__(self, total_bytes: int):
+            self.total_bytes = total_bytes
+            self.bytes_read = 0
+
+        def readable(self) -> bool:
+            return True
+
+        def read(self, n: int = -1) -> bytes:
+            if self.bytes_read >= self.total_bytes:
+                return b""
+            chunk_size = min(n if n > 0 else 65536, self.total_bytes - self.bytes_read)
+            self.bytes_read += chunk_size
+            return b"X" * chunk_size
+
+    stream = ChunkedStream(total_bytes=20 * 1024 * 1024)
+    upload = UploadFile(file=stream, filename="stream.png", size=None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _read_bounded_upload(upload, MAX_FILE_SIZE_BYTES, "Uploaded file")
+
+    assert exc_info.value.status_code == 413
+    assert "exceeds maximum allowed size" in exc_info.value.detail
+    # Verify we aborted shortly after 10 MB, well before reading all 20 MB!
+    assert stream.bytes_read <= MAX_FILE_SIZE_BYTES + (64 * 1024)
+    assert stream.bytes_read < 12 * 1024 * 1024
+
+
+def test_image_analyze_rejects_oversized_reference_file(client: TestClient) -> None:
+    """R5 regression: Oversized reference file is rejected with 413."""
+    curr_bytes = create_centered_dot_image(size=100, dot_radius=15)
+    large_ref = b"\x00" * (11 * 1024 * 1024)
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [{"roi_id": "r1", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6}],
+        "reference_limits": {"tolerance_ratio": 0.1},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("large_ref.png", large_ref, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 413
+    assert "Reference file" in response.json()["detail"]
+
+
+def test_image_analyze_rejects_empty_process_limits(client: TestClient) -> None:
+    """R6 regression: Rejects empty ProcessLimits object with HTTP 422."""
+    img_bytes = create_centered_dot_image(size=100, dot_radius=15)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6}],
+        "process_limits": {},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 422
+    assert "ProcessLimits requires at least one limit" in response.json()["detail"]
+
+
+def test_image_analyze_rejects_duplicate_roi_id(client: TestClient) -> None:
+    """R6 regression: Rejects duplicate roi_id values with HTTP 422."""
+    img_bytes = create_centered_dot_image(size=100, dot_radius=15)
+    profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [
+            {"roi_id": "roi_1", "x": 0.1, "y": 0.1, "width": 0.3, "height": 0.3},
+            {"roi_id": "roi_1", "x": 0.5, "y": 0.5, "width": 0.3, "height": 0.3},
+        ],
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 422
+    assert "Duplicate roi_id values detected" in response.json()["detail"]
+
+
+def test_image_analyze_rejects_blank_roi_id(client: TestClient) -> None:
+    """R6 regression: Rejects blank roi_id values with HTTP 422."""
+    img_bytes = create_centered_dot_image(size=100, dot_radius=15)
+    profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [
+            {"roi_id": "   ", "x": 0.1, "y": 0.1, "width": 0.3, "height": 0.3},
+        ],
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 422
+    assert "roi_id must not be blank" in response.json()["detail"]
+
+
+def test_image_analyze_rejects_mode_incompatible_limits(client: TestClient) -> None:
+    """R6 regression: Rejects profiles where limits don't match the active mode."""
+    img_bytes = create_centered_dot_image(size=100, dot_radius=15)
+
+    # 1. FEATURES_ONLY mode must not include process_limits
+    profile_features_with_limits = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6}],
+        "process_limits": {"min_coverage_ratio": 0.1},
+    }
+    resp1 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile_features_with_limits)},
+    )
+    assert resp1.status_code == 422
+    assert "FEATURES_ONLY mode must not include process_limits" in resp1.json()["detail"]
+
+    # 2. PROCESS_LIMITS mode must not include reference_limits
+    profile_process_with_ref = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6}],
+        "process_limits": {"min_coverage_ratio": 0.1},
+        "reference_limits": {"tolerance_ratio": 0.1},
+    }
+    resp2 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile_process_with_ref)},
+    )
+    assert resp2.status_code == 422
+    assert "PROCESS_LIMITS mode must not include reference_limits" in resp2.json()["detail"]

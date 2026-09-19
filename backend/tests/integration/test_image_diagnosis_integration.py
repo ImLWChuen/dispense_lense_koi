@@ -161,7 +161,7 @@ def test_calibrated_missing_deposit_identifies_d04():
     profile = AnalysisProfile(
         mode=ImageAnalysisMode.PROCESS_LIMITS,
         rois=[NormalizedROI(roi_id="r1", x=0.25, y=0.25, width=0.5, height=0.5)],
-        process_limits=ProcessLimits(min_coverage_ratio=0.05),
+        process_limits=ProcessLimits(min_presence_ratio=0.05),
     )
 
     result = _run_vision_pipeline(img_bytes, profile)

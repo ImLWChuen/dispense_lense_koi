@@ -27,6 +27,7 @@ from app.services.vision.measurement import (
     calculate_roi_features,
 )
 from app.services.vision.preprocessing import (
+    ImageValidationError,
     decode_and_validate_image,
     normalize_roi_to_pixels,
 )
@@ -70,7 +71,7 @@ def _sync_analyze_image(
 
     if profile.mode == ImageAnalysisMode.REFERENCE_IMAGE:
         if not reference_bytes:
-            raise ValueError("Reference image data is required in REFERENCE_IMAGE mode.")
+            raise ImageValidationError("Reference image data is required in REFERENCE_IMAGE mode.")
         ref_img, ref_dims = decode_and_validate_image(reference_bytes)
         ref_measurements = []
         for roi in profile.rois:
@@ -139,22 +140,14 @@ async def analyze_image(
             detail="REFERENCE_IMAGE mode requires a reference_file upload.",
         )
 
-    # 3. Read and check file sizes before decoding
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Uploaded file exceeds maximum allowed size of {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB.",
-        )
+    # 3. Read upload content with bounded memory chunking
+    file_bytes = await _read_bounded_upload(file, MAX_FILE_SIZE_BYTES, "Uploaded file")
 
     reference_bytes: bytes | None = None
     if reference_file is not None:
-        reference_bytes = await reference_file.read()
-        if len(reference_bytes) > MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Reference file exceeds maximum allowed size of {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB.",
-            )
+        reference_bytes = await _read_bounded_upload(
+            reference_file, MAX_FILE_SIZE_BYTES, "Reference file"
+        )
 
     # 4. Offload CPU-bound OpenCV pipeline to worker thread
     try:
@@ -165,16 +158,51 @@ async def analyze_image(
             reference_bytes,
         )
         return response
-    except ValueError as e:
+    except ImageValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error during image analysis pipeline")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during image analysis.",
         )
+
+
+async def _read_bounded_upload(
+    upload: UploadFile,
+    max_bytes: int = MAX_FILE_SIZE_BYTES,
+    file_label: str = "Uploaded file",
+) -> bytes:
+    """Read upload content in bounded chunks up to max_bytes.
+
+    If total bytes read exceed max_bytes, abort immediately and raise HTTP 413
+    without buffering the remainder in memory.
+    """
+    if upload.size is not None and upload.size > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"{file_label} exceeds maximum allowed size of {max_bytes // (1024 * 1024)} MB.",
+        )
+
+    chunk_size = 64 * 1024  # 64 KB chunks
+    chunks: list[bytes] = []
+    total_read = 0
+
+    while True:
+        chunk = await upload.read(chunk_size)
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"{file_label} exceeds maximum allowed size of {max_bytes // (1024 * 1024)} MB.",
+            )
+        chunks.append(chunk)
+
+    return b"".join(chunks)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.diagnosis import Observation
 
@@ -23,7 +23,7 @@ class ImageAnalysisMode(str, Enum):
 
 
 class AnalysisStatus(str, Enum):
-    """Quality and calibration status of an image analysis run."""
+    """Calibrated status of image processing analysis."""
     CALIBRATED = "CALIBRATED"
     UNCALIBRATED = "UNCALIBRATED"
     UNRELIABLE = "UNRELIABLE"
@@ -38,6 +38,14 @@ class NormalizedROI(BaseModel):
     y: float = Field(..., ge=0.0, le=1.0, description="Top-left Y coordinate normalized to image height")
     width: float = Field(..., gt=0.0, le=1.0, description="Width normalized to image width")
     height: float = Field(..., gt=0.0, le=1.0, description="Height normalized to image height")
+
+    @field_validator("roi_id")
+    @classmethod
+    def validate_roi_id(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("roi_id must not be blank.")
+        return s
 
     @model_validator(mode="after")
     def validate_bounds(self) -> NormalizedROI:
@@ -63,6 +71,7 @@ class ProcessLimits(BaseModel):
     """Explicit, caller-supplied process limits.
 
     No manufacturing defaults are assumed; only supplied fields are checked.
+    At least one limit field must be defined.
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -74,6 +83,14 @@ class ProcessLimits(BaseModel):
 
     @model_validator(mode="after")
     def validate_limits(self) -> ProcessLimits:
+        if (
+            self.min_coverage_ratio is None
+            and self.max_coverage_ratio is None
+            and self.max_overflow_ratio is None
+            and self.max_size_cv is None
+            and self.min_presence_ratio is None
+        ):
+            raise ValueError("ProcessLimits requires at least one limit to be defined.")
         if (
             self.min_coverage_ratio is not None
             and self.max_coverage_ratio is not None
@@ -119,11 +136,31 @@ class AnalysisProfile(BaseModel):
     reference_limits: ReferenceLimits | None = None
 
     @model_validator(mode="after")
-    def validate_mode_requirements(self) -> AnalysisProfile:
-        if self.mode == ImageAnalysisMode.PROCESS_LIMITS and not self.process_limits:
-            raise ValueError("PROCESS_LIMITS mode requires process_limits to be defined.")
-        if self.mode == ImageAnalysisMode.REFERENCE_IMAGE and not self.reference_limits:
-            raise ValueError("REFERENCE_IMAGE mode requires reference_limits to be defined.")
+    def validate_profile(self) -> AnalysisProfile:
+        # 1. Enforce unique non-blank ROI IDs
+        roi_ids = [r.roi_id for r in self.rois]
+        if len(set(roi_ids)) != len(roi_ids):
+            raise ValueError(f"Duplicate roi_id values detected: {roi_ids}")
+
+        # 2. Enforce mode requirements and exclusivity
+        if self.mode == ImageAnalysisMode.FEATURES_ONLY:
+            if self.process_limits is not None:
+                raise ValueError("FEATURES_ONLY mode must not include process_limits.")
+            if self.reference_limits is not None:
+                raise ValueError("FEATURES_ONLY mode must not include reference_limits.")
+
+        elif self.mode == ImageAnalysisMode.PROCESS_LIMITS:
+            if not self.process_limits:
+                raise ValueError("PROCESS_LIMITS mode requires process_limits to be defined.")
+            if self.reference_limits is not None:
+                raise ValueError("PROCESS_LIMITS mode must not include reference_limits.")
+
+        elif self.mode == ImageAnalysisMode.REFERENCE_IMAGE:
+            if not self.reference_limits:
+                raise ValueError("REFERENCE_IMAGE mode requires reference_limits to be defined.")
+            if self.process_limits is not None:
+                raise ValueError("REFERENCE_IMAGE mode must not include process_limits.")
+
         return self
 
 

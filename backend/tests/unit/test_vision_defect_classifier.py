@@ -204,3 +204,56 @@ def test_reference_image_mode_scaling_invariance() -> None:
     assert status_400 == AnalysisStatus.CALIBRATED
     assert len(obs_100) == 1 and obs_100[0].value == "undersized"
     assert len(obs_400) == 1 and obs_400[0].value == "undersized"
+
+
+def test_omitted_limits_never_emit_unrequested_dimensions() -> None:
+    """R4: An omitted limit field must never emit observations for that defect dimension."""
+    roi = NormalizedROI(roi_id="roi_1", x=0.25, y=0.25, width=0.5, height=0.5)
+
+    # 1. Empty image with only max_size_cv supplied: MUST NOT emit missing or undersized
+    empty_img = create_empty_image(200)
+    _, empty_feats, empty_agg = _measure_single_roi(empty_img, roi)
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=empty_feats,
+        aggregate=empty_agg,
+        process_limits=ProcessLimits(max_size_cv=0.2),
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert not any(o.observation_type == "deposit_presence" for o in obs)
+    assert not any(o.value == "undersized" for o in obs)
+
+    # 2. Empty image with only min_coverage_ratio supplied: emits undersized, but MUST NOT emit missing
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=empty_feats,
+        aggregate=empty_agg,
+        process_limits=ProcessLimits(min_coverage_ratio=0.10),
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert any(o.observation_type == "deposit_size" and o.value == "undersized" for o in obs)
+    assert not any(o.observation_type == "deposit_presence" for o in obs)
+
+    # 3. Oversized deposit with only min_coverage_ratio (omitting max_coverage_ratio): MUST NOT emit oversized
+    large_img = create_centered_dot_image(200, 45)
+    _, large_feats, large_agg = _measure_single_roi(large_img, roi)
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=large_feats,
+        aggregate=large_agg,
+        process_limits=ProcessLimits(min_coverage_ratio=0.01),
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert not any(o.value == "oversized" for o in obs)
+
+    # 4. Overflow deposit with only min_coverage_ratio (omitting max_overflow_ratio): MUST NOT emit excessive_spread
+    overflow_img = create_overflow_image(200)
+    _, overflow_feats, overflow_agg = _measure_single_roi(overflow_img, roi)
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=overflow_feats,
+        aggregate=overflow_agg,
+        process_limits=ProcessLimits(min_coverage_ratio=0.01),
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert not any(o.value == "excessive_spread" for o in obs)

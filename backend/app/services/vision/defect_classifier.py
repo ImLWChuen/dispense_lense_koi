@@ -69,23 +69,21 @@ def classify_defects_from_measurements(
                 "segmentation_quality": m.segmentation_quality,
             }
 
-            # Check D04: Missing deposit
-            is_missing = m.is_missing or m.deposit_area_px <= 0
-            if process_limits.min_presence_ratio is not None and m.coverage_ratio < process_limits.min_presence_ratio:
-                is_missing = True
-
-            if is_missing:
-                key = ("deposit_presence", "missing")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_PRESENCE,
-                        value="missing",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
-                continue  # Skip further size/overflow checks for missing deposits
+            # Check D04: Missing deposit (strictly gated on caller supplying min_presence_ratio)
+            if process_limits.min_presence_ratio is not None:
+                is_missing = m.is_missing or m.deposit_area_px <= 0 or m.coverage_ratio < process_limits.min_presence_ratio
+                if is_missing:
+                    key = ("deposit_presence", "missing")
+                    if key not in seen_obs_keys:
+                        seen_obs_keys.add(key)
+                        observations.append(Observation(
+                            observation_type=ObservationType.DEPOSIT_PRESENCE,
+                            value="missing",
+                            source=EvidenceSource.IMAGE,
+                            statement_type=StatementType.AI_INFERENCE,
+                            metadata=roi_meta,
+                        ))
+                    continue  # Skip further size/overflow checks for deposits classified as missing
 
             # Check D01: Undersized
             if process_limits.min_coverage_ratio is not None and m.coverage_ratio < process_limits.min_coverage_ratio:

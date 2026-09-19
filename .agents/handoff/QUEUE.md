@@ -4,14 +4,15 @@
 
 Phase 1: calibrated vision and evidence-safety foundation
 
-## Ready current task
+## Current task requiring review
 
-- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **implemented**
+- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **implemented (ready for review)**
   - task: `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-025`
   - outcome: calibrated and resolution-independent image features, canonical score-bearing observations only with explicit comparison basis, lossless metadata persistence, safe mixed evidence, and provenance-aware bounded explanations
-  - review stop: do not begin frontend Phase 2 until this task is implemented and accepted
+  - corrections addressed (R1–R7): sanitized internal pipeline failures to 500 without leaking private details; refined target uniformity, border dominance, and candidate ambiguity handling; consistent binary mask arithmetic; strict gating of D04 on explicit presence limit; bounded streaming reads up to 10 MB in 64 KB chunks; strict profile validation (non-empty ProcessLimits, mode exclusivity, unique non-blank roi_id); restored mixed-evidence benchmark intake contract
+  - review stop: do not begin frontend Phase 2 until this task is reviewed and accepted
   - explicit exclusions: frontend changes, D06 score-bearing classification, knowledge/weight changes, lifecycle changes, image/blob storage, remote Git operations
 
 ## Accepted current task

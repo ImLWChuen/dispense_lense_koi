@@ -84,3 +84,69 @@ def test_prohibit_whole_image_contamination_multiple_rois() -> None:
     # result1 must have detected deposit 1 (~700 px), not deposit 2!
     assert result1.deposit_area_px < 1500
     assert result1.deposit_area_px > 400
+
+
+def test_segment_uniform_deposit_inside_contrasting_window() -> None:
+    """R2: A 100x100 white image with a solid black 40x40 deposit filling the target must NOT be labeled missing."""
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    # Solid black 40x40 deposit in center (30:70, 30:70)
+    img[30:70, 30:70] = 0
+    roi = NormalizedROI(roi_id="roi_fill", x=0.30, y=0.30, width=0.40, height=0.40)
+    px_roi, win_roi = normalize_roi_to_pixels(roi, 100, 100, window_expansion=0.25)
+
+    result = segment_roi(img, px_roi, win_roi)
+    assert result.status == SegmentationStatus.SUCCESS
+    assert not result.is_missing
+    # 40x40 area is 1600 px
+    assert result.deposit_area_px > 1500
+    assert result.deposit_inside_target_px > 1500
+
+
+def test_segment_clipped_border_candidate() -> None:
+    """R2: Reject clipped / border-dominant candidates rather than returning calibrated measurements."""
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    # Draw a deposit right on the edge of the image / window (e.g. at y=0, x=40:60)
+    cv2.rectangle(img, (35, 0), (65, 30), (0, 0, 0), -1)
+    roi = NormalizedROI(roi_id="roi_edge", x=0.35, y=0.05, width=0.30, height=0.30)
+    px_roi, win_roi = normalize_roi_to_pixels(roi, 100, 100, window_expansion=0.2)
+
+    result = segment_roi(img, px_roi, win_roi)
+    assert result.status == SegmentationStatus.UNRELIABLE
+    assert any("clipped" in w.lower() or "border" in w.lower() for w in result.warnings)
+
+
+def test_segment_indistinguishably_ambiguous_candidates() -> None:
+    """R2: Reject when two candidates have near-tied scores inside the target."""
+    img = np.ones((120, 120, 3), dtype=np.uint8) * 255
+    # Two identical deposits placed symmetrically within the target ROI
+    cv2.circle(img, (45, 60), 12, (0, 0, 0), -1)
+    cv2.circle(img, (75, 60), 12, (0, 0, 0), -1)
+    roi = NormalizedROI(roi_id="roi_ambi", x=0.25, y=0.25, width=0.50, height=0.50)
+    px_roi, win_roi = normalize_roi_to_pixels(roi, 120, 120, window_expansion=0.2)
+
+    result = segment_roi(img, px_roi, win_roi)
+    assert result.status == SegmentationStatus.UNRELIABLE
+    assert any("ambiguous" in w.lower() for w in result.warnings)
+
+
+def test_segment_exact_mask_pixel_counts_overflow() -> None:
+    """R3: Derive total, inside, and outside deposit pixels from one consistent binary mask."""
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    # Draw a circular deposit centered at (50, 50) with radius 25
+    cv2.circle(img, (50, 50), 25, (0, 0, 0), -1)
+    # Target ROI is 40x40 from (30, 30) to (70, 70)
+    roi = NormalizedROI(roi_id="roi_r25", x=0.30, y=0.30, width=0.40, height=0.40)
+    px_roi, win_roi = normalize_roi_to_pixels(roi, 100, 100, window_expansion=0.25)
+
+    result = segment_roi(img, px_roi, win_roi)
+    assert result.status == SegmentationStatus.SUCCESS
+    # Exact mask arithmetic: total MUST equal inside + outside
+    assert result.deposit_inside_target_px + result.deposit_outside_target_px == result.deposit_area_px
+    assert result.deposit_area_px == 1957.0
+    assert result.deposit_inside_target_px == 1559.0
+    assert result.deposit_outside_target_px == 398.0
+
+    # Overflow ratio calculation
+    expected_overflow = 398.0 / 1957.0
+    actual_overflow = result.deposit_outside_target_px / result.deposit_area_px
+    assert abs(actual_overflow - expected_overflow) < 1e-6
