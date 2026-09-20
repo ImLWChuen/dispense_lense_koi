@@ -71,21 +71,29 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         setIsSubmitting(true);
         try {
             const revision = getCurrentRevision();
-            const res = await casesApi.submitCauseConfirmation(
+            await casesApi.submitCauseConfirmation(
                 caseData.case_id,
                 causeId,
                 revision,
                 "technician",
                 notes
             );
-            setCaseData(res);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to confirm cause", err);
             const message = err instanceof Error ? err.message : "Failed to confirm cause.";
             setError(message);
-            // Refresh to sync latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
+            throw err;
         } finally {
             setIsSubmitting(false);
         }
@@ -96,20 +104,28 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         setIsSubmitting(true);
         try {
             const revision = getCurrentRevision();
-            const res = await casesApi.submitRecoveryAction(
+            await casesApi.submitRecoveryAction(
                 caseData.case_id,
                 recoveryDetails,
                 revision,
                 "technician"
             );
-            setCaseData(res);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to submit recovery action", err);
             const message = err instanceof Error ? err.message : "Failed to submit recovery action.";
             setError(message);
-            // Refresh to sync latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
+            throw err;
         } finally {
             setIsSubmitting(false);
         }
@@ -120,21 +136,29 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         setIsSubmitting(true);
         try {
             const revision = getCurrentRevision();
-            const res = await casesApi.verifyCase(
+            await casesApi.verifyCase(
                 caseData.case_id,
                 passed,
                 details || "",
                 revision,
                 "technician"
             );
-            setCaseData(res);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to verify recovery", err);
             const message = err instanceof Error ? err.message : "Failed to verify recovery.";
             setError(message);
-            // Refresh to sync latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
+            throw err;
         } finally {
             setIsSubmitting(false);
         }
@@ -145,20 +169,28 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         setIsSubmitting(true);
         try {
             const revision = getCurrentRevision();
-            const res = await casesApi.submitRecurrence(
+            await casesApi.submitRecurrence(
                 caseData.case_id,
                 details,
                 revision,
                 "technician"
             );
-            setCaseData(res);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to submit recurrence", err);
-            const message = err instanceof Error ? err.message : "Failed to report recurrence.";
+            const message = err instanceof Error ? err.message : "Failed to submit recurrence.";
             setError(message);
-            // Refresh to sync latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
+            throw err;
         } finally {
             setIsSubmitting(false);
         }

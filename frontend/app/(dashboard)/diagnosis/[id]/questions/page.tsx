@@ -66,20 +66,27 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
 
         setIsSubmitting(true);
         try {
-            const res = await casesApi.submitAnswer(
+            await casesApi.submitAnswer(
                 caseData.case_id,
                 questionId,
                 value,
                 caseData.diagnosis.analysis_revision.revision_number
             );
-            setCaseData(res);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to submit answer", err);
             const message = err instanceof Error ? err.message : "Failed to submit answer.";
             setError(message);
-            // Refresh to synchronize with latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
         } finally {
             setIsSubmitting(false);
         }

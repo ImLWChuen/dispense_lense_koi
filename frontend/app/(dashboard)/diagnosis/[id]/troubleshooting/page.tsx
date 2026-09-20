@@ -79,15 +79,24 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                 expected_revision: caseData.diagnosis.analysis_revision.revision_number,
             });
 
-            const res = await casesApi.submitCheckResult(caseData.case_id, payload);
-            setCaseData(res);
+            await casesApi.submitCheckResult(caseData.case_id, payload);
+            // R6: Fetch authoritative durable case after successful mutation
+            const refreshed = await casesApi.getCase(caseData.case_id);
+            setCaseData(refreshed);
             setError(null);
         } catch (err: unknown) {
             console.error("Failed to submit check result", err);
             const message = err instanceof Error ? err.message : "Failed to submit check result.";
             setError(message);
-            // Refresh to synchronize with latest persisted case state
-            await fetchCase();
+            // R1: Synchronize durable case without clearing mutation error
+            try {
+                const refreshed = await casesApi.getCase(caseData.case_id);
+                setCaseData(refreshed);
+            } catch (syncErr) {
+                console.error("Failed to sync case state after mutation error", syncErr);
+            }
+            // Re-throw so child form knows submission failed and preserves inputs
+            throw err;
         } finally {
             setIsSubmitting(false);
         }
@@ -186,6 +195,10 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                     ? "skipped"
                     : rawStatus === "FAILED"
                     ? "failed"
+                    : rawStatus === "UNKNOWN"
+                    ? "unknown"
+                    : rawStatus === "NOT_APPLICABLE"
+                    ? "not_applicable"
                     : "inconclusive";
 
             return {

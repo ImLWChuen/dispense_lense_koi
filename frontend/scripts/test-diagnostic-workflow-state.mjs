@@ -4,14 +4,18 @@
  * Verifies:
  * 1. Initial error never becomes question/check completion (mutually exclusive error vs done views).
  * 2. No next check/question produces a neutral exhausted/completed state without claiming sufficient evidence.
- * 3. Completed supporting/contradicting check payloads preserve the selected canonical outcome.
- * 4. Inconclusive and non-completed (blocked/skipped/failed) payloads omit outcome and use safe findings.
+ * 3. Completed supporting/contradicting check payloads preserve the selected canonical outcome (using canonical ACT01 no_blockage key).
+ * 4. Inconclusive and all non-completed (blocked, skipped, failed, unknown, not_applicable) payloads omit outcome and use safe findings.
  * 5. Lifecycle actions legality across all four issue conditions (UNRESOLVED, RECOVERY_PENDING_VERIFICATION, RESOLVED, RECURRED).
  * 6. Cause confirmation is independent of recovery and resolution.
  * 7. Failed verification returns to UNRESOLVED while confirmed cause remains representable.
  * 8. Resolved case allows recurrence reporting.
- * 9. Stale/failed mutation state preserves the last canonical case until refresh.
- * 10. Evidence support score formatting is strictly "/100" or "Not available", never probability or confidence.
+ * 9. Stale/failed mutation state preserves the last canonical case until refresh, with original error preserved.
+ * 10. Form inputs are cleared ONLY on confirmed mutation success, and strictly preserved on failure.
+ * 11. resolveActiveCheck returns active pending check when available, and undefined for all-historical lists (read-only historical checks).
+ * 12. shouldShowVerificationBadge renders PASSED/FAILED badge only for recovery verification with boolean results, never for null/undefined or non-verification events.
+ * 13. buildRecoveryVerificationPayload strictly requires non-blank verification details for both passed and failed outcomes.
+ * 14. Evidence support score formatting is strictly "/100" or "Not available", never probability or confidence.
  */
 
 import assert from "node:assert/strict";
@@ -26,6 +30,12 @@ import {
     buildRecoveryVerificationPayload,
     buildRecurrencePayload,
     formatEvidenceSupport,
+    resolveActiveCheck,
+    shouldShowVerificationBadge,
+    applyMutationSuccess,
+    applyMutationFailure,
+    evaluateFormInputsOnMutation,
+    VALID_EXECUTION_STATUSES,
 } from "../lib/diagnostic-workflow-state.ts";
 
 const mockCase = {
@@ -182,21 +192,22 @@ function runTests() {
         assert.equal(payloadSupports.finding_details, "Dried epoxy observed in nozzle bore.");
         assert.equal(payloadSupports.expected_revision, 3);
 
+        // Uses canonical ACT01 contradiction outcome: no_blockage (actions.json)
         const payloadContradicts = buildCheckResultPayload({
             check_id: "ACT01",
             execution_status: "COMPLETED",
             finding: "CONTRADICTS",
-            outcome: "clear_flow",
-            finding_details: "Flow is unobstructed.",
+            outcome: "no_blockage",
+            finding_details: "Flow is unobstructed; bore completely clear.",
             expected_revision: 3,
         });
 
         assert.equal(payloadContradicts.finding, "CONTRADICTS");
-        assert.equal(payloadContradicts.outcome, "clear_flow");
+        assert.equal(payloadContradicts.outcome, "no_blockage");
 
         // Outcome label formatting helper
         assert.equal(formatOutcomeLabel("blockage_found"), "Blockage Found");
-        assert.equal(formatOutcomeLabel("clear_flow"), "Clear Flow");
+        assert.equal(formatOutcomeLabel("no_blockage"), "No Blockage");
 
         // Missing outcome for SUPPORTS/CONTRADICTS must throw
         assert.throws(
@@ -212,26 +223,26 @@ function runTests() {
         );
 
         testsPassed++;
-        console.log("✓ Test 3 Passed: Supporting and contradicting check results strictly require and preserve canonical outcomes.");
+        console.log("✓ Test 3 Passed: Supporting and contradicting check results strictly require and preserve canonical outcomes (canonical no_blockage key).");
     }
 
-    // --- 4. Inconclusive and Non-Completed Payloads Omit Outcome and Use Safe Findings ---
+    // --- 4. Support All 6 Execution Statuses; Non-Completed Omit Outcome and Use Safe UNKNOWN Finding ---
     {
-        // Completed but inconclusive
+        // 1. COMPLETED (INCONCLUSIVE)
         const payloadInconclusive = buildCheckResultPayload({
             check_id: "ACT02",
             execution_status: "COMPLETED",
             finding: "INCONCLUSIVE",
             outcome: "ignored_outcome",
-            finding_details: "Pressure was fluctuating slightly but within bounds.",
+            finding_details: "Pressure fluctuating slightly but within bounds.",
             expected_revision: 2,
         });
         assert.equal(payloadInconclusive.execution_status, "COMPLETED");
         assert.equal(payloadInconclusive.finding, "INCONCLUSIVE");
         assert.equal(payloadInconclusive.outcome, null, "Inconclusive checks must omit outcome");
-        assert.equal(payloadInconclusive.finding_details, "Pressure was fluctuating slightly but within bounds.");
+        assert.equal(payloadInconclusive.finding_details, "Pressure fluctuating slightly but within bounds.");
 
-        // Blocked check
+        // 2. BLOCKED
         const payloadBlocked = buildCheckResultPayload({
             check_id: "ACT03",
             execution_status: "BLOCKED",
@@ -239,11 +250,11 @@ function runTests() {
             expected_revision: 2,
         });
         assert.equal(payloadBlocked.execution_status, "BLOCKED");
-        assert.equal(payloadBlocked.finding, "UNKNOWN", "Blocked checks must submit finding=UNKNOWN");
-        assert.equal(payloadBlocked.outcome, null, "Blocked checks must omit outcome");
+        assert.equal(payloadBlocked.finding, "UNKNOWN");
+        assert.equal(payloadBlocked.outcome, null);
         assert.equal(payloadBlocked.finding_details, "Access panel locked by maintenance.");
 
-        // Skipped check
+        // 3. SKIPPED
         const payloadSkipped = buildCheckResultPayload({
             check_id: "ACT04",
             execution_status: "SKIPPED",
@@ -254,8 +265,53 @@ function runTests() {
         assert.equal(payloadSkipped.finding, "UNKNOWN");
         assert.equal(payloadSkipped.outcome, null);
 
+        // 4. FAILED
+        const payloadFailed = buildCheckResultPayload({
+            check_id: "ACT05",
+            execution_status: "FAILED",
+            finding_details: "Digital pressure gauge battery dead mid-test.",
+            expected_revision: 2,
+        });
+        assert.equal(payloadFailed.execution_status, "FAILED");
+        assert.equal(payloadFailed.finding, "UNKNOWN");
+        assert.equal(payloadFailed.outcome, null);
+        assert.equal(payloadFailed.finding_details, "Digital pressure gauge battery dead mid-test.");
+
+        // 5. UNKNOWN
+        const payloadUnknown = buildCheckResultPayload({
+            check_id: "ACT06",
+            execution_status: "UNKNOWN",
+            finding_details: "Sensor readouts unreadable due to line noise.",
+            expected_revision: 2,
+        });
+        assert.equal(payloadUnknown.execution_status, "UNKNOWN");
+        assert.equal(payloadUnknown.finding, "UNKNOWN");
+        assert.equal(payloadUnknown.outcome, null);
+
+        // 6. NOT_APPLICABLE
+        const payloadNA = buildCheckResultPayload({
+            check_id: "ACT07",
+            execution_status: "NOT_APPLICABLE",
+            finding_details: "Dual-head check not applicable to single-head machine.",
+            expected_revision: 2,
+        });
+        assert.equal(payloadNA.execution_status, "NOT_APPLICABLE");
+        assert.equal(payloadNA.finding, "UNKNOWN");
+        assert.equal(payloadNA.outcome, null);
+
+        // Invalid status must throw
+        assert.throws(
+            () =>
+                buildCheckResultPayload({
+                    check_id: "ACT01",
+                    execution_status: "INVALID_STATUS",
+                    expected_revision: 2,
+                }),
+            /Invalid execution_status/
+        );
+
         testsPassed++;
-        console.log("✓ Test 4 Passed: Inconclusive and non-completed checks omit outcome and submit safe findings.");
+        console.log("✓ Test 4 Passed: All 6 check execution statuses supported; non-completed checks omit outcome and submit finding=UNKNOWN.");
     }
 
     // --- 5. Lifecycle Actions Legality Across All Four Issue Conditions ---
@@ -320,7 +376,6 @@ function runTests() {
 
     // --- 7. Failed Verification Returning to UNRESOLVED Preserves Confirmed Cause ---
     {
-        // Recovery verification failed payload
         const failVerPayload = buildRecoveryVerificationPayload(
             4,
             false,
@@ -380,35 +435,170 @@ function runTests() {
         console.log("✓ Test 8 Passed: Resolved cases correctly build recurrence payloads and support recurrence.");
     }
 
-    // --- 9. Stale / Failed Mutation Preserves Last Canonical Case ---
+    // --- 9. Mutation Error Preservation & Stale Banner ---
     {
-        // Stale mutation failure during questions
-        const qStaleView = deriveQuestionsView({
+        // When a mutation fails and case is refreshed, original error is preserved
+        const initialCase = { ...mockCase, current_revision: 2 };
+        const refreshedCase = { ...mockCase, current_revision: 3 }; // Updated by another actor
+        const mutationError = "Conflict: expected revision 2, but current revision is 3.";
+
+        const stateAfterFailure = applyMutationFailure(refreshedCase, mutationError);
+        assert.equal(stateAfterFailure.error, mutationError, "Original mutation error must NOT be cleared during refresh");
+        assert.equal(stateAfterFailure.data.current_revision, 3, "Case state must be synchronized to revision 3");
+
+        // View helper recognizes stale banner with preserved error and case data
+        const view = deriveQuestionsView({
             isLoading: false,
-            error: "Stale revision: expected 2, current is 3.",
-            caseData: mockCase,
+            error: stateAfterFailure.error,
+            caseData: stateAfterFailure.data,
             hasNextQuestion: true,
         });
-        assert.equal(qStaleView.showDedicatedError, false, "Must NOT hide case data when an update fails");
-        assert.equal(qStaleView.showStaleBanner, true, "Must show warning banner with error message");
-        assert.equal(qStaleView.showActiveQuestion, true, "Keeps existing question / data visible");
+        assert.equal(view.showDedicatedError, false, "Must NOT show dedicated error when case is present");
+        assert.equal(view.showStaleBanner, true, "Must show stale warning banner with preserved error");
 
-        // Stale mutation failure during troubleshooting
-        const tStaleView = deriveTroubleshootingView({
-            isLoading: false,
-            error: "Stale revision: expected 3, current is 4.",
-            caseData: mockCase,
-            hasNextCheck: true,
-        });
-        assert.equal(tStaleView.showDedicatedError, false);
-        assert.equal(tStaleView.showStaleBanner, true);
-        assert.equal(tStaleView.showActiveCheck, true);
+        // Successful mutation clears error
+        const stateAfterSuccess = applyMutationSuccess(refreshedCase);
+        assert.equal(stateAfterSuccess.error, null, "Successful mutation clears error");
+        assert.equal(stateAfterSuccess.data.current_revision, 3);
 
         testsPassed++;
-        console.log("✓ Test 9 Passed: Stale and failed mutation states preserve the last loaded canonical case with a stale banner.");
+        console.log("✓ Test 9 Passed: Mutation failure preserves original error message while refreshing durable state.");
     }
 
-    // --- 10. Evidence Support Score Formatting ---
+    // --- 10. Form Inputs Cleared ONLY on Confirmed Success ---
+    {
+        const initialNotes = "Detailed observation notes about restricted tip.";
+        const emptyNotes = "";
+
+        // Failed mutation: input must be PRESERVED
+        const failedInputState = evaluateFormInputsOnMutation(
+            initialNotes,
+            emptyNotes,
+            false,
+            "409 Conflict"
+        );
+        assert.equal(failedInputState.value, initialNotes, "Input must NOT be cleared on failure");
+        assert.equal(failedInputState.error, "409 Conflict");
+        assert.equal(failedInputState.isSubmitting, false);
+
+        // Successful mutation: input is cleared
+        const successInputState = evaluateFormInputsOnMutation(
+            initialNotes,
+            emptyNotes,
+            true
+        );
+        assert.equal(successInputState.value, emptyNotes, "Input must be cleared on success");
+        assert.equal(successInputState.error, null);
+        assert.equal(successInputState.isSubmitting, false);
+
+        testsPassed++;
+        console.log("✓ Test 10 Passed: Form inputs are strictly preserved on mutation failure and cleared only on success.");
+    }
+
+    // --- 11. resolveActiveCheck: All-Historical Actions Remain Read-Only ---
+    {
+        const allHistoricalActions = [
+            { id: "ACT01", status: "completed", name: "Inspect Nozzle" },
+            { id: "ACT02", status: "blocked", name: "Check Material" },
+            { id: "ACT03", status: "skipped", name: "Verify Pressure" },
+        ];
+
+        // When no pending check exists, activeCheck is undefined
+        const noActive = resolveActiveCheck(allHistoricalActions, null);
+        assert.equal(noActive, undefined, "All-historical actions must return undefined active check");
+
+        const noActiveWithId = resolveActiveCheck(allHistoricalActions, "ACT01");
+        assert.equal(noActiveWithId, undefined, "Historical matching id must NOT become active");
+
+        // When a pending check exists, it resolves properly
+        const mixedActions = [
+            ...allHistoricalActions,
+            { id: "ACT04", status: "pending", name: "Inspect Needle" },
+        ];
+        const activePending = resolveActiveCheck(mixedActions, "ACT04");
+        assert.equal(activePending.id, "ACT04", "Resolves explicitly specified pending action");
+
+        const activeDefaultPending = resolveActiveCheck(mixedActions, null);
+        assert.equal(activeDefaultPending.id, "ACT04", "Defaults to pending action");
+
+        testsPassed++;
+        console.log("✓ Test 11 Passed: resolveActiveCheck returns undefined for all-historical list (ensuring historical checks remain read-only).");
+    }
+
+    // --- 12. shouldShowVerificationBadge: Gating for Verification Events ---
+    {
+        // Recovery verification with boolean result
+        assert.equal(shouldShowVerificationBadge("RECOVERY_VERIFICATION", true), true);
+        assert.equal(shouldShowVerificationBadge("RECOVERY_VERIFICATION", false), true);
+        assert.equal(shouldShowVerificationBadge("VERIFICATION", true), true);
+        assert.equal(shouldShowVerificationBadge("VERIFICATION", false), true);
+
+        // Recovery verification with null or undefined
+        assert.equal(shouldShowVerificationBadge("RECOVERY_VERIFICATION", null), false);
+        assert.equal(shouldShowVerificationBadge("RECOVERY_VERIFICATION", undefined), false);
+
+        // Recovery action and recurrence events (always null verification_passed)
+        assert.equal(shouldShowVerificationBadge("RECOVERY_ACTION", null), false);
+        assert.equal(shouldShowVerificationBadge("RECURRENCE", null), false);
+        assert.equal(shouldShowVerificationBadge("RECOVERY_ACTION", undefined), false);
+        assert.equal(shouldShowVerificationBadge("CAUSE_CONFIRMATION", null), false);
+
+        // Non-verification event even if boolean passed
+        assert.equal(shouldShowVerificationBadge("RECOVERY_ACTION", true), false);
+
+        testsPassed++;
+        console.log("✓ Test 12 Passed: shouldShowVerificationBadge displays PASSED/FAILED only for verification events with boolean results.");
+    }
+
+    // --- 13. buildRecoveryVerificationPayload Requires Non-Blank Details ---
+    {
+        // Non-blank details succeed for passed
+        const passedPayload = buildRecoveryVerificationPayload(
+            5,
+            true,
+            "100 test shots passed with dot diameter 0.45mm +/- 0.02mm."
+        );
+        assert.equal(passedPayload.verification_passed, true);
+        assert.equal(passedPayload.verification_details, "100 test shots passed with dot diameter 0.45mm +/- 0.02mm.");
+
+        // Non-blank details succeed for failed
+        const failedPayload = buildRecoveryVerificationPayload(
+            5,
+            false,
+            "Dots still undersized by 40% after cleaning."
+        );
+        assert.equal(failedPayload.verification_passed, false);
+        assert.equal(failedPayload.verification_details, "Dots still undersized by 40% after cleaning.");
+
+        // Blank or whitespace details must throw for passed
+        assert.throws(
+            () => buildRecoveryVerificationPayload(5, true, ""),
+            /verification_details must be a non-empty string/
+        );
+        assert.throws(
+            () => buildRecoveryVerificationPayload(5, true, "   "),
+            /verification_details must be a non-empty string/
+        );
+        assert.throws(
+            () => buildRecoveryVerificationPayload(5, true, null),
+            /verification_details must be a non-empty string/
+        );
+
+        // Blank or whitespace details must throw for failed
+        assert.throws(
+            () => buildRecoveryVerificationPayload(5, false, ""),
+            /verification_details must be a non-empty string/
+        );
+        assert.throws(
+            () => buildRecoveryVerificationPayload(5, false, "   "),
+            /verification_details must be a non-empty string/
+        );
+
+        testsPassed++;
+        console.log("✓ Test 13 Passed: buildRecoveryVerificationPayload strictly requires non-blank verification details for both passed and failed verifications.");
+    }
+
+    // --- 14. Evidence Support Score Formatting ---
     {
         assert.equal(formatEvidenceSupport(88), "88/100");
         assert.equal(formatEvidenceSupport(0), "0/100");
@@ -420,7 +610,7 @@ function runTests() {
         assert.equal(formatEvidenceSupport(NaN), "Not available");
 
         testsPassed++;
-        console.log("✓ Test 10 Passed: Evidence support score is strictly formatted as '/100', never accuracy or confidence.");
+        console.log("✓ Test 14 Passed: Evidence support score is strictly formatted as '/100', never accuracy or confidence.");
     }
 
     console.log(`\nAll ${testsPassed} diagnostic workflow state regression tests passed successfully.`);

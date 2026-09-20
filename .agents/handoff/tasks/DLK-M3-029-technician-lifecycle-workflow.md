@@ -242,6 +242,15 @@ Proposed commit message: `feat(workflow): make technician lifecycle restart-safe
 
 Implemented a restart-safe, truthful technician diagnostic and lifecycle workflow spanning questions, physical troubleshooting checks, cause confirmation, corrective recovery, recovery verification (pass/fail), and recurrence reporting. Added additive `previous_confirmations` and `lifecycle_events` fields to `DurableCaseResponse` in `GET /api/v1/cases/{case_id}` populated from repository reads up to the latest revision without mutating state. Aligned frontend types and API client to return typed durable response wrappers. Refactored questions and troubleshooting views to enforce mutual exclusion among initial loading, initial error, active step, and neutral completion (removing false sufficient-evidence claims). Submitted physical checks with canonical outcomes and safe UI state awaiting API resolution. Disentangled verification into independent lifecycle operations respecting the 4 legal issue conditions and documented all contracts.
 
+Following code review `DLK-M3-029-review.md`, resolved review findings R1–R7 in full:
+1. **R1**: Decoupled durable case refresh on mutation error so original mutation failure messages are preserved and displayed, and mutation callbacks reject/re-throw so child technician forms preserve user input upon failure and only reset on confirmed success.
+2. **R2**: Implemented `resolveActiveCheck` ensuring that when all checks are historical/completed, no check is selected as active and historical checks remain strictly read-only (eliminating `actions[0]` reactivation fallback).
+3. **R3**: Implemented `shouldShowVerificationBadge` restricting `PASSED`/`FAILED` badges strictly to verification events where `verification_passed` is a boolean, preventing null recovery action or recurrence events from showing false failure badges.
+4. **R4**: Fully exposed all 6 check execution statuses (`COMPLETED`, `BLOCKED`, `SKIPPED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`) in the UI, mapping non-completed checks to `finding: UNKNOWN` with no outcome and requiring explanatory notes.
+5. **R5**: Enforced non-blank verification details in `buildRecoveryVerificationPayload` and the verification UI form for both passed and failed recovery verifications.
+6. **R6**: Synchronized the authoritative durable case via `casesApi.getCase` on mutation success across all question, troubleshooting, and verification handlers to ensure durable confirmation and lifecycle histories are never erased.
+7. **R7**: Aligned canonical action outcome key to `no_blockage` for ACT01 and expanded `test-diagnostic-workflow-state.mjs` to 14 comprehensive tests covering all production helper and state transition paths.
+
 ### Files changed
 
 - `backend/app/schemas/case.py`: Added `CauseConfirmationRecord` and `LifecycleEventRecord` to `DurableCaseResponse` as backward-compatible list fields defaulting to empty lists.
@@ -249,13 +258,13 @@ Implemented a restart-safe, truthful technician diagnostic and lifecycle workflo
 - `backend/tests/integration/test_case_api.py`: Added comprehensive scenario 13 test advancing a case through confirmation, recovery action 1, failed recovery verification, recovery action 2, passed recovery verification, and recurrence, asserting ordered history hydration and idempotent read-only GET.
 - `frontend/types/api.ts`: Added `CauseConfirmationRecord`, `LifecycleEventRecord`, updated `DurableCaseResponse` with history fields and optional `current_revision`, typed all lifecycle mutation responses and request payloads.
 - `frontend/lib/api/cases.ts`: Typed mutation methods to return durable wrapper responses, added `submitRecurrence`, supported explicit canonical `outcome` parameter in `submitCheckResult`, and defaulted actors to `"technician"`.
-- `frontend/lib/diagnostic-workflow-state.ts`: Added pure workflow state module with `deriveQuestionsView`, `deriveTroubleshootingView`, `buildCheckResultPayload`, `formatOutcomeLabel`, `getAvailableLifecycleActions`, lifecycle payload builders, and `formatEvidenceSupport`.
-- `frontend/scripts/test-diagnostic-workflow-state.mjs`: Added 10-test dependency-free regression test suite covering view mutual exclusion, canonical outcome preservation, safe findings, lifecycle transitions, and score formatting.
-- `frontend/components/diagnosis/TroubleshootingChecklist.tsx`: Updated to render human-readable labels for canonical `possibleOutcomes`, require explicit finding and canonical outcome for completed checks, safe unknown/omitted outcome for non-completed checks, un-optimistic UI state, and historical findings display.
-- `frontend/components/diagnosis/EngineerVerification.tsx`: Replaced chained one-click flow with independent cards for cause confirmation, recovery action, pass/fail verification, recurrence, and lifecycle history log. Replaced confidence labels with `Evidence Support /100`. Replaced fake rejection with honest informational callout.
-- `frontend/app/(dashboard)/diagnosis/[id]/questions/page.tsx`: Wired `deriveQuestionsView`, dedicated error state with retry, stale mutation error banner with re-synchronization, and neutral completion text.
-- `frontend/app/(dashboard)/diagnosis/[id]/troubleshooting/page.tsx`: Wired `deriveTroubleshootingView`, dedicated error state with retry, stale mutation error banner with re-synchronization, canonical payload submission via `buildCheckResultPayload`, and neutral completion text.
-- `frontend/app/(dashboard)/diagnosis/[id]/verification/page.tsx`: Wired independent lifecycle action handlers, revision tracking, dedicated error and stale banner handling.
+- `frontend/lib/diagnostic-workflow-state.ts`: Added pure workflow state module with `deriveQuestionsView`, `deriveTroubleshootingView`, `buildCheckResultPayload`, `formatOutcomeLabel`, `getAvailableLifecycleActions`, lifecycle payload builders, `formatEvidenceSupport`, `resolveActiveCheck`, `shouldShowVerificationBadge`, `applyMutationSuccess`, `applyMutationFailure`, and `evaluateFormInputsOnMutation`.
+- `frontend/scripts/test-diagnostic-workflow-state.mjs`: Added 14-test dependency-free regression test suite covering view mutual exclusion, canonical outcome preservation (`no_blockage`), safe findings across all 6 execution statuses, lifecycle transitions, score formatting, error preservation, input preservation on failure, read-only historical checks, and required verification details.
+- `frontend/components/diagnosis/TroubleshootingChecklist.tsx`: Updated to render human-readable labels for canonical `possibleOutcomes`, require explicit finding and canonical outcome for completed checks, safe unknown/omitted outcome for all 5 non-completed statuses, read-only historical actions with `resolveActiveCheck`, and form input preservation on mutation error.
+- `frontend/components/diagnosis/EngineerVerification.tsx`: Replaced chained one-click flow with independent cards for cause confirmation, recovery action, pass/fail verification, recurrence, and lifecycle history log. Replaced confidence labels with `Evidence Support /100`. Replaced fake rejection with honest informational callout. Enforced non-blank verification details and strict boolean verification badge display.
+- `frontend/app/(dashboard)/diagnosis/[id]/questions/page.tsx`: Wired `deriveQuestionsView`, dedicated error state with retry, stale mutation error banner with re-synchronization preserving mutation error, authoritative durable case synchronization on success, and neutral completion text.
+- `frontend/app/(dashboard)/diagnosis/[id]/troubleshooting/page.tsx`: Wired `deriveTroubleshootingView`, dedicated error state with retry, stale mutation error banner with re-synchronization preserving mutation error, authoritative durable case synchronization on success, canonical payload submission via `buildCheckResultPayload`, and neutral completion text.
+- `frontend/app/(dashboard)/diagnosis/[id]/verification/page.tsx`: Wired independent lifecycle action handlers, revision tracking, dedicated error and stale banner handling preserving mutation errors, authoritative durable case synchronization on success, and input preservation.
 - `docs/api/frontend-backend-contract.md`: Updated contract summary, matrix rows 5, 7, 10, 11, Section 3.6 for canonical check outcomes, and added Section 3.8 for technician workflow and lifecycle contracts.
 - `.agents/handoff/tasks/DLK-M3-029-technician-lifecycle-workflow.md`: Completed implementation report and updated task status to `implemented`.
 - `.agents/handoff/QUEUE.md`: Updated task DLK-M3-029 status to `implemented`.
@@ -266,15 +275,17 @@ Implemented a restart-safe, truthful technician diagnostic and lifecycle workflo
 - Reused and updated `EngineerVerification.tsx` rather than adding redundant `LifecycleActions.tsx` component, keeping lifecycle presentation bounded in one cohesive component.
 - Extracted pure view state derivation into `frontend/lib/diagnostic-workflow-state.ts` to ensure identical logic between Next.js production components and standalone Node regression tests.
 - Replaced misleading "sufficient evidence gathered" claims upon check exhaustion with neutral completion text: "No additional physical troubleshooting checks are currently recommended by the diagnostic engine."
+- Preserved original mutation failure errors when syncing durable state by calling `casesApi.getCase` directly in the catch block rather than through `fetchCase()`, which would clear the error state.
+- Parent mutation handlers re-throw errors so child forms catch the failure and retain technician input.
+- Strict boolean check `typeof verification_passed === "boolean"` prevents null lifecycle fields from rendering as false `FAILED` badges.
 
 ### Verification results
 
 - Task validation: `validate_task.py` passed (VALID).
-- Focused backend tests: 89 passed, 25 warnings in 28.85s (`test_case_api.py`, `test_check_result_api.py`, `test_cause_confirmation_api.py`, `test_recovery_verification_api.py`, `test_recurrence_api.py`).
-- Frontend workflow regressions: 10/10 tests passed (`node scripts/test-diagnostic-workflow-state.mjs`).
-- Frontend lint: 0 errors and 0 warnings on modified task files. (Pre-existing warnings/errors in untouched files remain unchanged).
+- Focused backend tests: 89 passed, 25 warnings in 28.14s (`test_case_api.py`, `test_check_result_api.py`, `test_cause_confirmation_api.py`, `test_recovery_verification_api.py`, `test_recurrence_api.py`).
+- Frontend workflow regressions: 14/14 tests passed (`node scripts/test-diagnostic-workflow-state.mjs`).
+- Frontend lint: 0 errors and 0 warnings on modified task files via focused ESLint. (Pre-existing warnings/errors in untouched files remain unchanged).
 - Frontend production build: `npm run build` succeeded in Next.js 16.3.4 (Turbopack) with 0 errors.
-- Full backend test suite: 481 passed, 42 warnings in 55.36s against fail-closed disposable PostgreSQL test database.
 - Git diff whitespace: `git diff --check` clean (exit code 0).
 - Protected uncommitted file `frontend/app/(dashboard)/cases/[id]/page.tsx` remained untouched and unstaged.
 
@@ -284,4 +295,4 @@ Implemented a restart-safe, truthful technician diagnostic and lifecycle workflo
 
 ### Proposed commit message
 
-`feat(workflow): make technician lifecycle restart-safe`
+`fix(workflow): resolve DLK-M3-029 review findings R1-R7`

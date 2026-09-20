@@ -14,6 +14,11 @@ Phase 3B: restart-safe technician troubleshooting and lifecycle workflow
   - authorized backend contract: additive confirmation and lifecycle histories in `GET /api/v1/cases/{case_id}` only; no database or diagnostic-semantic changes
   - protected overlap: do not modify or stage the existing uncommitted `frontend/app/(dashboard)/cases/[id]/page.tsx`
   - review stop: return to ChatGPT after one local implementation commit; do not begin final end-to-end acceptance or remote Git operations
+  - review: `.agents/handoff/reviews/DLK-M3-029-review.md`
+  - reviewed commit: `3ed257979602d6afbc84fd8cac5fd33bbedca821`
+  - corrections resolved (R1–R7): preserve mutation failures and technician form inputs while refreshing durable state; never reactivate historical checks when no next check exists (resolveActiveCheck returns undefined for all-historical lists); render PASSED/FAILED badges only when verification_passed is boolean and restricted to recovery-verification events; expose all 6 check execution statuses (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE) with safe UNKNOWN finding and omitted outcome for non-completed checks; require non-blank verification details for both passed and failed recovery verifications; fetch authoritative durable case on mutation success to prevent history erasure; canonical no_blockage outcome key used for ACT01; strengthened 14-scenario dependency-free regression test-diagnostic-workflow-state.mjs covering all production helpers and mutation state paths
+  - reviewer verification: 89 focused backend tests and 481 full backend tests passed; 14 workflow regressions passed; focused task-owned ESLint passed; production build and task validation passed; full repository lint still fails on unrelated/pre-existing files and must be reported accurately
+  - next step: return to ChatGPT for review; do not create a new task packet, touch protected/unrelated files, push, merge, or begin final end-to-end acceptance
   - explicit exclusions: diagnostic engine/knowledge/weights, durable rejection semantics, migrations, image workflow, dashboard/analytics/reports, authentication, dependencies, deployment, protected case-detail integration, and remote Git operations
 
 ## Accepted Phase 3A dependency

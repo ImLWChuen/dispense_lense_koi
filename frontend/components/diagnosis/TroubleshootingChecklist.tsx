@@ -12,7 +12,11 @@ import {
     AlertCircle,
     Loader2,
 } from "lucide-react";
-import { formatOutcomeLabel } from "@/lib/diagnostic-workflow-state";
+import {
+    formatOutcomeLabel,
+    resolveActiveCheck,
+    ValidExecutionStatus,
+} from "@/lib/diagnostic-workflow-state";
 
 export interface TroubleshootingAction {
     id: string;
@@ -21,7 +25,7 @@ export interface TroubleshootingAction {
     procedure: string;
     effortLevel: "low" | "medium" | "high";
     applicableCauses: string[];
-    status: "pending" | "completed" | "blocked" | "skipped" | "failed" | "inconclusive";
+    status: "pending" | "completed" | "blocked" | "skipped" | "failed" | "unknown" | "not_applicable" | "inconclusive";
     possibleOutcomes?: string[];
     // Historical recorded details if already completed
     finding?: string;
@@ -41,6 +45,8 @@ const statusConfig: Record<string, { icon: typeof Circle; className: string; lab
     blocked: { icon: Ban, className: "text-red-500", label: "Blocked" },
     skipped: { icon: Clock3, className: "text-gray-400", label: "Skipped" },
     failed: { icon: Ban, className: "text-rose-500", label: "Failed" },
+    unknown: { icon: HelpCircle, className: "text-purple-500", label: "Unknown" },
+    not_applicable: { icon: HelpCircle, className: "text-slate-500", label: "Not Applicable" },
     inconclusive: { icon: HelpCircle, className: "text-amber-500", label: "Inconclusive" },
 };
 
@@ -59,17 +65,26 @@ interface TroubleshootingChecklistProps {
     isSubmitting?: boolean;
 }
 
+const executionStatusOptions: { value: ValidExecutionStatus; label: string; activeClass: string }[] = [
+    { value: "COMPLETED", label: "Completed", activeClass: "bg-green-600 text-white shadow-sm" },
+    { value: "BLOCKED", label: "Blocked", activeClass: "bg-rose-600 text-white shadow-sm" },
+    { value: "SKIPPED", label: "Skipped", activeClass: "bg-gray-700 text-white shadow-sm" },
+    { value: "FAILED", label: "Failed", activeClass: "bg-amber-600 text-white shadow-sm" },
+    { value: "UNKNOWN", label: "Unknown", activeClass: "bg-purple-600 text-white shadow-sm" },
+    { value: "NOT_APPLICABLE", label: "Not Applicable", activeClass: "bg-slate-600 text-white shadow-sm" },
+];
+
 export default function TroubleshootingChecklist({
     actions,
     activeCheckId,
     onSubmit,
     isSubmitting = false,
 }: TroubleshootingChecklistProps) {
-    // Determine active check or default to first pending
-    const activeCheck = actions.find((a) => a.id === activeCheckId) || actions.find((a) => a.status === "pending") || actions[0];
+    // Resolve active check safely: only resolves if a genuinely pending check exists
+    const activeCheck = resolveActiveCheck(actions, activeCheckId);
 
     // Form state for active check execution
-    const [selectedStatus, setSelectedStatus] = useState<"COMPLETED" | "BLOCKED" | "SKIPPED">("COMPLETED");
+    const [selectedStatus, setSelectedStatus] = useState<ValidExecutionStatus>("COMPLETED");
     const [selectedFinding, setSelectedFinding] = useState<"SUPPORTS" | "CONTRADICTS" | "INCONCLUSIVE">("SUPPORTS");
     const [selectedOutcome, setSelectedOutcome] = useState<string>("");
     const [notes, setNotes] = useState<string>("");
@@ -96,9 +111,14 @@ export default function TroubleshootingChecklist({
                 setFormError(`Please select a canonical outcome for a ${selectedFinding.toLowerCase()} finding.`);
                 return;
             }
-        } else if (selectedStatus === "BLOCKED" && !notes.trim()) {
-            setFormError("Please explain why this check was blocked in the notes below.");
-            return;
+        } else {
+            // For any non-completed status (BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE):
+            if (!notes.trim()) {
+                setFormError(
+                    `Please explain why this check was marked as ${selectedStatus.replace(/_/g, " ").toLowerCase()} in the notes below.`
+                );
+                return;
+            }
         }
 
         try {
@@ -106,103 +126,113 @@ export default function TroubleshootingChecklist({
                 check_id: actionId,
                 execution_status: selectedStatus,
                 finding: selectedStatus === "COMPLETED" ? selectedFinding : "UNKNOWN",
-                outcome: selectedStatus === "COMPLETED" && (selectedFinding === "SUPPORTS" || selectedFinding === "CONTRADICTS") ? selectedOutcome : null,
+                outcome:
+                    selectedStatus === "COMPLETED" &&
+                    (selectedFinding === "SUPPORTS" || selectedFinding === "CONTRADICTS")
+                        ? selectedOutcome
+                        : null,
                 finding_details: notes.trim() || null,
             });
 
-            // Clear inputs on success
+            // Clear inputs ONLY on confirmed success:
             setSelectedOutcome("");
             setNotes("");
+            setSelectedStatus("COMPLETED");
+            setSelectedFinding("SUPPORTS");
             setFormError(null);
         } catch (err: unknown) {
             console.error("Check submission error in component:", err);
             const msg = err instanceof Error ? err.message : "Failed to submit check result.";
             setFormError(msg);
+            // Inputs are preserved on failure!
         }
     };
 
     return (
         <div className="space-y-4">
             {actions.map((action) => {
-                const isActive = action.status === "pending" || action.id === activeCheck?.id;
+                const isActive = Boolean(activeCheck && action.id === activeCheck.id);
                 const isExpanded = expanded[action.id] ?? isActive;
                 const config = statusConfig[action.status] || statusConfig.pending;
                 const StatusIcon = config.icon;
-                const effort = effortConfig[action.effortLevel] || effortConfig.medium;
                 const possibleOutcomes = action.possibleOutcomes || [];
 
                 return (
                     <div
                         key={action.id}
-                        className={`rounded-xl border bg-white shadow-sm transition ${
+                        className={`rounded-2xl border bg-white shadow-sm transition ${
                             isActive
-                                ? "border-[#6d5dfc]/40 ring-1 ring-[#6d5dfc]/20"
-                                : action.status === "completed"
-                                ? "border-green-200"
+                                ? "border-[#6d5dfc] ring-1 ring-[#6d5dfc]"
                                 : "border-gray-200"
                         }`}
                     >
-                        {/* Header */}
-                        <button
+                        {/* Header / Summary */}
+                        <div
+                            className="flex items-center justify-between p-5 cursor-pointer select-none"
                             onClick={() => toggleExpand(action.id)}
-                            className="flex w-full items-center gap-3 p-5 text-left"
-                            type="button"
                         >
-                            <StatusIcon size={20} className={config.className} />
-
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-sm font-semibold text-gray-900 font-mono">
-                                        [{action.id}] {action.name}
-                                    </p>
-
-                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${effort.className}`}>
-                                        {effort.label}
-                                    </span>
-
-                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                        isActive ? "bg-purple-50 text-[#6d5dfc]" : "bg-gray-100 text-gray-600"
-                                    }`}>
-                                        {config.label}
-                                    </span>
+                            <div className="flex items-center gap-4">
+                                <div className="shrink-0">
+                                    <StatusIcon className={`h-6 w-6 ${config.className}`} />
                                 </div>
 
-                                <p className="mt-0.5 text-xs text-gray-500">{action.description}</p>
+                                <div>
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="font-mono text-xs font-bold text-gray-500">
+                                            {action.id}
+                                        </span>
+                                        <h3 className="text-sm font-semibold text-gray-900">
+                                            {action.name}
+                                        </h3>
+                                        <span
+                                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                effortConfig[action.effortLevel].className
+                                            }`}
+                                        >
+                                            {effortConfig[action.effortLevel].label}
+                                        </span>
+                                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                                            {config.label}
+                                        </span>
+                                    </div>
+
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        {action.description}
+                                    </p>
+                                </div>
                             </div>
 
-                            {isExpanded ? (
-                                <ChevronUp size={16} className="shrink-0 text-gray-400" />
-                            ) : (
-                                <ChevronDown size={16} className="shrink-0 text-gray-400" />
-                            )}
-                        </button>
+                            <button
+                                type="button"
+                                className="text-gray-400 hover:text-gray-600 p-1"
+                                aria-label={isExpanded ? "Collapse" : "Expand"}
+                            >
+                                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                            </button>
+                        </div>
 
-                        {/* Expanded Content */}
+                        {/* Collapsible Content */}
                         {isExpanded && (
-                            <div className="border-t border-gray-100 px-5 pb-5 pt-4">
-                                {/* Procedure */}
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                    Standard Operating Procedure
-                                </p>
-                                <div className="mt-2 rounded-lg bg-gray-50 p-3.5">
-                                    {action.procedure.split("\n").map((step, i) => (
-                                        <p key={i} className="text-xs leading-5 text-gray-700 font-sans">
-                                            {step}
-                                        </p>
-                                    ))}
+                            <div className="border-t border-gray-100 p-5 pt-4">
+                                <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                        Standard Operating Procedure
+                                    </h4>
+                                    <p className="mt-1 text-xs whitespace-pre-line text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                        {action.procedure}
+                                    </p>
                                 </div>
 
-                                {/* Target causes */}
                                 {action.applicableCauses && action.applicableCauses.length > 0 && (
-                                    <div className="mt-3">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                                            Investigated Causes
-                                        </p>
-                                        <div className="mt-1 flex flex-wrap gap-1.5">
+                                    <div className="mt-4">
+                                        <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                            Target Causes Evaluated
+                                        </h4>
+                                        <div className="mt-1.5 flex flex-wrap gap-1.5">
                                             {action.applicableCauses.map((cause) => (
                                                 <span
                                                     key={cause}
-                                                    className="rounded-md bg-[#eeebff] px-2 py-0.5 text-[10px] font-medium text-[#5848e8]"
+                                                    className="rounded-md bg-[#faf9ff] border border-[#ded9ff] px-2 py-0.5 text-[10px] font-medium text-[#5848e8]"
                                                 >
                                                     {cause.replace(/_/g, " ")}
                                                 </span>
@@ -211,39 +241,30 @@ export default function TroubleshootingChecklist({
                                     </div>
                                 )}
 
-                                {/* Historical Finding Display if already executed */}
-                                {!isActive && action.status !== "pending" && (
-                                    <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
-                                        <p className="text-xs font-semibold text-gray-700">Recorded Finding</p>
-                                        <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
-                                            <div>
-                                                <span className="text-gray-500">Execution Status: </span>
-                                                <span className="font-semibold text-gray-800">{action.status.toUpperCase()}</span>
-                                            </div>
-                                            {action.finding && (
-                                                <div>
-                                                    <span className="text-gray-500">Finding: </span>
-                                                    <span className="font-semibold text-gray-800">{action.finding}</span>
-                                                </div>
-                                            )}
-                                            {action.outcome && (
-                                                <div>
-                                                    <span className="text-gray-500">Canonical Outcome: </span>
-                                                    <span className="font-mono font-medium text-[#5848e8]">
-                                                        {action.outcome} ({formatOutcomeLabel(action.outcome)})
-                                                    </span>
-                                                </div>
-                                            )}
+                                {/* Historical Recorded Details */}
+                                {action.status !== "pending" && (
+                                    <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-xs space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-semibold text-gray-700">Recorded Finding:</span>
+                                            <span className="font-bold text-gray-900">{action.finding || "UNKNOWN"}</span>
                                         </div>
+                                        {action.outcome && (
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-semibold text-gray-700">Canonical Outcome:</span>
+                                                <span className="font-mono text-[#5848e8]">
+                                                    {action.outcome} ({formatOutcomeLabel(action.outcome)})
+                                                </span>
+                                            </div>
+                                        )}
                                         {action.findingDetails && (
-                                            <p className="mt-2 text-xs text-gray-600 italic">
+                                            <p className="text-gray-600 italic mt-1 pt-1 border-t border-gray-200">
                                                 &quot;{action.findingDetails}&quot;
                                             </p>
                                         )}
                                     </div>
                                 )}
 
-                                {/* Active Check Execution Controls */}
+                                {/* Active Check Execution Controls (Only if genuinely active pending check) */}
                                 {isActive && (
                                     <div className="mt-5 space-y-4 rounded-xl border border-[#ded9ff] bg-[#faf9ff] p-4">
                                         <p className="text-xs font-bold uppercase tracking-wide text-gray-900">
@@ -257,31 +278,27 @@ export default function TroubleshootingChecklist({
                                             </div>
                                         )}
 
-                                        {/* Status Selection */}
+                                        {/* Status Selection (All 6 supported statuses) */}
                                         <div>
                                             <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                                                 Check Execution Status
                                             </label>
-                                            <div className="flex gap-2">
-                                                {(["COMPLETED", "BLOCKED", "SKIPPED"] as const).map((s) => (
+                                            <div className="flex flex-wrap gap-2">
+                                                {executionStatusOptions.map((opt) => (
                                                     <button
-                                                        key={s}
+                                                        key={opt.value}
                                                         type="button"
                                                         onClick={() => {
-                                                            setSelectedStatus(s);
+                                                            setSelectedStatus(opt.value);
                                                             setFormError(null);
                                                         }}
                                                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                                                            selectedStatus === s
-                                                                ? s === "COMPLETED"
-                                                                    ? "bg-green-600 text-white shadow-sm"
-                                                                    : s === "BLOCKED"
-                                                                    ? "bg-rose-600 text-white shadow-sm"
-                                                                    : "bg-gray-700 text-white shadow-sm"
+                                                            selectedStatus === opt.value
+                                                                ? opt.activeClass
                                                                 : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                                                         }`}
                                                     >
-                                                        {s}
+                                                        {opt.label}
                                                     </button>
                                                 ))}
                                             </div>
@@ -354,8 +371,8 @@ export default function TroubleshootingChecklist({
                                                                 type="text"
                                                                 value={selectedOutcome}
                                                                 onChange={(e) => setSelectedOutcome(e.target.value)}
-                                                                placeholder="Enter canonical outcome key (e.g. blockage_found)..."
-                                                                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono outline-none focus:border-[#6d5dfc]"
+                                                                placeholder="e.g. blockage_found, no_blockage"
+                                                                className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-mono text-gray-900 outline-none focus:border-[#6d5dfc]"
                                                             />
                                                         )}
                                                     </div>
@@ -363,41 +380,45 @@ export default function TroubleshootingChecklist({
                                             </>
                                         )}
 
-                                        {/* Notes / Details */}
+                                        {/* Notes / Reason */}
                                         <div>
-                                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                                                Technician Observations & Notes {selectedStatus === "BLOCKED" && <span className="text-rose-500">*</span>}
+                                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                                                Technician Observations & Notes{" "}
+                                                {selectedStatus !== "COMPLETED" && (
+                                                    <span className="text-rose-500">* (Reason required)</span>
+                                                )}
                                             </label>
                                             <textarea
                                                 value={notes}
                                                 onChange={(e) => setNotes(e.target.value)}
                                                 placeholder={
-                                                    selectedStatus === "BLOCKED"
-                                                        ? "State why this check could not be completed..."
-                                                        : "Record physical inspection measurements, observations, or equipment condition..."
+                                                    selectedStatus === "COMPLETED"
+                                                        ? "Describe observed physical state (e.g. dried adhesive buildup in orifice)..."
+                                                        : `Explain reason for marking as ${selectedStatus.replace(/_/g, " ").toLowerCase()}...`
                                                 }
                                                 rows={2}
-                                                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc]"
+                                                disabled={isSubmitting}
+                                                className="w-full rounded-xl border border-gray-200 bg-white p-3 text-xs outline-none focus:border-[#6d5dfc] placeholder:text-gray-400"
                                             />
                                         </div>
 
-                                        {/* Submit Action */}
+                                        {/* Submit Button */}
                                         <div className="flex justify-end pt-1">
                                             <button
                                                 type="button"
                                                 onClick={() => handleSubmit(action.id)}
                                                 disabled={isSubmitting}
-                                                className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#5848e8] disabled:opacity-50"
+                                                className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#5848e8] disabled:opacity-50"
                                             >
                                                 {isSubmitting ? (
                                                     <>
-                                                        <Loader2 size={13} className="animate-spin" />
-                                                        Saving Finding...
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        Saving Result...
                                                     </>
                                                 ) : (
                                                     <>
                                                         <CheckCircle2 size={14} />
-                                                        Submit Check Finding
+                                                        Submit Check Result
                                                     </>
                                                 )}
                                             </button>

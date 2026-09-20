@@ -5,8 +5,10 @@
  * 1. Mutually exclusive questions and troubleshooting view states.
  * 2. Physical check outcome mapping and payload generation.
  * 3. Lifecycle action legality based on persisted issue condition.
- * 4. Stale/failed mutation handling preserving canonical case state.
+ * 4. Stale/failed mutation handling preserving canonical case state and mutation errors.
  * 5. Truthful evidence-support formatting.
+ * 6. Active check resolution and read-only historical check safety.
+ * 7. Pass/fail verification badge gating.
  */
 
 import type {
@@ -56,7 +58,7 @@ export function deriveQuestionsView(state: QuestionsViewState): QuestionsViewDer
 }
 
 // ---------------------------------------------------------------------------
-// 2. Troubleshooting View Derivation
+// 2. Troubleshooting View Derivation & Active Check Resolution
 // ---------------------------------------------------------------------------
 
 export interface TroubleshootingViewState {
@@ -87,9 +89,44 @@ export function deriveTroubleshootingView(state: TroubleshootingViewState): Trou
     };
 }
 
+export interface IdentifiableAction {
+    id: string;
+    status: string;
+}
+
+/**
+ * Resolves the active pending check for execution.
+ * Only resolves an action if activeCheckId matches a genuinely pending action,
+ * or if the list contains a pending action.
+ * If all actions are completed/historical, returns undefined so all items remain read-only.
+ */
+export function resolveActiveCheck<T extends IdentifiableAction>(
+    actions: T[],
+    activeCheckId?: string | null
+): T | undefined {
+    if (activeCheckId) {
+        const matchingPending = actions.find(
+            (a) => a.id === activeCheckId && a.status === "pending"
+        );
+        if (matchingPending) return matchingPending;
+    }
+    return actions.find((a) => a.status === "pending");
+}
+
 // ---------------------------------------------------------------------------
 // 3. Physical Check Result Payload Builder
 // ---------------------------------------------------------------------------
+
+export const VALID_EXECUTION_STATUSES = [
+    "COMPLETED",
+    "BLOCKED",
+    "SKIPPED",
+    "FAILED",
+    "UNKNOWN",
+    "NOT_APPLICABLE",
+] as const;
+
+export type ValidExecutionStatus = (typeof VALID_EXECUTION_STATUSES)[number];
 
 export interface BuildCheckResultParams {
     check_id: string;
@@ -108,7 +145,12 @@ export function buildCheckResultPayload(params: BuildCheckResultParams): SubmitC
         throw new Error("expected_revision must be >= 1.");
     }
 
-    const status = params.execution_status.toUpperCase();
+    const status = params.execution_status.toUpperCase() as ValidExecutionStatus;
+    if (!VALID_EXECUTION_STATUSES.includes(status)) {
+        throw new Error(
+            `Invalid execution_status: '${params.execution_status}'. Must be one of: ${VALID_EXECUTION_STATUSES.join(", ")}.`
+        );
+    }
 
     if (status === "COMPLETED") {
         const finding = (params.finding || "INCONCLUSIVE").toUpperCase();
@@ -158,7 +200,7 @@ export function formatOutcomeLabel(outcomeKey: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Lifecycle Actions Legality
+// 4. Lifecycle Actions Legality & Badges
 // ---------------------------------------------------------------------------
 
 export interface AvailableLifecycleActions {
@@ -202,6 +244,20 @@ export function getAvailableLifecycleActions(issueCondition: string | null | und
                 canReportRecurrence: false,
             };
     }
+}
+
+/**
+ * Determines whether a PASSED/FAILED badge should be rendered for a lifecycle event.
+ * Only renders for recovery verification events where verification_passed is a strict boolean.
+ * Returns false for recovery action and recurrence events where verification_passed is null.
+ */
+export function shouldShowVerificationBadge(
+    eventType: string | null | undefined,
+    verificationPassed: boolean | null | undefined
+): boolean {
+    const isVerificationEvent =
+        eventType === "RECOVERY_VERIFICATION" || eventType === "VERIFICATION";
+    return isVerificationEvent && typeof verificationPassed === "boolean";
 }
 
 // ---------------------------------------------------------------------------
@@ -255,10 +311,13 @@ export function buildRecoveryVerificationPayload(
     if (expectedRevision < 1) {
         throw new Error("expected_revision must be >= 1.");
     }
+    if (!verificationDetails || !verificationDetails.trim()) {
+        throw new Error("verification_details must be a non-empty string containing test observations.");
+    }
     return {
         expected_revision: expectedRevision,
         verification_passed: Boolean(verificationPassed),
-        verification_details: verificationDetails?.trim() || "",
+        verification_details: verificationDetails.trim(),
         verified_by: verifiedBy.trim() || "technician",
     };
 }
@@ -291,4 +350,68 @@ export function formatEvidenceSupport(score: number | null | undefined): string 
     }
     const clamped = Math.min(100, Math.max(0, Math.round(score)));
     return `${clamped}/100`;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Mutation State & Input Lifecycle Helpers
+// ---------------------------------------------------------------------------
+
+export interface MutationState<T> {
+    data: T | null;
+    error: string | null;
+}
+
+/**
+ * Applies a successful mutation state update by saving refreshed data and clearing any error.
+ */
+export function applyMutationSuccess<T>(refreshedData: T): MutationState<T> {
+    return {
+        data: refreshedData,
+        error: null,
+    };
+}
+
+/**
+ * Applies a failed mutation state update by saving refreshed data while strictly PRESERVING
+ * the original mutation error message.
+ */
+export function applyMutationFailure<T>(
+    refreshedData: T | null,
+    mutationError: string
+): MutationState<T> {
+    return {
+        data: refreshedData,
+        error: mutationError,
+    };
+}
+
+export interface FormInputState<T> {
+    value: T;
+    isSubmitting: boolean;
+    error: string | null;
+}
+
+/**
+ * Evaluates form input state following a mutation.
+ * Inputs are cleared ONLY on confirmed success.
+ * On failure, the technician's entered input is strictly preserved.
+ */
+export function evaluateFormInputsOnMutation<T>(
+    currentInput: T,
+    emptyInput: T,
+    success: boolean,
+    errorMsg?: string | null
+): FormInputState<T> {
+    if (success) {
+        return {
+            value: emptyInput,
+            isSubmitting: false,
+            error: null,
+        };
+    }
+    return {
+        value: currentInput,
+        isSubmitting: false,
+        error: errorMsg || "Mutation failed.",
+    };
 }

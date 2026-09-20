@@ -16,6 +16,7 @@ import { DurableCaseResponse } from "@/types/api";
 import {
     getAvailableLifecycleActions,
     formatEvidenceSupport,
+    shouldShowVerificationBadge,
 } from "@/lib/diagnostic-workflow-state";
 
 export interface EngineerVerificationProps {
@@ -87,6 +88,10 @@ export default function EngineerVerification({
     };
 
     const handleVerificationSubmit = async () => {
+        if (!verificationDetails.trim()) {
+            setActionError("Please provide verification details or test observations.");
+            return;
+        }
         setActionError(null);
         try {
             await onSubmitRecoveryVerification(verificationPassed, verificationDetails.trim());
@@ -431,7 +436,7 @@ export default function EngineerVerification({
                         <div className="mt-4 flex justify-end">
                             <button
                                 onClick={handleVerificationSubmit}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || !verificationDetails.trim()}
                                 className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50 ${
                                     verificationPassed
                                         ? "bg-emerald-600 hover:bg-emerald-700"
@@ -531,7 +536,7 @@ export default function EngineerVerification({
                                             <span className="font-mono text-gray-600">
                                                 {evt.prior_issue_condition || "UNKNOWN"} → {evt.resulting_issue_condition}
                                             </span>
-                                            {evt.verification_passed !== undefined && (
+                                            {shouldShowVerificationBadge(evt.event_type, evt.verification_passed) && (
                                                 <span
                                                     className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                                         evt.verification_passed
