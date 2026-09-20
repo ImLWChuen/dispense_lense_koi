@@ -63,6 +63,7 @@ interface TroubleshootingChecklistProps {
     activeCheckId?: string;
     onSubmit?: (params: TroubleshootingCheckSubmitParams) => Promise<void> | void;
     isSubmitting?: boolean;
+    disabled?: boolean;
 }
 
 const executionStatusOptions: { value: ValidExecutionStatus; label: string; activeClass: string }[] = [
@@ -79,6 +80,7 @@ export default function TroubleshootingChecklist({
     activeCheckId,
     onSubmit,
     isSubmitting = false,
+    disabled = false,
 }: TroubleshootingChecklistProps) {
     // Resolve active check safely: only resolves if a genuinely pending check exists
     const activeCheck = resolveActiveCheck(actions, activeCheckId);
@@ -104,6 +106,7 @@ export default function TroubleshootingChecklist({
     };
 
     const handleSubmit = async (actionId: string) => {
+        if (disabled || isSubmitting) return;
         setFormError(null);
 
         if (selectedStatus === "COMPLETED") {
@@ -397,7 +400,7 @@ export default function TroubleshootingChecklist({
                                                         : `Explain reason for marking as ${selectedStatus.replace(/_/g, " ").toLowerCase()}...`
                                                 }
                                                 rows={2}
-                                                disabled={isSubmitting}
+                                                disabled={isSubmitting || disabled}
                                                 className="w-full rounded-xl border border-gray-200 bg-white p-3 text-xs outline-none focus:border-[#6d5dfc] placeholder:text-gray-400"
                                             />
                                         </div>
@@ -407,7 +410,7 @@ export default function TroubleshootingChecklist({
                                             <button
                                                 type="button"
                                                 onClick={() => handleSubmit(action.id)}
-                                                disabled={isSubmitting}
+                                                disabled={isSubmitting || disabled}
                                                 className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#5848e8] disabled:opacity-50"
                                             >
                                                 {isSubmitting ? (

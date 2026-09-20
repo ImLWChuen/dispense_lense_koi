@@ -11,13 +11,19 @@ import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import DiagnosticQuestion from "@/components/diagnosis/DiagnosticQuestion";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
-import { deriveQuestionsView } from "@/lib/diagnostic-workflow-state";
+import {
+    deriveQuestionsView,
+    coordinateWorkflowMutation,
+    retryWorkflowRefresh,
+} from "@/lib/diagnostic-workflow-state";
 
 export default function QuestionsPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
     const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+    const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const history = caseData?.previous_answers || [];
@@ -28,6 +34,8 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
             setError(null);
+            setRefreshWarning(null);
+            setIsRefreshRequired(false);
         } catch (err: unknown) {
             console.error("Failed to fetch case", err);
             const message = err instanceof Error ? err.message : "Failed to load case data.";
@@ -37,6 +45,25 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         }
     }, [resolvedParams.id]);
 
+    const handleRetryRefresh = async () => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            await retryWorkflowRefresh({
+                currentCase: caseData,
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     useEffect(() => {
         let isCurrent = true;
         casesApi
@@ -45,6 +72,8 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                 if (isCurrent) {
                     setCaseData(data);
                     setError(null);
+                    setRefreshWarning(null);
+                    setIsRefreshRequired(false);
                     setIsLoading(false);
                 }
             })
@@ -62,31 +91,30 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     }, [resolvedParams.id]);
 
     const handleAnswer = async (questionId: string, value: string) => {
-        if (!caseData?.diagnosis?.analysis_revision) return;
+        if (!caseData?.diagnosis?.analysis_revision || isRefreshRequired) return;
 
         setIsSubmitting(true);
         try {
-            await casesApi.submitAnswer(
-                caseData.case_id,
-                questionId,
-                value,
-                caseData.diagnosis.analysis_revision.revision_number
-            );
-            // R6: Fetch authoritative durable case after successful mutation
-            const refreshed = await casesApi.getCase(caseData.case_id);
-            setCaseData(refreshed);
-            setError(null);
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.submitAnswer(
+                        caseData.case_id,
+                        questionId,
+                        value,
+                        caseData.diagnosis!.analysis_revision!.revision_number
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to submit answer", err);
-            const message = err instanceof Error ? err.message : "Failed to submit answer.";
-            setError(message);
-            // R1: Synchronize durable case without clearing mutation error
-            try {
-                const refreshed = await casesApi.getCase(caseData.case_id);
-                setCaseData(refreshed);
-            } catch (syncErr) {
-                console.error("Failed to sync case state after mutation error", syncErr);
-            }
         } finally {
             setIsSubmitting(false);
         }
@@ -223,18 +251,37 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         </Link>
                     </div>
 
-                    {/* Stale / mutation error banner */}
-                    {derived.showStaleBanner && (
+                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed) */}
+                    {refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Action Saved</p>
+                                <p className="mt-0.5">{refreshWarning}</p>
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh Case
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Stale / mutation error banner (POST failed) */}
+                    {derived.showStaleBanner && !refreshWarning && (
                         <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             <div>
                                 <p className="font-semibold">Update Failed</p>
                                 <p className="mt-0.5">{error}. Persisted case data has been re-synchronized.</p>
                             </div>
                             <button
-                                onClick={fetchCase}
-                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                             >
-                                <RefreshCw size={14} />
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
                                 Refresh
                             </button>
                         </div>
@@ -277,7 +324,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                                     options={normalizeOptions(nextQuestion.options)}
                                     selectedValue={null}
                                     onAnswer={(value) => handleAnswer(nextQuestion.question_id, value)}
-                                    isAnswered={isSubmitting}
+                                    isAnswered={isSubmitting || isRefreshRequired}
                                 />
                             )}
 

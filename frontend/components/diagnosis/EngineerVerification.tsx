@@ -26,6 +26,7 @@ export interface EngineerVerificationProps {
     onSubmitRecoveryVerification: (passed: boolean, details?: string) => Promise<void>;
     onSubmitRecurrence: (details: string) => Promise<void>;
     isSubmitting?: boolean;
+    disabled?: boolean;
 }
 
 export default function EngineerVerification({
@@ -35,6 +36,7 @@ export default function EngineerVerification({
     onSubmitRecoveryVerification,
     onSubmitRecurrence,
     isSubmitting = false,
+    disabled = false,
 }: EngineerVerificationProps) {
     const issueCondition = (caseData.issue_condition || "UNRESOLVED").toUpperCase();
     const legalActions = getAvailableLifecycleActions(issueCondition);
@@ -58,6 +60,7 @@ export default function EngineerVerification({
 
     // Handlers
     const handleCauseConfirmSubmit = async () => {
+        if (disabled || isSubmitting) return;
         if (!selectedCauseId) {
             setActionError("Please select a candidate cause to confirm.");
             return;
@@ -73,6 +76,7 @@ export default function EngineerVerification({
     };
 
     const handleRecoveryActionSubmit = async () => {
+        if (disabled || isSubmitting) return;
         if (!recoveryDetails.trim()) {
             setActionError("Please enter the corrective / recovery action taken.");
             return;
@@ -88,6 +92,7 @@ export default function EngineerVerification({
     };
 
     const handleVerificationSubmit = async () => {
+        if (disabled || isSubmitting) return;
         if (!verificationDetails.trim()) {
             setActionError("Please provide verification details or test observations.");
             return;
@@ -103,6 +108,7 @@ export default function EngineerVerification({
     };
 
     const handleRecurrenceSubmit = async () => {
+        if (disabled || isSubmitting) return;
         if (!recurrenceDetails.trim()) {
             setActionError("Please enter the recurrence details observed.");
             return;
@@ -274,7 +280,7 @@ export default function EngineerVerification({
                             onChange={(e) => setCauseNotes(e.target.value)}
                             placeholder="Technician observation notes verifying this cause..."
                             rows={2}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                         />
                         <div className="mt-3 flex items-center justify-between">
@@ -283,7 +289,7 @@ export default function EngineerVerification({
                             </p>
                             <button
                                 onClick={handleCauseConfirmSubmit}
-                                disabled={isSubmitting || !selectedCauseId}
+                                disabled={isSubmitting || disabled || !selectedCauseId}
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#5848e8] disabled:opacity-50"
                             >
                                 <Check size={14} />
@@ -332,7 +338,7 @@ export default function EngineerVerification({
                             onChange={(e) => setRecoveryDetails(e.target.value)}
                             placeholder="e.g., Cleaned nozzle orifice with ultrasonic bath, replaced O-ring seal, calibrated fluid pressure..."
                             rows={3}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                         />
 
@@ -342,7 +348,7 @@ export default function EngineerVerification({
                             </p>
                             <button
                                 onClick={handleRecoveryActionSubmit}
-                                disabled={isSubmitting || !recoveryDetails.trim()}
+                                disabled={isSubmitting || disabled || !recoveryDetails.trim()}
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
                             >
                                 <Wrench size={16} />
@@ -374,7 +380,7 @@ export default function EngineerVerification({
                         <button
                             type="button"
                             onClick={() => setVerificationPassed(true)}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${
                                 verificationPassed
                                     ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500"
@@ -398,7 +404,7 @@ export default function EngineerVerification({
                         <button
                             type="button"
                             onClick={() => setVerificationPassed(false)}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${
                                 !verificationPassed
                                     ? "border-rose-500 bg-rose-50 ring-1 ring-rose-500"
@@ -429,14 +435,14 @@ export default function EngineerVerification({
                             onChange={(e) => setVerificationDetails(e.target.value)}
                             placeholder="Describe the test shot results, measured dot sizes, or failure symptoms..."
                             rows={3}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                         />
 
                         <div className="mt-4 flex justify-end">
                             <button
                                 onClick={handleVerificationSubmit}
-                                disabled={isSubmitting || !verificationDetails.trim()}
+                                disabled={isSubmitting || disabled || !verificationDetails.trim()}
                                 className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50 ${
                                     verificationPassed
                                         ? "bg-emerald-600 hover:bg-emerald-700"
@@ -481,14 +487,14 @@ export default function EngineerVerification({
                             onChange={(e) => setRecurrenceDetails(e.target.value)}
                             placeholder="Describe how and when the issue recurred (e.g., dots became undersized after 500 dispense cycles)..."
                             rows={3}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || disabled}
                             className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white disabled:opacity-50"
                         />
 
                         <div className="mt-4 flex justify-end">
                             <button
                                 onClick={handleRecurrenceSubmit}
-                                disabled={isSubmitting || !recurrenceDetails.trim()}
+                                disabled={isSubmitting || disabled || !recurrenceDetails.trim()}
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
                             >
                                 <RotateCcw size={16} />

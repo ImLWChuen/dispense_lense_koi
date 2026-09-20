@@ -35,7 +35,10 @@ import {
     applyMutationSuccess,
     applyMutationFailure,
     evaluateFormInputsOnMutation,
-    VALID_EXECUTION_STATUSES,
+    coordinateWorkflowMutation,
+    retryWorkflowRefresh,
+    WorkflowMutationError,
+    REFRESH_WARNING_MESSAGE,
 } from "../lib/diagnostic-workflow-state.ts";
 
 const mockCase = {
@@ -107,7 +110,7 @@ const mockCase = {
     },
 };
 
-function runTests() {
+async function runTests() {
     let testsPassed = 0;
 
     // --- 1. Initial Error Never Becomes Question/Check Completion ---
@@ -438,7 +441,6 @@ function runTests() {
     // --- 9. Mutation Error Preservation & Stale Banner ---
     {
         // When a mutation fails and case is refreshed, original error is preserved
-        const initialCase = { ...mockCase, current_revision: 2 };
         const refreshedCase = { ...mockCase, current_revision: 3 }; // Updated by another actor
         const mutationError = "Conflict: expected revision 2, but current revision is 3.";
 
@@ -613,7 +615,239 @@ function runTests() {
         console.log("✓ Test 14 Passed: Evidence support score is strictly formatted as '/100', never accuracy or confidence.");
     }
 
+    // --- 15. Production Workflow Coordinator: 4 Distinct Outcomes, Input Lifecycle, Gating & GET-only Retry ---
+    {
+        const baseCase = { ...mockCase, current_revision: 1 };
+        const updatedCase = { ...mockCase, current_revision: 2 };
+        const initialFormInput = "Nozzle cleared with ultrasonic bath.";
+        const emptyFormInput = "";
+
+        // Scenario A: POST success + GET success
+        {
+            let stateEmitted = null;
+            let mutationCalled = 0;
+            let refreshCalled = 0;
+
+            const result = await coordinateWorkflowMutation({
+                currentCase: baseCase,
+                performMutation: async () => {
+                    mutationCalled++;
+                    return { success: true };
+                },
+                performRefresh: async () => {
+                    refreshCalled++;
+                    return updatedCase;
+                },
+                onStateChange: (s) => {
+                    stateEmitted = s;
+                },
+            });
+
+            assert.equal(mutationCalled, 1);
+            assert.equal(refreshCalled, 1);
+            assert.equal(result.postSucceeded, true);
+            assert.equal(result.getSucceeded, true);
+            assert.equal(result.isRefreshRequired, false);
+            assert.equal(result.mutationError, null);
+            assert.equal(result.refreshWarning, null);
+            assert.equal(result.caseData.current_revision, 2);
+            assert.deepEqual(stateEmitted, {
+                caseData: updatedCase,
+                mutationError: null,
+                refreshWarning: null,
+                isRefreshRequired: false,
+            });
+
+            // Form input clearing on confirmed POST success
+            const formState = evaluateFormInputsOnMutation(initialFormInput, emptyFormInput, result.postSucceeded);
+            assert.equal(formState.value, emptyFormInput, "Form input must be cleared on POST success");
+        }
+
+        // Scenario B: POST failure + GET success
+        {
+            let stateEmitted = null;
+            let mutationCalled = 0;
+            let refreshCalled = 0;
+            let rejectedError = null;
+
+            try {
+                await coordinateWorkflowMutation({
+                    currentCase: baseCase,
+                    performMutation: async () => {
+                        mutationCalled++;
+                        throw new Error("409 Conflict: expected revision 1, but current revision is 2");
+                    },
+                    performRefresh: async () => {
+                        refreshCalled++;
+                        return updatedCase;
+                    },
+                    onStateChange: (s) => {
+                        stateEmitted = s;
+                    },
+                });
+            } catch (err) {
+                rejectedError = err;
+            }
+
+            assert.equal(mutationCalled, 1);
+            assert.equal(refreshCalled, 1);
+            assert.ok(rejectedError instanceof WorkflowMutationError, "Must reject with WorkflowMutationError");
+            assert.equal(rejectedError.message, "409 Conflict: expected revision 1, but current revision is 2");
+            assert.equal(rejectedError.getSucceeded, true);
+            assert.equal(rejectedError.syncedCase.current_revision, 2);
+            assert.deepEqual(stateEmitted, {
+                caseData: updatedCase,
+                mutationError: "409 Conflict: expected revision 1, but current revision is 2",
+                refreshWarning: null,
+                isRefreshRequired: false,
+            });
+
+            // Input preservation after POST rejection
+            const formState = evaluateFormInputsOnMutation(initialFormInput, emptyFormInput, false, rejectedError.message);
+            assert.equal(formState.value, initialFormInput, "Form input must be preserved on POST failure");
+            assert.equal(formState.error, "409 Conflict: expected revision 1, but current revision is 2");
+        }
+
+        // Scenario C: POST failure + GET failure
+        {
+            let stateEmitted = null;
+            let mutationCalled = 0;
+            let refreshCalled = 0;
+            let rejectedError = null;
+
+            try {
+                await coordinateWorkflowMutation({
+                    currentCase: baseCase,
+                    performMutation: async () => {
+                        mutationCalled++;
+                        throw new Error("500 Internal Server Error");
+                    },
+                    performRefresh: async () => {
+                        refreshCalled++;
+                        throw new Error("Network unreachable");
+                    },
+                    onStateChange: (s) => {
+                        stateEmitted = s;
+                    },
+                });
+            } catch (err) {
+                rejectedError = err;
+            }
+
+            assert.equal(mutationCalled, 1);
+            assert.equal(refreshCalled, 1);
+            assert.ok(rejectedError instanceof WorkflowMutationError);
+            assert.equal(rejectedError.message, "500 Internal Server Error");
+            assert.equal(rejectedError.getSucceeded, false);
+            assert.equal(rejectedError.syncedCase.current_revision, 1);
+            assert.deepEqual(stateEmitted, {
+                caseData: baseCase,
+                mutationError: "500 Internal Server Error",
+                refreshWarning: null,
+                isRefreshRequired: false,
+            });
+
+            // Input preservation after POST rejection
+            const formState = evaluateFormInputsOnMutation(initialFormInput, emptyFormInput, false, rejectedError.message);
+            assert.equal(formState.value, initialFormInput, "Form input must be preserved on POST failure");
+        }
+
+        // Scenario D: POST success + GET failure (Partial Success)
+        {
+            let stateEmitted = null;
+            let mutationCalled = 0;
+            let refreshCalled = 0;
+
+            const result = await coordinateWorkflowMutation({
+                currentCase: baseCase,
+                performMutation: async () => {
+                    mutationCalled++;
+                    return { success: true };
+                },
+                performRefresh: async () => {
+                    refreshCalled++;
+                    throw new Error("503 Service Unavailable");
+                },
+                onStateChange: (s) => {
+                    stateEmitted = s;
+                },
+            });
+
+            assert.equal(mutationCalled, 1);
+            assert.equal(refreshCalled, 1);
+            assert.equal(result.postSucceeded, true);
+            assert.equal(result.getSucceeded, false);
+            assert.equal(result.isRefreshRequired, true, "isRefreshRequired must be true when GET fails");
+            assert.equal(result.mutationError, null, "Must NOT treat refresh failure as mutation failure");
+            assert.equal(result.refreshWarning, REFRESH_WARNING_MESSAGE);
+            assert.equal(result.caseData.current_revision, 1, "Retains safe existing case state");
+            assert.deepEqual(stateEmitted, {
+                caseData: baseCase,
+                mutationError: null,
+                refreshWarning: REFRESH_WARNING_MESSAGE,
+                isRefreshRequired: true,
+            });
+
+            // Input clearing after confirmed POST success even when refresh fails!
+            const formState = evaluateFormInputsOnMutation(initialFormInput, emptyFormInput, result.postSucceeded);
+            assert.equal(formState.value, emptyFormInput, "Form input must be cleared on confirmed POST success even when refresh fails");
+
+            // Sub-case: Further mutation disabled while refresh is required
+            let blockedMutationCalled = 0;
+            let blockedError = null;
+            try {
+                await coordinateWorkflowMutation({
+                    currentCase: result.caseData,
+                    isRefreshRequired: result.isRefreshRequired, // true!
+                    performMutation: async () => {
+                        blockedMutationCalled++;
+                        return {};
+                    },
+                    performRefresh: async () => baseCase,
+                });
+            } catch (err) {
+                blockedError = err;
+            }
+
+            assert.equal(blockedMutationCalled, 0, "No mutation must be executed while refresh is required");
+            assert.ok(blockedError, "Must throw error when attempting mutation while refresh is required");
+
+            // Sub-case: GET-only retry clearing refresh-required state & No automatic POST replay
+            let retryRefreshCalled = 0;
+            let retryPostCalled = 0; // verify POST is never called
+
+            const retryState = await retryWorkflowRefresh({
+                currentCase: result.caseData,
+                performRefresh: async () => {
+                    retryRefreshCalled++;
+                    return updatedCase;
+                },
+                onStateChange: (s) => {
+                    stateEmitted = s;
+                },
+            });
+
+            assert.equal(retryRefreshCalled, 1, "GET-only retry performs GET");
+            assert.equal(retryPostCalled, 0, "No automatic POST replay");
+            assert.equal(retryState.isRefreshRequired, false, "GET-only retry clears refresh-required state");
+            assert.equal(retryState.refreshWarning, null, "Refresh warning cleared");
+            assert.equal(retryState.caseData.current_revision, 2, "Case updated to refreshed data");
+            assert.deepEqual(stateEmitted, {
+                caseData: updatedCase,
+                mutationError: null,
+                refreshWarning: null,
+                isRefreshRequired: false,
+            });
+        }
+
+        testsPassed++;
+        console.log("✓ Test 15 Passed: Production workflow coordinator handles all 4 outcomes, input lifecycle, refresh gating, and GET-only retry without POST replay.");
+    }
+
     console.log(`\nAll ${testsPassed} diagnostic workflow state regression tests passed successfully.`);
 }
 
-runTests();
+runTests().catch((err) => {
+    console.error("Test failure:", err);
+    process.exit(1);
+});

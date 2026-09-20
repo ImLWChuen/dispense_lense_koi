@@ -356,6 +356,200 @@ export function formatEvidenceSupport(score: number | null | undefined): string 
 // 7. Mutation State & Input Lifecycle Helpers
 // ---------------------------------------------------------------------------
 
+export const REFRESH_WARNING_MESSAGE =
+    "The action was saved, but the latest case state could not be refreshed.";
+
+export class WorkflowMutationError<TCase> extends Error {
+    readonly syncedCase: TCase;
+    readonly getSucceeded: boolean;
+
+    constructor(
+        message: string,
+        syncedCase: TCase,
+        getSucceeded: boolean
+    ) {
+        super(message);
+        this.name = "WorkflowMutationError";
+        this.syncedCase = syncedCase;
+        this.getSucceeded = getSucceeded;
+    }
+}
+
+export interface WorkflowMutationState<TCase> {
+    caseData: TCase;
+    mutationError: string | null;
+    refreshWarning: string | null;
+    isRefreshRequired: boolean;
+}
+
+export interface WorkflowMutationResult<TCase, TMutation = unknown> {
+    postSucceeded: boolean;
+    getSucceeded: boolean;
+    caseData: TCase;
+    mutationResult?: TMutation;
+    mutationError: string | null;
+    refreshWarning: string | null;
+    isRefreshRequired: boolean;
+}
+
+export interface CoordinateWorkflowMutationParams<TCase, TMutation = unknown> {
+    currentCase: TCase;
+    isRefreshRequired?: boolean;
+    performMutation: () => Promise<TMutation>;
+    performRefresh: () => Promise<TCase>;
+    onStateChange?: (state: WorkflowMutationState<TCase>) => void;
+}
+
+/**
+ * Coordinates an action mutation (POST) and subsequent durable state refresh (GET).
+ *
+ * Distinct outcomes:
+ * 1. POST fails:
+ *    - Preserves technician form input (by throwing/rejecting to caller).
+ *    - Preserves and displays original mutation error.
+ *    - Attempts GET only to resynchronize durable state.
+ *    - Reject to child so form remains populated.
+ *    - Never replays POST automatically.
+ * 2. POST succeeds and GET succeeds:
+ *    - Treats action as committed.
+ *    - Clears submitted form (resolves without throwing).
+ *    - Replaces case state with authoritative GET response.
+ *    - Clears mutation and synchronization warnings.
+ * 3. POST succeeds but GET fails:
+ *    - Treats action as committed, not failed.
+ *    - Clears submitted form (resolves without throwing).
+ *    - Displays distinct message (REFRESH_WARNING_MESSAGE).
+ *    - Retains safe existing case state.
+ *    - Disables further mutations until a GET-only refresh succeeds.
+ *    - The retry control performs only GET and never repeats POST.
+ */
+export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
+    params: CoordinateWorkflowMutationParams<TCase, TMutation>
+): Promise<WorkflowMutationResult<TCase, TMutation>> {
+    if (params.isRefreshRequired) {
+        throw new Error(
+            "Further mutations are disabled until case state is refreshed. Please refresh first."
+        );
+    }
+
+    let mutationResult: TMutation;
+    try {
+        mutationResult = await params.performMutation();
+    } catch (postErr: unknown) {
+        const mutationErrorMsg =
+            postErr instanceof Error ? postErr.message : "Mutation failed.";
+
+        let syncedCase = params.currentCase;
+        let getSucceeded = false;
+        try {
+            syncedCase = await params.performRefresh();
+            getSucceeded = true;
+        } catch {
+            getSucceeded = false;
+        }
+
+        const failureState: WorkflowMutationState<TCase> = {
+            caseData: syncedCase,
+            mutationError: mutationErrorMsg,
+            refreshWarning: null,
+            isRefreshRequired: false,
+        };
+        params.onStateChange?.(failureState);
+
+        throw new WorkflowMutationError(mutationErrorMsg, syncedCase, getSucceeded);
+    }
+
+    // POST succeeded! Now attempt GET to synchronize authoritative durable state
+    let refreshedCase: TCase;
+    try {
+        refreshedCase = await params.performRefresh();
+    } catch {
+        const partialSuccessState: WorkflowMutationState<TCase> = {
+            caseData: params.currentCase,
+            mutationError: null,
+            refreshWarning: REFRESH_WARNING_MESSAGE,
+            isRefreshRequired: true,
+        };
+        params.onStateChange?.(partialSuccessState);
+
+        return {
+            postSucceeded: true,
+            getSucceeded: false,
+            caseData: params.currentCase,
+            mutationResult,
+            mutationError: null,
+            refreshWarning: REFRESH_WARNING_MESSAGE,
+            isRefreshRequired: true,
+        };
+    }
+
+    const fullSuccessState: WorkflowMutationState<TCase> = {
+        caseData: refreshedCase,
+        mutationError: null,
+        refreshWarning: null,
+        isRefreshRequired: false,
+    };
+    params.onStateChange?.(fullSuccessState);
+
+    return {
+        postSucceeded: true,
+        getSucceeded: true,
+        caseData: refreshedCase,
+        mutationResult,
+        mutationError: null,
+        refreshWarning: null,
+        isRefreshRequired: false,
+    };
+}
+
+export interface RetryWorkflowRefreshParams<TCase> {
+    currentCase: TCase;
+    performRefresh: () => Promise<TCase>;
+    onStateChange?: (state: WorkflowMutationState<TCase>) => void;
+}
+
+/**
+ * Performs a GET-only refresh to clear the refresh-required state.
+ * Never executes any mutation (no POST replay).
+ */
+export async function retryWorkflowRefresh<TCase>(
+    params: RetryWorkflowRefreshParams<TCase>
+): Promise<{
+    caseData: TCase;
+    refreshWarning: string | null;
+    isRefreshRequired: boolean;
+}> {
+    try {
+        const refreshed = await params.performRefresh();
+        const successState: WorkflowMutationState<TCase> = {
+            caseData: refreshed,
+            mutationError: null,
+            refreshWarning: null,
+            isRefreshRequired: false,
+        };
+        params.onStateChange?.(successState);
+        return {
+            caseData: refreshed,
+            refreshWarning: null,
+            isRefreshRequired: false,
+        };
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to refresh case state.";
+        const failureState: WorkflowMutationState<TCase> = {
+            caseData: params.currentCase,
+            mutationError: null,
+            refreshWarning: `${REFRESH_WARNING_MESSAGE} (${msg})`,
+            isRefreshRequired: true,
+        };
+        params.onStateChange?.(failureState);
+        return {
+            caseData: params.currentCase,
+            refreshWarning: failureState.refreshWarning,
+            isRefreshRequired: true,
+        };
+    }
+}
+
 export interface MutationState<T> {
     data: T | null;
     error: string | null;

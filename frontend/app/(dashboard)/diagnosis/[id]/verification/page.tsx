@@ -11,12 +11,22 @@ import EngineerVerification from "@/components/diagnosis/EngineerVerification";
 import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
+import {
+    buildCauseConfirmationPayload,
+    buildRecoveryActionPayload,
+    buildRecoveryVerificationPayload,
+    buildRecurrencePayload,
+    coordinateWorkflowMutation,
+    retryWorkflowRefresh,
+} from "@/lib/diagnostic-workflow-state";
 
 export default function VerificationPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
     const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+    const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const fetchCase = useCallback(async () => {
@@ -25,6 +35,8 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
             setError(null);
+            setRefreshWarning(null);
+            setIsRefreshRequired(false);
         } catch (err: unknown) {
             console.error("Failed to fetch case", err);
             const message = err instanceof Error ? err.message : "Failed to load case data.";
@@ -34,6 +46,25 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         }
     }, [resolvedParams.id]);
 
+    const handleRetryRefresh = async () => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            await retryWorkflowRefresh({
+                currentCase: caseData,
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     useEffect(() => {
         let isCurrent = true;
         casesApi
@@ -42,6 +73,8 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                 if (isCurrent) {
                     setCaseData(data);
                     setError(null);
+                    setRefreshWarning(null);
+                    setIsRefreshRequired(false);
                     setIsLoading(false);
                 }
             })
@@ -67,32 +100,38 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     };
 
     const handleConfirmCause = async (causeId: string, notes?: string) => {
-        if (!caseData) return;
+        if (!caseData || isRefreshRequired) {
+            if (isRefreshRequired) {
+                throw new Error("Further mutations are disabled until case state is refreshed.");
+            }
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const revision = getCurrentRevision();
-            await casesApi.submitCauseConfirmation(
-                caseData.case_id,
+            const payload = buildCauseConfirmationPayload(
                 causeId,
-                revision,
-                "technician",
+                getCurrentRevision(),
                 notes
             );
-            // R6: Fetch authoritative durable case after successful mutation
-            const refreshed = await casesApi.getCase(caseData.case_id);
-            setCaseData(refreshed);
-            setError(null);
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.submitCauseConfirmation(
+                        caseData.case_id,
+                        payload
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to confirm cause", err);
-            const message = err instanceof Error ? err.message : "Failed to confirm cause.";
-            setError(message);
-            // R1: Synchronize durable case without clearing mutation error
-            try {
-                const refreshed = await casesApi.getCase(caseData.case_id);
-                setCaseData(refreshed);
-            } catch (syncErr) {
-                console.error("Failed to sync case state after mutation error", syncErr);
-            }
             throw err;
         } finally {
             setIsSubmitting(false);
@@ -100,31 +139,37 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     };
 
     const handleSubmitRecoveryAction = async (recoveryDetails: string) => {
-        if (!caseData) return;
+        if (!caseData || isRefreshRequired) {
+            if (isRefreshRequired) {
+                throw new Error("Further mutations are disabled until case state is refreshed.");
+            }
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const revision = getCurrentRevision();
-            await casesApi.submitRecoveryAction(
-                caseData.case_id,
-                recoveryDetails,
-                revision,
-                "technician"
+            const payload = buildRecoveryActionPayload(
+                getCurrentRevision(),
+                recoveryDetails
             );
-            // R6: Fetch authoritative durable case after successful mutation
-            const refreshed = await casesApi.getCase(caseData.case_id);
-            setCaseData(refreshed);
-            setError(null);
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.submitRecoveryAction(
+                        caseData.case_id,
+                        payload
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to submit recovery action", err);
-            const message = err instanceof Error ? err.message : "Failed to submit recovery action.";
-            setError(message);
-            // R1: Synchronize durable case without clearing mutation error
-            try {
-                const refreshed = await casesApi.getCase(caseData.case_id);
-                setCaseData(refreshed);
-            } catch (syncErr) {
-                console.error("Failed to sync case state after mutation error", syncErr);
-            }
             throw err;
         } finally {
             setIsSubmitting(false);
@@ -132,32 +177,38 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     };
 
     const handleSubmitRecoveryVerification = async (passed: boolean, details?: string) => {
-        if (!caseData) return;
+        if (!caseData || isRefreshRequired) {
+            if (isRefreshRequired) {
+                throw new Error("Further mutations are disabled until case state is refreshed.");
+            }
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const revision = getCurrentRevision();
-            await casesApi.verifyCase(
-                caseData.case_id,
+            const payload = buildRecoveryVerificationPayload(
+                getCurrentRevision(),
                 passed,
-                details || "",
-                revision,
-                "technician"
+                details
             );
-            // R6: Fetch authoritative durable case after successful mutation
-            const refreshed = await casesApi.getCase(caseData.case_id);
-            setCaseData(refreshed);
-            setError(null);
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.verifyCase(
+                        caseData.case_id,
+                        payload
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to verify recovery", err);
-            const message = err instanceof Error ? err.message : "Failed to verify recovery.";
-            setError(message);
-            // R1: Synchronize durable case without clearing mutation error
-            try {
-                const refreshed = await casesApi.getCase(caseData.case_id);
-                setCaseData(refreshed);
-            } catch (syncErr) {
-                console.error("Failed to sync case state after mutation error", syncErr);
-            }
             throw err;
         } finally {
             setIsSubmitting(false);
@@ -165,31 +216,37 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     };
 
     const handleSubmitRecurrence = async (details: string) => {
-        if (!caseData) return;
+        if (!caseData || isRefreshRequired) {
+            if (isRefreshRequired) {
+                throw new Error("Further mutations are disabled until case state is refreshed.");
+            }
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const revision = getCurrentRevision();
-            await casesApi.submitRecurrence(
-                caseData.case_id,
-                details,
-                revision,
-                "technician"
+            const payload = buildRecurrencePayload(
+                getCurrentRevision(),
+                details
             );
-            // R6: Fetch authoritative durable case after successful mutation
-            const refreshed = await casesApi.getCase(caseData.case_id);
-            setCaseData(refreshed);
-            setError(null);
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.submitRecurrence(
+                        caseData.case_id,
+                        payload
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
-            console.error("Failed to submit recurrence", err);
-            const message = err instanceof Error ? err.message : "Failed to submit recurrence.";
-            setError(message);
-            // R1: Synchronize durable case without clearing mutation error
-            try {
-                const refreshed = await casesApi.getCase(caseData.case_id);
-                setCaseData(refreshed);
-            } catch (syncErr) {
-                console.error("Failed to sync case state after mutation error", syncErr);
-            }
+            console.error("Failed to report recurrence", err);
             throw err;
         } finally {
             setIsSubmitting(false);
@@ -298,18 +355,37 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </Link>
                     </div>
 
-                    {/* Stale / Mutation Error Banner */}
-                    {error && caseData && (
+                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed) */}
+                    {refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Action Saved</p>
+                                <p className="mt-0.5">{refreshWarning}</p>
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh Case
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Stale / Mutation Error Banner (POST failed) */}
+                    {error && caseData && !refreshWarning && (
                         <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             <div>
                                 <p className="font-semibold">Lifecycle Action Failed</p>
                                 <p className="mt-0.5">{error}. Persisted case state has been re-synchronized.</p>
                             </div>
                             <button
-                                onClick={fetchCase}
-                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                             >
-                                <RefreshCw size={14} />
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
                                 Refresh
                             </button>
                         </div>
@@ -325,6 +401,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                                     onSubmitRecoveryVerification={handleSubmitRecoveryVerification}
                                     onSubmitRecurrence={handleSubmitRecurrence}
                                     isSubmitting={isSubmitting}
+                                    disabled={isSubmitting || isRefreshRequired}
                                 />
                             )}
                         </div>
