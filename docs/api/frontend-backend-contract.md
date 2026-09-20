@@ -148,15 +148,32 @@ When creating a case (`POST /api/v1/cases`), manual observations submitted from 
   - Must be labeled `"Evidence Support"` or `"Evidence Support /100"`, never confidence, probability, or accuracy.
   - When no ranked causes exist, `evidence_support` is `null`, and frontend surfaces display `"N/A"`.
   - A score of `0` is a valid score and must be displayed (`0/100`), not treated as missing. Only the visual bar is clamped to `[0, 100]`.
-- **Nullable Period-over-Period Trends:**
+- **Nullable Period-over-Period Trends & Population Comparability (R1):**
   - All trend fields (`active_diagnoses_trend`, `open_defects_trend`, `resolved_cases_trend`, `avg_time_trend`, `total_cases_trend`, `avg_resolution_trend`, `first_time_resolution_trend`, `cause_confirmation_trend`) are nullable (`Optional[str] = None`).
-  - A trend is calculated only when both the current period and a comparable prior period have non-zero persisted records.
-  - If no comparable prior population exists, the trend is `null`. The frontend renders no trend badge or a neutral state; it must **never** substitute synthetic trends such as `+100%`, `-15%`, `+5%`, `+2%`, or `0%`.
-- **Truthful Categorization & Aggregations:**
-  - Equipment context reflects only persisted values; when absent, returns `"Not recorded"`. Never injects sample line names (e.g. `"Dispensing Line A"`).
-  - Causes fall back to `"Under investigation"`. Never injects placeholder causes (e.g. `"Nozzle Condition"` or `"Nozzle Restriction"`).
-  - Dashboard AI insight text cites a cause only when backed by confirmed cause records; with no confirmed causes, a neutral evidence-limited message is rendered.
-  - Distribution charts render only non-empty persisted data buckets. When no data exists, components display neutral empty states rather than placeholder 0-count bars or synthetic bins.
+  - Dashboard trends return `null` because all-time current operational states (`active_diagnoses`, `open_defects`, `resolved_cases`) cannot be reconstructed truthfully into past point-in-time cohorts without historical snapshots. Comparing all-time counts with a 30-day creation cohort is prohibited.
+  - In performance analytics, trends are computed strictly between comparable creation cohorts (`[cutoff, now]` vs `[prev_cutoff, cutoff]`). If no comparable prior population exists (>0 records), trends return `null`.
+  - The frontend renders no trend badge or a neutral state; it must **never** substitute synthetic trends such as `+100%`, `-15%`, `+5%`, `+2%`, or `0%`.
+- **First-Time Resolution Rate Semantics (R2):**
+  - Replaces arbitrary `revision_count <= 2` heuristics.
+  - Derived strictly from explicit persisted lifecycle events (`CaseLifecycleEventModel`): a resolved case is first-time resolved if it has at least one passed verification event (`event_type in ("RECOVERY_VERIFICATION", "VERIFICATION")` with `verification_passed is True`), zero failed verifications (`verification_passed is False`), and zero recurrence events (`resulting_issue_condition == "RECURRED"` or `event_type == "RECURRENCE"`).
+  - Revisions produced by questions, checks, or cause confirmations do not penalize first-time resolution.
+  - If any resolved case in the population lacks verification lifecycle evidence, the metric returns `null` (unsupported evidence).
+- **Resolution Durations & Zero-Minute Exclusion (R3):**
+  - Average diagnosis time (`avg_diagnosis_time_minutes`) and average resolution time (`avg_resolution_time_minutes`) are nullable (`Optional[float] = None`).
+  - Measured only over resolved cases that have a persisted `CaseLifecycleEventModel` of condition `RESOLVED`.
+  - Resolved cases without a persisted resolution event are excluded from duration metrics and duration buckets (`res_times_minutes`). They are **never** assigned `0.0` minutes or placed in the `< 5 min` bucket.
+  - When no duration is measurable, average resolution/diagnosis time returns `null`, and frontend displays `"Not available"`.
+- **Mutually Exclusive UI Loading, Error, Empty, and Data States (R4):**
+  - In Dashboard, Analytics, and Reports surfaces, initial request failure renders a dedicated error state with a retry action. An initial failure must **never** render fallback `0`, `0 min`, empty charts, or `"No reports found"`.
+  - When a refresh fails after data has already loaded, the previously loaded data is retained and clearly marked with a top stale warning banner ("Refresh failed: {error}. Showing last synced data from {time}.").
+  - Empty states ("No reports found", empty distributions) are rendered only when requests succeed and the returned dataset is genuine zero/empty.
+- **Canonical Equipment Key (R5):**
+  - Case equipment context reads `equipment` as the primary canonical key, alongside compatibility fallbacks `machine_id` and `equipment_id`. When none are present, returns `"Not recorded"`.
+- **Distinct Case Count in Cause Distribution (R6):**
+  - Cause distributions in both dashboard and performance analytics count unique cases via `func.distinct(CaseCauseConfirmationModel.case_id)`, avoiding duplicate counts when a case undergoes multiple confirmation revisions.
+- **Insight & Defect Trend Alignment (R7):**
+  - Dashboard AI insight defect share is labeled `"{value}% of defect-recorded cases"` (matching the queried population of cases with recorded defects).
+  - Monthly defect trend counts cases with recorded defect categories (`CaseModel.defect_code.isnot(None)`) across an independent 6-calendar-month window and is explicitly labeled as such (`Monthly Defect Trend (Last 6 Months)`).
 - **Report Data Integrity:**
   - `GET /api/v1/cases/{case_id}/report` and `ReportPreview` render only real persisted case data and lifecycle events.
   - Mock fallback reports (`mockFallbackReports`), synthetic defect descriptions ("A particle or debris..."), invented measurements, and canned recommendations are forbidden. Missing sections explicitly state "Not recorded" or display neutral empty states.

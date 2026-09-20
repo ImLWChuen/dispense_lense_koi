@@ -6,7 +6,7 @@ class KpiMetrics(BaseModel):
     active_diagnoses: int
     open_defects: int
     resolved_cases: int
-    avg_diagnosis_time_minutes: float
+    avg_diagnosis_time_minutes: Optional[float] = None
     active_diagnoses_trend: Optional[str] = None
     open_defects_trend: Optional[str] = None
     resolved_cases_trend: Optional[str] = None
@@ -43,7 +43,7 @@ class DashboardAnalyticsResponse(BaseModel):
 class AnalyticsKpiMetrics(BaseModel):
     total_cases: int
     resolved_cases: int
-    avg_resolution_time_minutes: float
+    avg_resolution_time_minutes: Optional[float] = None
     first_time_resolution_rate: Optional[float] = None
     cause_confirmation_rate: Optional[float] = None
     total_cases_trend: Optional[str] = None

@@ -99,7 +99,7 @@ def test_empty_database_analytics(tracked_cases: list[str]) -> None:
     assert kpis["active_diagnoses"] == 0
     assert kpis["open_defects"] == 0
     assert kpis["resolved_cases"] == 0
-    assert kpis["avg_diagnosis_time_minutes"] == 0.0
+    assert kpis["avg_diagnosis_time_minutes"] is None
     assert kpis["cause_confirmation_rate"] is None
     assert kpis["active_diagnoses_trend"] is None
     assert kpis["open_defects_trend"] is None
@@ -126,7 +126,7 @@ def test_empty_database_analytics(tracked_cases: list[str]) -> None:
     perf_kpis = perf_data["kpis"]
     assert perf_kpis["total_cases"] == 0
     assert perf_kpis["resolved_cases"] == 0
-    assert perf_kpis["avg_resolution_time_minutes"] == 0.0
+    assert perf_kpis["avg_resolution_time_minutes"] is None
     assert perf_kpis["first_time_resolution_rate"] is None
     assert perf_kpis["cause_confirmation_rate"] is None
     assert perf_kpis["total_cases_trend"] is None
@@ -354,3 +354,399 @@ def test_no_confirmed_cause_insight_does_not_name_fallback_cause(tracked_cases: 
     if data["ai_insight_text"]:
         assert "Nozzle Condition" not in data["ai_insight_text"]
         assert "nozzle" not in data["ai_insight_text"].lower()
+
+
+def test_dashboard_trends_return_none_for_mismatched_cohorts(tracked_cases: list[str]) -> None:
+    """R1: Dashboard KPIs represent all-time states and must return None for trends rather than comparing against 30d creation cohorts."""
+    case_old_id = str(uuid.uuid4())
+    case_prior_id = str(uuid.uuid4())
+    case_curr_id = str(uuid.uuid4())
+    tracked_cases.extend([case_old_id, case_prior_id, case_curr_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        # Older case (> 60 days)
+        c_old = CaseModel(
+            case_id=case_old_id,
+            description="Older case",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now - timedelta(days=90),
+        )
+        session.add(c_old)
+
+        # Prior-window case (30-60 days)
+        c_prior = CaseModel(
+            case_id=case_prior_id,
+            description="Prior window case",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now - timedelta(days=45),
+        )
+        session.add(c_prior)
+
+        # Current-window case (< 30 days)
+        c_curr = CaseModel(
+            case_id=case_curr_id,
+            description="Current window case",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D02_TAILING",
+            defect_name="Tailing",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=10),
+        )
+        session.add(c_curr)
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/dashboard")
+    assert resp.status_code == 200
+    kpis = resp.json()["kpis"]
+    assert kpis["active_diagnoses_trend"] is None
+    assert kpis["open_defects_trend"] is None
+    assert kpis["resolved_cases_trend"] is None
+    assert kpis["avg_time_trend"] is None
+
+
+def test_first_time_resolution_requires_persisted_verification_evidence_and_ignores_revisions(
+    tracked_cases: list[str],
+) -> None:
+    """R2: First-time resolution requires explicit verification lifecycle evidence and is not penalized by analysis revisions."""
+    case_no_verif_id = str(uuid.uuid4())
+    case_multi_rev_id = str(uuid.uuid4())
+    case_failed_then_passed_id = str(uuid.uuid4())
+    tracked_cases.extend([case_no_verif_id, case_multi_rev_id, case_failed_then_passed_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        # Case A: resolved but has NO verification lifecycle event
+        cA = CaseModel(
+            case_id=case_no_verif_id,
+            description="Resolved without lifecycle event",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=5),
+        )
+        session.add(cA)
+        session.commit()
+
+    # When a resolved case has no verification lifecycle events, evidence is unsupported -> None
+    resp_unsupported = client.get("/api/v1/analytics/performance?period=30d")
+    assert resp_unsupported.status_code == 200
+    assert resp_unsupported.json()["kpis"]["first_time_resolution_rate"] is None
+
+    # Clean up Case A so we can test cases with full verification lifecycle evidence
+    with factory() as session:
+        session.query(CaseModel).filter(CaseModel.case_id == case_no_verif_id).delete()
+        session.commit()
+
+    with factory() as session:
+        # Case B: 4 analysis revisions, 1 recovery action, 1 passed verification (0 failed, 0 recurred)
+        cB = CaseModel(
+            case_id=case_multi_rev_id,
+            description="Multi revision first-time resolved",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=5),
+        )
+        session.add(cB)
+        # Add 4 revisions (questions, checks, etc.)
+        for r in range(1, 5):
+            session.add(
+                AnalysisRevisionModel(
+                    case_id=case_multi_rev_id,
+                    revision_number=r,
+                    issue_condition=IssueCondition.UNRESOLVED.value if r < 4 else IssueCondition.RESOLVED.value,
+                    analyzed_at=now - timedelta(days=5) + timedelta(minutes=r * 2),
+                    result_snapshot={},
+                )
+            )
+        # Passed verification lifecycle event
+        ev_pass = CaseLifecycleEventModel(
+            case_id=case_multi_rev_id,
+            event_type="RECOVERY_VERIFICATION",
+            prior_issue_condition="RECOVERY_PENDING_VERIFICATION",
+            resulting_issue_condition=IssueCondition.RESOLVED.value,
+            resulting_revision_number=4,
+            actor="technician",
+            details="Passed on first verification attempt",
+            verification_passed=True,
+            created_at=now - timedelta(days=5) + timedelta(minutes=15),
+        )
+        session.add(ev_pass)
+        session.commit()
+
+    # Case B alone with 4 revisions must still be 100% first-time resolved!
+    resp_b = client.get("/api/v1/analytics/performance?period=30d")
+    assert resp_b.status_code == 200
+    assert resp_b.json()["kpis"]["first_time_resolution_rate"] == 100.0
+
+    # Now add Case C: had a failed verification before succeeding
+    with factory() as session:
+        cC = CaseModel(
+            case_id=case_failed_then_passed_id,
+            description="Failed verification first attempt",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D02_TAILING",
+            defect_name="Tailing",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=4),
+        )
+        session.add(cC)
+        # Failed verification
+        ev_fail = CaseLifecycleEventModel(
+            case_id=case_failed_then_passed_id,
+            event_type="RECOVERY_VERIFICATION",
+            prior_issue_condition="RECOVERY_PENDING_VERIFICATION",
+            resulting_issue_condition=IssueCondition.UNRESOLVED.value,
+            resulting_revision_number=2,
+            actor="technician",
+            details="Verification check failed",
+            verification_passed=False,
+            created_at=now - timedelta(days=4) + timedelta(minutes=10),
+        )
+        session.add(ev_fail)
+        # Subsequent passed verification
+        ev_pass2 = CaseLifecycleEventModel(
+            case_id=case_failed_then_passed_id,
+            event_type="RECOVERY_VERIFICATION",
+            prior_issue_condition="RECOVERY_PENDING_VERIFICATION",
+            resulting_issue_condition=IssueCondition.RESOLVED.value,
+            resulting_revision_number=3,
+            actor="technician",
+            details="Second verification check passed",
+            verification_passed=True,
+            created_at=now - timedelta(days=4) + timedelta(minutes=25),
+        )
+        session.add(ev_pass2)
+        session.commit()
+
+    # With 1 first-time resolved and 1 retry-resolved: 1/2 = 50.0%
+    resp_bc = client.get("/api/v1/analytics/performance?period=30d")
+    assert resp_bc.status_code == 200
+    assert resp_bc.json()["kpis"]["first_time_resolution_rate"] == 50.0
+
+
+def test_resolved_case_without_resolution_event_excluded_from_duration(
+    tracked_cases: list[str],
+) -> None:
+    """R3: Cases resolved without an explicit resolution lifecycle event are excluded from averages and duration buckets."""
+    case_no_ev_id = str(uuid.uuid4())
+    case_measured_id = str(uuid.uuid4())
+    tracked_cases.extend([case_no_ev_id, case_measured_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        # Case without lifecycle event
+        c1 = CaseModel(
+            case_id=case_no_ev_id,
+            description="Resolved without event",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=2),
+        )
+        session.add(c1)
+        session.commit()
+
+    # Dashboard: avg_diagnosis_time_minutes must be None (not 0.0)
+    dash_resp = client.get("/api/v1/analytics/dashboard")
+    assert dash_resp.status_code == 200
+    assert dash_resp.json()["kpis"]["avg_diagnosis_time_minutes"] is None
+
+    # Performance: avg_resolution_time_minutes must be None and 0-5 min bucket must be 0
+    perf_resp = client.get("/api/v1/analytics/performance?period=all")
+    assert perf_resp.status_code == 200
+    perf_data = perf_resp.json()
+    assert perf_data["kpis"]["avg_resolution_time_minutes"] is None
+
+    bucket_0_5 = next(b for b in perf_data["resolution_time_distribution"] if b["range"] == "0-5 min")
+    assert bucket_0_5["count"] == 0
+
+    # Now add measured case with 12-minute duration
+    with factory() as session:
+        c2 = CaseModel(
+            case_id=case_measured_id,
+            description="Measured case",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(minutes=15),
+        )
+        session.add(c2)
+        ev = CaseLifecycleEventModel(
+            case_id=case_measured_id,
+            event_type="RECOVERY_VERIFICATION",
+            prior_issue_condition="RECOVERY_PENDING_VERIFICATION",
+            resulting_issue_condition=IssueCondition.RESOLVED.value,
+            resulting_revision_number=2,
+            actor="technician",
+            details="Resolved and verified",
+            verification_passed=True,
+            created_at=now - timedelta(minutes=3),  # 15 - 3 = 12 minutes
+        )
+        session.add(ev)
+        session.commit()
+
+    perf_resp2 = client.get("/api/v1/analytics/performance?period=all")
+    assert perf_resp2.status_code == 200
+    perf_data2 = perf_resp2.json()
+    assert perf_data2["kpis"]["avg_resolution_time_minutes"] == 12.0
+
+    bucket_0_5_after = next(b for b in perf_data2["resolution_time_distribution"] if b["range"] == "0-5 min")
+    bucket_10_15_after = next(b for b in perf_data2["resolution_time_distribution"] if b["range"] == "10-15 min")
+    assert bucket_0_5_after["count"] == 0
+    assert bucket_10_15_after["count"] == 1
+
+
+def test_canonical_equipment_key_read_in_recent_cases(tracked_cases: list[str]) -> None:
+    """R5: machine_context.equipment is read as canonical equipment key."""
+    case_id = str(uuid.uuid4())
+    tracked_cases.append(case_id)
+
+    factory = get_session_factory()
+    with factory() as session:
+        c = CaseModel(
+            case_id=case_id,
+            description="Case with canonical equipment",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            machine_context={"equipment": "Dispenser Alpha-9"},
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(c)
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/dashboard")
+    assert resp.status_code == 200
+    recent = next(c for c in resp.json()["recent_cases"] if c["id"] == case_id)
+    assert recent["equipment"] == "Dispenser Alpha-9"
+
+
+def test_cause_distribution_counts_distinct_cases_with_repeated_confirmations(
+    tracked_cases: list[str],
+) -> None:
+    """R6: Repeated cause confirmation revisions for one case must count as only 1 case."""
+    case_id = str(uuid.uuid4())
+    tracked_cases.append(case_id)
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        c = CaseModel(
+            case_id=case_id,
+            description="Case with multiple confirmation revisions",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(days=2),
+        )
+        session.add(c)
+        # Rev 2 confirmation
+        conf1 = CaseCauseConfirmationModel(
+            case_id=case_id,
+            cause_id="c_01_thermal_viscosity",
+            resulting_revision_number=2,
+            confirmed_at=now - timedelta(days=2),
+        )
+        session.add(conf1)
+        # Rev 3 re-confirmation of same cause
+        conf2 = CaseCauseConfirmationModel(
+            case_id=case_id,
+            cause_id="c_01_thermal_viscosity",
+            resulting_revision_number=3,
+            confirmed_at=now - timedelta(days=1),
+        )
+        session.add(conf2)
+        session.commit()
+
+    # Dashboard cause distribution: cases must be 1
+    dash_resp = client.get("/api/v1/analytics/dashboard")
+    assert dash_resp.status_code == 200
+    dash_causes = dash_resp.json()["cause_distribution"]
+    assert len(dash_causes) >= 1
+    top_cause = dash_causes[0]
+    assert top_cause["cases"] == 1
+
+    # Performance cause distribution: cases must be 1
+    perf_resp = client.get("/api/v1/analytics/performance?period=all")
+    assert perf_resp.status_code == 200
+    perf_causes = perf_resp.json()["cause_distribution"]
+    assert len(perf_causes) >= 1
+    assert perf_causes[0]["cases"] == 1
+
+
+def test_insight_population_label_and_defect_trend(tracked_cases: list[str]) -> None:
+    """R7: Insight label describes defect-recorded cases, and monthly defect trend queries defect-classified cases."""
+    case1_id = str(uuid.uuid4())
+    case2_id = str(uuid.uuid4())
+    tracked_cases.extend([case1_id, case2_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        # Case 1 with defect
+        c1 = CaseModel(
+            case_id=case1_id,
+            description="Case with defect",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add(c1)
+
+        # Case 2 without defect
+        c2 = CaseModel(
+            case_id=case2_id,
+            description="Case without defect",
+            material="solder_paste",
+            method="jetting",
+            defect_code=None,
+            defect_name=None,
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add(c2)
+        session.commit()
+
+    dash_resp = client.get("/api/v1/analytics/dashboard")
+    assert dash_resp.status_code == 200
+    dash_data = dash_resp.json()
+    assert dash_data["ai_insight_trend"] == "100.0% of defect-recorded cases"
+
+    perf_resp = client.get("/api/v1/analytics/performance?period=all")
+    assert perf_resp.status_code == 200
+    trend = perf_resp.json()["defect_trend"]
+    assert len(trend) == 6
+    # Current month should have exactly 1 defect (from case 1, case 2 excluded)
+    current_month_name = now.strftime("%b")
+    cur_trend = next(t for t in trend if t["month"] == current_month_name)
+    assert cur_trend["defects"] == 1

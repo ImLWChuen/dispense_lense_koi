@@ -3,7 +3,7 @@ import { apiClient, API_BASE_URL } from "./client";
 export interface AnalyticsKpiMetrics {
     total_cases: number;
     resolved_cases: number;
-    avg_resolution_time_minutes: number;
+    avg_resolution_time_minutes: number | null;
     first_time_resolution_rate: number | null;
     cause_confirmation_rate: number | null;
     total_cases_trend: string | null;
@@ -48,7 +48,7 @@ export interface DashboardKpiMetrics {
     active_diagnoses: number;
     open_defects: number;
     resolved_cases: number;
-    avg_diagnosis_time_minutes: number;
+    avg_diagnosis_time_minutes: number | null;
     active_diagnoses_trend: string | null;
     open_defects_trend: string | null;
     resolved_cases_trend: string | null;

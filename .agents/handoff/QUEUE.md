@@ -13,6 +13,9 @@ Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support p
   - outcome: remove fabricated analytics/report fallbacks, derive workflow metrics from persisted data, present deterministic scores as Evidence Support /100, and make dashboard/case/report/analytics states truthful
   - protected overlap: do not touch the existing uncommitted `frontend/app/(dashboard)/cases/[id]/page.tsx`
   - review stop: return to ChatGPT after the local implementation commit; do not begin Phase 3B lifecycle corrections
+  - review: `.agents/handoff/reviews/DLK-M3-028-review.md`
+  - corrections resolved (R1–R7): comparable trend cohorts (dashboard operational trends return null); first-time resolution derived strictly from explicit verification lifecycle events (ignores revisions, returns null when evidence unsupported); resolution durations measure only cases with persisted resolution events (excluded from buckets, nullable averages); mutually exclusive loading, error, empty, and data states in dashboard, analytics, and reports (initial failure displays dedicated error card, refresh failure retains data with stale banner); canonical `machine_context.equipment` key read alongside compatibility keys; distinct case counts in cause distributions via `func.distinct(case_id)`; insight trend aligned to `"% of defect-recorded cases"` and defect trend queries cases with defect codes over 6-month window
+  - reviewer verification: all 12 focused PostgreSQL analytics checks passed; 478 full backend tests passed; focused ESLint passed with zero findings; production build passed with all 13 static pages generated
   - explicit exclusions: troubleshooting/check outcomes, cause-confirmation/recovery/verification UI, rejection/exhaustion behavior, protected case-detail integration, dependencies, migrations, authentication, and remote Git operations
 
 ## Accepted Phase 2 dependency

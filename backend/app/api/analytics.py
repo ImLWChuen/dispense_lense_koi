@@ -150,10 +150,10 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
 
         if resolve_event:
             diff = resolve_event.created_at - case.created_at
-            total_minutes += diff.total_seconds() / 60
+            total_minutes += max(0.1, round(diff.total_seconds() / 60, 1))
             resolved_count += 1
 
-    avg_time = round(total_minutes / resolved_count, 1) if resolved_count > 0 else 0.0
+    avg_time: Optional[float] = round(total_minutes / resolved_count, 1) if resolved_count > 0 else None
 
     total_cases = session.query(CaseModel).count()
     if total_cases > 0:
@@ -164,50 +164,13 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
     else:
         cause_confirmation_rate = None
 
-    # Trend calculation for dashboard: compare current 30d window with prior 30d window
-    dash_cutoff = now - timedelta(days=30)
-    dash_prev_cutoff = now - timedelta(days=60)
-    prev_cases_count = session.query(CaseModel).filter(
-        CaseModel.created_at >= dash_prev_cutoff,
-        CaseModel.created_at < dash_cutoff,
-    ).count()
-
+    # Operational state trends (active_diagnoses, open_defects, resolved_cases)
+    # cannot be reconstructed truthfully from historical creation cohorts without
+    # point-in-time state snapshots; set to None per contract.
     active_diagnoses_trend: Optional[str] = None
     open_defects_trend: Optional[str] = None
     resolved_cases_trend: Optional[str] = None
     avg_time_trend: Optional[str] = None
-
-    if prev_cases_count > 0:
-        # Prior active
-        prev_active = session.query(CaseModel).filter(
-            CaseModel.created_at >= dash_prev_cutoff,
-            CaseModel.created_at < dash_cutoff,
-            CaseModel.issue_condition != IssueCondition.RESOLVED.value,
-        ).count()
-        if prev_active > 0:
-            diff_active = round(((active_diagnoses - prev_active) / prev_active) * 100)
-            active_diagnoses_trend = f"{'+' if diff_active >= 0 else ''}{diff_active}%"
-
-        # Prior defects
-        prev_defects = session.query(CaseModel).filter(
-            CaseModel.created_at >= dash_prev_cutoff,
-            CaseModel.created_at < dash_cutoff,
-            CaseModel.issue_condition != IssueCondition.RESOLVED.value,
-            CaseModel.defect_code.isnot(None),
-        ).count()
-        if prev_defects > 0:
-            diff_defects = round(((open_defects - prev_defects) / prev_defects) * 100)
-            open_defects_trend = f"{'+' if diff_defects >= 0 else ''}{diff_defects}%"
-
-        # Prior resolved
-        prev_resolved = session.query(CaseModel).filter(
-            CaseModel.created_at >= dash_prev_cutoff,
-            CaseModel.created_at < dash_cutoff,
-            CaseModel.issue_condition == IssueCondition.RESOLVED.value,
-        ).count()
-        if prev_resolved > 0:
-            diff_resolved = round(((resolved_cases - prev_resolved) / prev_resolved) * 100)
-            resolved_cases_trend = f"{'+' if diff_resolved >= 0 else ''}{diff_resolved}%"
 
     kpis = KpiMetrics(
         active_diagnoses=active_diagnoses,
@@ -256,7 +219,12 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
 
         eq = "Not recorded"
         if c.machine_context and isinstance(c.machine_context, dict):
-            eq = c.machine_context.get("machine_id") or c.machine_context.get("equipment_id") or "Not recorded"
+            eq = (
+                c.machine_context.get("equipment")
+                or c.machine_context.get("machine_id")
+                or c.machine_context.get("equipment_id")
+                or "Not recorded"
+            )
 
         # Read evidence_support from latest persisted analysis revision's top-ranked cause score
         latest_rev = session.query(AnalysisRevisionModel).filter(
@@ -301,8 +269,10 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
 
     cause_counts = session.query(
         CaseCauseConfirmationModel.cause_id,
-        func.count(CaseCauseConfirmationModel.id),
-    ).group_by(CaseCauseConfirmationModel.cause_id).order_by(func.count(CaseCauseConfirmationModel.id).desc()).limit(5).all()
+        func.count(func.distinct(CaseCauseConfirmationModel.case_id)),
+    ).group_by(CaseCauseConfirmationModel.cause_id).order_by(
+        func.count(func.distinct(CaseCauseConfirmationModel.case_id)).desc()
+    ).limit(5).all()
 
     cause_distribution: list[CauseDistributionItem] = []
     for c_id, c_count in cause_counts:
@@ -321,13 +291,13 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
                 f"{top_defect.name} defects observed across dispensing operations. "
                 f"Recent verified investigations indicate {top_cause} as the primary contributing factor."
             )
-            ai_insight_trend = f"{top_defect.value}% of active cases"
+            ai_insight_trend = f"{top_defect.value}% of defect-recorded cases"
         else:
             ai_insight_text = (
                 f"{top_defect.name} defects observed across dispensing operations. "
                 "Root cause investigations are currently in progress."
             )
-            ai_insight_trend = f"{top_defect.value}% of active cases"
+            ai_insight_trend = f"{top_defect.value}% of defect-recorded cases"
 
     return DashboardAnalyticsResponse(
         kpis=kpis,
@@ -396,28 +366,47 @@ def get_performance_analytics(
             total_res_minutes += minutes
             measured_res_count += 1
             res_times_minutes.append(minutes)
-        else:
-            res_times_minutes.append(0.0)
 
-    avg_res_time = (
+    avg_res_time: Optional[float] = (
         round(total_res_minutes / measured_res_count, 1)
         if measured_res_count > 0
-        else 0.0
+        else None
     )
 
-    # 2. First-Time Resolution Rate (resolved cases with revisions <= 2 and no recurrence)
+    # 2. First-Time Resolution Rate
+    # Derived strictly from explicit persisted lifecycle evidence:
+    # A resolved case is first-time resolved if it has at least one passed verification (RECOVERY_VERIFICATION with verification_passed=True),
+    # 0 failed verifications, and 0 recurrences.
+    # If verification lifecycle evidence is missing/unsupported for any resolved case in the cohort, return None.
     first_time_rate: Optional[float] = None
     if resolved_count > 0:
         first_time_resolved_count = 0
+        has_unsupported_evidence = False
         for c in resolved_cases:
-            rev_count = session.query(AnalysisRevisionModel).filter(AnalysisRevisionModel.case_id == c.case_id).count()
-            has_recurrence = session.query(CaseLifecycleEventModel).filter(
-                CaseLifecycleEventModel.case_id == c.case_id,
-                CaseLifecycleEventModel.resulting_issue_condition.in_([IssueCondition.RECURRED.value, "RECURRED"]),
-            ).count() > 0
-            if rev_count <= 2 and not has_recurrence:
+            events = session.query(CaseLifecycleEventModel).filter(
+                CaseLifecycleEventModel.case_id == c.case_id
+            ).all()
+            verifs = [
+                e for e in events
+                if e.event_type in ("RECOVERY_VERIFICATION", "VERIFICATION")
+            ]
+            if not verifs:
+                has_unsupported_evidence = True
+                break
+
+            has_recurrence = any(
+                e.resulting_issue_condition in (IssueCondition.RECURRED.value, "RECURRED")
+                or e.event_type == "RECURRENCE"
+                for e in events
+            )
+            has_passed = any(e.verification_passed is True for e in verifs)
+            has_failed = any(e.verification_passed is False for e in verifs)
+
+            if has_passed and not has_failed and not has_recurrence:
                 first_time_resolved_count += 1
-        first_time_rate = round((first_time_resolved_count / resolved_count) * 100, 1)
+
+        if not has_unsupported_evidence:
+            first_time_rate = round((first_time_resolved_count / resolved_count) * 100, 1)
 
     # 3. Cause Confirmation Rate: unique cases with at least one confirmation / total cases
     cause_confirmation_rate: Optional[float] = None
@@ -457,7 +446,7 @@ def get_performance_analytics(
 
             # Prior resolution time and first-time resolution
             prev_resolved = [c for c in prev_cases if c.issue_condition in (IssueCondition.RESOLVED.value, "RESOLVED")]
-            if prev_resolved and measured_res_count > 0:
+            if prev_resolved and measured_res_count > 0 and avg_res_time is not None:
                 prev_res_minutes = 0.0
                 prev_measured = 0
                 for c in prev_resolved:
@@ -503,6 +492,7 @@ def get_performance_analytics(
     defect_trend = []
     for y, m, m_name in month_slots:
         month_count = session.query(CaseModel).filter(
+            CaseModel.defect_code.isnot(None),
             func.extract("year", CaseModel.created_at) == y,
             func.extract("month", CaseModel.created_at) == m,
         ).count()
@@ -512,7 +502,7 @@ def get_performance_analytics(
     cause_counts_query = (
         session.query(
             CaseCauseConfirmationModel.cause_id,
-            func.count(CaseCauseConfirmationModel.id),
+            func.count(func.distinct(CaseCauseConfirmationModel.case_id)),
         )
         .join(CaseModel, CaseCauseConfirmationModel.case_id == CaseModel.case_id)
     )
@@ -522,7 +512,7 @@ def get_performance_analytics(
     cause_counts = (
         cause_counts_query
         .group_by(CaseCauseConfirmationModel.cause_id)
-        .order_by(func.count(CaseCauseConfirmationModel.id).desc())
+        .order_by(func.count(func.distinct(CaseCauseConfirmationModel.case_id)).desc())
         .all()
     )
 

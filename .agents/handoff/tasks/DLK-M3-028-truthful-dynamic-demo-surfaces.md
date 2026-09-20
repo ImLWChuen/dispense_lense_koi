@@ -252,9 +252,17 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 - Removed all fabricated fallback data from backend analytics and frontend user interfaces: deleted synthetic `mockFallbackReports`, placeholder defect stories ("A particle or debris is obscuring..."), fallback score 92, fallback cause counts (3) and observation counts (5), placeholder case numbers ("Case DSP-2026"), synthetic equipment lines ("Dispensing Line A"), and unsupported AI accuracy claims (100%, 92%).
 - Corrected backend analytics endpoints (`/api/v1/analytics/dashboard`, `/api/v1/analytics/performance`): replaced `ai_accuracy_rate`/`diagnostic_accuracy_rate` with `cause_confirmation_rate: Optional[float]` (calculated strictly as `unique confirmed cases / population cases * 100`, returning `None` if the population is 0). Replaced `confidence` with `evidence_support: Optional[float]`, reading directly from the latest persisted analysis revision's top-ranked cause score.
 - Made period-over-period trends strictly nullable: trends return `None` whenever no valid comparable prior population exists (>0 records) rather than substituting synthetic trends (`+100%`, `-15%`, `0%`).
+- Addressed Review Findings R1–R7:
+  - **R1 (Comparable Dashboard Trends):** Set dashboard state-based KPI trends (`active_diagnoses_trend`, `open_defects_trend`, `resolved_cases_trend`, `avg_time_trend`) to `None` because all-time current operational states cannot be compared with a 30-day creation cohort without historical point-in-time snapshots.
+  - **R2 (Truthful First-Time Resolution):** Removed `revision_count <= 2` proxy. Derived metric strictly from explicit persisted `CaseLifecycleEventModel` verification events (`event_type in ("RECOVERY_VERIFICATION", "VERIFICATION")` with `verification_passed is True`, 0 failed verifications, 0 recurrences). Revisions produced by questions, checks, or confirmations do not penalize the metric. Returns `None` when verification lifecycle evidence is missing or unsupported for any resolved case in the cohort.
+  - **R3 (Zero-Minute Duration Exclusion):** Excluded resolved cases without an explicit resolution lifecycle event from duration averages and duration distribution buckets (`res_times_minutes`). Never assign synthetic `0.0` minutes or classify unmeasured cases in `< 5 min`. Made `avg_diagnosis_time_minutes` and `avg_resolution_time_minutes` nullable (`Optional[float] = None`), rendering `"Not available"` in the UI when no duration is measurable.
+  - **R4 (Mutually Exclusive UI States):** Refactored Dashboard, Analytics, and Reports pages so that loading, error, empty, and data states are strictly mutually exclusive branches. An initial request failure displays a dedicated error card with a retry button, never rendering zero KPIs, empty charts, or "No reports found". Refresh failures retain previously loaded data and display an amber stale warning banner ("Refresh failed: {error}. Showing last synced data from {time}.").
+  - **R5 (Canonical Equipment Key):** Updated recent cases in dashboard to read `machine_context.equipment` as the primary canonical key alongside compatibility fallbacks `machine_id` and `equipment_id`.
+  - **R6 (Distinct Case Count in Cause Distribution):** Scoped cause distribution queries in both dashboard and performance endpoints to count unique cases via `func.count(func.distinct(CaseCauseConfirmationModel.case_id))`, preventing duplicate counting when a case undergoes multiple confirmation revisions.
+  - **R7 (Population Alignment for Insight & Defect Trend):** Aligned dashboard AI insight label to `"{value}% of defect-recorded cases"` (matching the queried population of cases with recorded defects). Filtered performance monthly defect trend query strictly to cases with recorded defect categories (`CaseModel.defect_code.isnot(None)`) across the independent 6-calendar-month window, clearly labeled as `Monthly Defect Trend (Last 6 Months)`.
 - Frontend components and pages (Dashboard, Cases, Reports, Analytics, ConfidenceScore, CauseCard, DiagnosisSummary, CaseTable, RecentCases, Defect/Cause/Resolution charts) render only real persisted data. Clean loading, empty, and retryable error states are displayed when data is missing or unavailable.
 - Cause scores are consistently labeled `Evidence Support /100` or `Evidence Support` across all task-owned surfaces. Zero is treated as a valid score (`0/100`).
-- Updated `docs/api/frontend-backend-contract.md` matrix and added Section 3.7.
+- Updated `docs/api/frontend-backend-contract.md` matrix and Section 3.7.
 
 ### Files changed
 
@@ -289,18 +297,19 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 
 - Explicitly defined `cause_confirmation_rate` as a workflow coverage metric measuring technician root-cause confirmation activity, preventing misinterpretation as model accuracy or precision.
 - Defined `evidence_support` as the deterministic 0-100 score of the top-ranked candidate cause from the latest revision; made it nullable when no ranked causes exist.
-- Used idiomatic asynchronous promise resolution (`.then(...)` / `.catch(...)`) with `isCurrent` cancellation guards for React 19 component data fetching, eliminating synchronous state updates in effects and ensuring full compliance with `react-hooks/set-state-in-effect`.
+- Returned `None` for dashboard operational state trends because past point-in-time states cannot be reconstructed without historical snapshots, preventing invalid comparisons against creation cohorts.
+- Derived first-time resolution strictly from `CaseLifecycleEventModel` verification events (`verification_passed is True`, 0 failed, 0 recurred), eliminating revision-count proxies and returning `None` when evidence is unsupported.
+- Excluded unmeasured resolved cases from duration calculations and buckets rather than assigning synthetic `0.0` values.
+- Enforced mutually exclusive loading, error, and data states in the UI so that initial request failures never present misleading zero data or empty messages, and refresh failures clearly present retained data as stale.
 - Preserved zero as a valid score (`0/100`) while clamping the visual bar width to `[0, 100]`.
 - Strictly preserved protected teammate file `frontend/app/(dashboard)/cases/[id]/page.tsx` without staging or modifying it.
 
 ### Verification results
 
-- **PostgreSQL Integration Tests**: `backend/.venv/Scripts/python.exe -m pytest -v backend/tests/integration/test_analytics_api.py --basetemp .phase3-analytics-pytest-tmp` (6 passed in 3.41s) with `TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"`.
-- **Full Backend Suite**: `backend/.venv/Scripts/python.exe -m pytest -q --basetemp .phase3-full-pytest-tmp` (472 passed, 42 warnings in 53.17s).
-- **Focused ESLint**: `npx eslint` across all 20 task-owned files passed with 0 errors and 0 warnings.
-- **Production Build**: `npm run build` in `frontend/` passed cleanly (Compiled in 998ms, TypeScript finished in 3.2s, 13/13 static pages generated).
-- **Repository-wide Lint**: `npm run lint` decreased from 29 errors / 15 warnings down to 15 errors / 9 warnings (0 errors in task-owned files).
-- **Targeted Grep Search**: `git grep -n -E "mockFallbackReports|Dispensing Line A|Nozzle Restriction|AI Diagnostic Status|diagnostic accuracy|engine accuracy|% confidence|\b92(\.0)?\b|\b90\b" ...` confirmed zero fabricated fallback strings in task-owned files.
+- **PostgreSQL Integration Tests**: `backend/.venv/Scripts/python.exe -m pytest -v backend/tests/integration/test_analytics_api.py --basetemp .phase3-analytics-pytest-tmp` (12 passed, 11 warnings in 4.19s) with `TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"`.
+- **Full Backend Suite**: `backend/.venv/Scripts/python.exe -m pytest -q --basetemp .phase3-full-pytest-tmp` (478 passed, 42 warnings in 54.20s).
+- **Focused ESLint**: `npx eslint` across all changed frontend files passed with 0 errors and 0 warnings.
+- **Production Build**: `npm run build` in `frontend/` passed cleanly (Compiled in 804ms, TypeScript finished in 2.3s, 13/13 static pages generated).
 - **Task Validation**: `backend/.venv/Scripts/python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md` reported `VALID`.
 - **Whitespace Check**: `git diff --check` passed cleanly with 0 errors.
 
@@ -311,4 +320,4 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 
 ### Proposed commit message
 
-`fix(analytics): make demo surfaces data truthful`
+`fix(analytics): address review corrections for truthful demo surfaces`
