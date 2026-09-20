@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowRight, SearchX } from "lucide-react";
+import { SearchX } from "lucide-react";
 
 export default function SimilarCases() {
     return (

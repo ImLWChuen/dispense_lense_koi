@@ -17,7 +17,6 @@ import {
     ArrowRight,
     FileText,
     BookOpen,
-    ExternalLink,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthContext";
 import { casesApi } from "@/lib/api/cases";

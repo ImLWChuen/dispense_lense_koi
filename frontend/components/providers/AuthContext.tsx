@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api/client";
 
 export type User = {
@@ -22,14 +23,21 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const logout = useCallback(() => {
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem("token");
+        router.push("/login");
+    }, [router]);
+
     useEffect(() => {
         const storedToken = localStorage.getItem("token");
         if (storedToken) {
-            setToken(storedToken);
             // Fetch user info
             fetch(`${API_BASE_URL}/auth/me`, {
                 headers: {
@@ -44,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
                 })
                 .then((data) => {
+                    setToken(storedToken);
                     setUser(data);
                 })
                 .catch(() => {
@@ -53,21 +62,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setIsLoading(false);
                 });
         } else {
-            setIsLoading(false);
+            Promise.resolve().then(() => {
+                setIsLoading(false);
+            });
         }
-    }, []);
+    }, [logout]);
 
     const login = (newToken: string, newUser: User) => {
         setToken(newToken);
         setUser(newUser);
         localStorage.setItem("token", newToken);
-    };
-
-    const logout = () => {
-        setToken(null);
-        setUser(null);
-        localStorage.removeItem("token");
-        window.location.href = "/login";
     };
 
     return (

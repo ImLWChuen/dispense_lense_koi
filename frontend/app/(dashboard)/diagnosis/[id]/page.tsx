@@ -17,7 +17,7 @@ import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import CauseRanking from "@/components/diagnosis/CauseRanking";
 import EvidencePanel from "@/components/diagnosis/EvidencePanel";
 import { casesApi } from "@/lib/api/cases";
-import { DurableCaseResponse } from "@/types/api";
+import { DurableCaseResponse, CauseEvidence } from "@/types/api";
 
 const workflowSteps = [
     {
@@ -58,9 +58,9 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                 setIsLoading(true);
                 const data = await casesApi.getCase(resolvedParams.id);
                 setCaseData(data);
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error("Failed to fetch case", err);
-                setError(err.message || "Failed to load case data.");
+                setError(err instanceof Error ? err.message : "Failed to load case data.");
             } finally {
                 setIsLoading(false);
             }
@@ -106,18 +106,32 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
     const diagnosis = caseData.diagnosis || caseData.initial_diagnosis;
     const topCause = diagnosis?.ranked_causes?.[0];
     
+    interface DisplayEvidenceItem {
+        observation: string;
+        value: string;
+        relation: "SUPPORTS" | "CONTRADICTS" | "NEUTRAL";
+        strength: "STRONG" | "MODERATE" | "WEAK";
+        explanation: string;
+    }
+
     // Construct evidence for the top cause
-    const evidenceList: any[] = [];
+    const evidenceList: DisplayEvidenceItem[] = [];
     if (topCause) {
-        const addEvidence = (list: any[], relation: string) => {
+        const addEvidence = (
+            list: CauseEvidence[] | undefined,
+            relation: "SUPPORTS" | "CONTRADICTS" | "NEUTRAL"
+        ) => {
             if (!list) return;
             list.forEach(item => {
                 const obs = caseData.observations.find(o => o.observation_id === item.observation_id || o.id === item.observation_id);
+                const str = (item.strength || "MODERATE").toUpperCase();
+                const validStrength: "STRONG" | "MODERATE" | "WEAK" =
+                    str === "STRONG" || str === "WEAK" ? str : "MODERATE";
                 evidenceList.push({
                     observation: obs ? obs.observation_type : item.observation_id,
-                    value: obs ? obs.value : "unknown",
+                    value: obs ? String(obs.value) : "unknown",
                     relation,
-                    strength: item.strength || "MODERATE",
+                    strength: validStrength,
                     explanation: item.explanation || "No explanation provided.",
                 });
             });

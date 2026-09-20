@@ -50,8 +50,8 @@ export default function LoginPage() {
             
             login(data.access_token, userData);
             router.push("/dashboard");
-        } catch (err: any) {
-            setError(err.message || "An unexpected error occurred.");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -133,7 +133,7 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-8 text-center text-sm text-gray-500">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link href="/register" className="font-semibold text-[#6d5dfc] hover:text-[#5848e8]">
                     Register here
                 </Link>
