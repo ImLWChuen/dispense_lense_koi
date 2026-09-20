@@ -1,5 +1,5 @@
 """
-DispenseIQ — Case, Observation, and Analysis Revision ORM Models
+Dispense Lens - Case, Observation, and Analysis Revision ORM Models
 
 Defines the relational schema for cases, structured observations, and append-only
 immutable analysis revisions, troubleshooting check results and executions,

@@ -54,8 +54,13 @@ from app.knowledge import get_causes_for_defect, get_defect_by_code
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
 from app.services.reporting import build_case_report, render_case_report_pdf
+from app.services.reporting.eight_d_service import build_8d_report
+from app.services.reporting.eight_d_pdf_generator import render_8d_report_pdf
+from app.schemas.quality_8d import EightDReportResponse
 from app.services.ai.llm_service import LLMService
 from app.services.ai.prompt_manager import PromptManager
+from app.schemas.retrieval import SimilarCasesResponse
+from app.services.retrieval.case_retriever import CaseRetriever
 from app.api.analytics import broadcast_analytics_update
 
 logger = logging.getLogger(__name__)
@@ -2586,7 +2591,7 @@ def get_case_report_pdf(
                 detail="An unexpected error occurred while generating the PDF case report.",
             )
 
-        filename = f"dispenseiq-case-{canonical_id}-r{report.current_revision}.pdf"
+        filename = f"dispenselens-case-{canonical_id}-r{report.current_revision}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -2602,6 +2607,95 @@ def get_case_report_pdf(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while generating the PDF case report.",
         )
+
+
+@router.get(
+    "/{case_id}/8d",
+    response_model=EightDReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get standardized 8D Quality & CAPA Report (AIAG / VDA compliant)",
+    description=(
+        "Retrieves a complete Eight Disciplines (8D) Quality Report covering D1 through D8, "
+        "including 5W2H problem description, containment actions, 5-Whys root cause analysis, "
+        "and process capability verification."
+    ),
+)
+def get_case_8d_report(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> EightDReportResponse:
+    """Retrieve an AIAG/VDA compliant 8D report for a durable case."""
+    try:
+        uuid_obj = uuid.UUID(case_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+        )
+
+    canonical_id = str(uuid_obj)
+    eight_d = build_8d_report(canonical_id, repository)
+    if eight_d is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{canonical_id}' not found.",
+        )
+    return eight_d
+
+
+@router.get(
+    "/{case_id}/8d.pdf",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/pdf": {}},
+            "description": "Deterministic downloadable 8D compliance PDF",
+        },
+        status.HTTP_404_NOT_FOUND: {"description": "Case not found"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Invalid case ID format"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    summary="Download standardized 8D Quality & CAPA PDF Report",
+    description="Renders and downloads an audit-grade AIAG/VDA 8D Quality Compliance PDF report.",
+)
+def get_case_8d_report_pdf(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> Response:
+    """Render and download an AIAG/VDA compliant 8D PDF compliance report."""
+    try:
+        uuid_obj = uuid.UUID(case_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+        )
+
+    canonical_id = str(uuid_obj)
+    eight_d = build_8d_report(canonical_id, repository)
+    if eight_d is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{canonical_id}' not found.",
+        )
+
+    try:
+        pdf_bytes = render_8d_report_pdf(eight_d)
+    except Exception:
+        logger.exception("Unexpected error during 8D PDF rendering for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the 8D PDF report.",
+        )
+
+    filename = f"dispenselens-8d-{canonical_id}-r{eight_d.revision}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.post(
@@ -2715,3 +2809,48 @@ def generate_case_ai_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while generating the AI summary.",
         )
+
+
+@router.get(
+    "/{case_id}/similar",
+    response_model=SimilarCasesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Find similar historical diagnostic cases",
+    description=(
+        "Retrieves and ranks past resolved and historical cases based on multi-attribute "
+        "cleanroom similarity (defect code, material, method, machine line, and symptoms), "
+        "highlighting confirmed root causes and verified recovery actions."
+    ),
+)
+def get_similar_cases(
+    case_id: str,
+    limit: int = 5,
+    min_score: float = 0.20,
+    db: Session = Depends(get_db),
+) -> SimilarCasesResponse:
+    """Find similar historical cases for benchmarking and guidance."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        retriever = CaseRetriever(db)
+        return retriever.find_similar_cases(
+            target_case_id=canonical_id,
+            limit=limit,
+            min_score=min_score,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error retrieving similar cases for '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while finding similar cases.",
+        )
+

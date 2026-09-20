@@ -1,5 +1,5 @@
 """
-DispenseIQ — Cause Ranker
+Dispense Lens - Cause Ranker
 
 Higher-level ranking API that wraps the Evidence Engine.
 
@@ -12,7 +12,7 @@ Responsibilities:
 - Supports re-ranking with new evidence (preserves revision history)
 
 Design rules:
-- Consumes knowledge from JSON via the knowledge interface — never duplicates rules.
+- Consumes knowledge from JSON via the knowledge interface - never duplicates rules.
 - Scores do NOT sum to 100 across causes.
 - Scoring weights come from the centralized ScoringConfig.
 """

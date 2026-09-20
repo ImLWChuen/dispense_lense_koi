@@ -21,13 +21,13 @@ Changes requested for two bounded API error/validation defects. No diagnostic se
 
 ## Findings
 
-### R1 — P2: Do not expose internal engine ValueErrors as client validation errors
+### R1 - P2: Do not expose internal engine ValueErrors as client validation errors
 
 backend/app/api/cases.py:804-815 wraps the entire engine.confirm_cause call in except ValueError and returns str(e) as HTTP 422. That operation first invokes diagnose and then performs further domain work; an internal ValueError, including a Pydantic validation error, is therefore exposed verbatim rather than reaching the sanitized HTTP 500 handler. For example, an engine dependency raising ValueError containing a private path would return that path to the client. The task explicitly requires unexpected internal failures to be sanitized 500 responses.
 
 Separate known invalid-cause validation from unexpected engine failures using the existing candidate-cause contract; preserve Member 2 semantics. Only a known invalid request should return 422. Add an engine dependency-override regression with a valid cause and an internal ValueError containing a synthetic sensitive marker: require sanitized 500, no marker in the response, and no persisted changes. Retain unknown-cause 422 coverage.
 
-### R2 — P2: Validate performer length before database persistence
+### R2 - P2: Validate performer length before database persistence
 
 backend/app/schemas/case.py:317-320 accepts confirmed_by without a length limit, while backend/app/models/case.py:427-431 and migration 0005 store it in VARCHAR(64). A valid-cause request with a 65-character performer passes request validation, then fails at PostgreSQL with a data-length error and returns 500. This is client-controlled invalid input and should be rejected as 422 before persistence.
 

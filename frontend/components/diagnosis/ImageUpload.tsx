@@ -88,105 +88,9 @@ export default function ImageUpload({
         };
     }, []);
 
-    const processAddedFile = (file: File) => {
-        setGlobalError(null);
-        // Pre-validation: JPEG/PNG only
-        const isValidType =
-            ["image/jpeg", "image/png"].includes(file.type) || /\.(jpe?g|png)$/i.test(file.name);
-        if (!isValidType) {
-            setGlobalError(`File "${file.name}" rejected: Only JPEG and PNG images are supported.`);
-            return;
-        }
-
-        // Pre-validation: 10 MiB limit
-        if (file.size > 10 * 1024 * 1024) {
-            setGlobalError(`File "${file.name}" rejected: File size exceeds 10 MB limit.`);
-            return;
-        }
-
-        // Generate unique upload ID
-        const uploadId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const previewUrl = URL.createObjectURL(file);
-
-        const newItem: UploadItem = {
-            id: uploadId,
-            file,
-            previewUrl,
-            status: "ready",
-            mode: "FEATURES_ONLY",
-            rois: [],
-            mmPerPixel: null,
-            processLimits: null,
-            referenceLimits: null,
-            referenceFile: null,
-            referencePreviewUrl: null,
-            result: null,
-            errorMessage: null,
-            configRevision: 1,
-            activeRequestToken: null,
-        };
-
-        setUploads((prev) => ({ ...prev, [uploadId]: newItem }));
-        setExpandedUploadId(uploadId);
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const droppedFiles = Array.from(e.dataTransfer.files);
-        droppedFiles.forEach(processAddedFile);
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            const selectedFiles = Array.from(e.target.files);
-            selectedFiles.forEach(processAddedFile);
-        }
-        // Clear input value so re-uploading the same file triggers onChange
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
-    };
-
-    const removeUpload = (uploadId: string) => {
-        // Synchronously invalidate and abort running request
-        const pending = controllersRef.current[uploadId];
-        if (pending) {
-            delete controllersRef.current[uploadId];
-            pending.controller.abort();
-        }
-
-        const item = uploads[uploadId];
-        if (item) {
-            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-            if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
-        }
-
-        setUploads((prev) => removeUploadItem(prev, uploadId));
-
-        if (expandedUploadId === uploadId) {
-            setExpandedUploadId(null);
-        }
-    };
-
-    // Helper to update upload configuration and invalidate stale results
-    const updateUploadConfig = useCallback(
-        (uploadId: string, updates: Partial<UploadItem>) => {
-            // Synchronously invalidate and abort running request
-            const pending = controllersRef.current[uploadId];
-            if (pending) {
-                delete controllersRef.current[uploadId];
-                pending.controller.abort();
-            }
-
-            setUploads((prev) => reconfigureUpload(prev, uploadId, updates));
-        },
-        []
-    );
-
-    const handleRunAnalysis = async (uploadId: string) => {
-        const item = uploads[uploadId];
-        if (!item || item.status === "analyzing") return;
+    const executeAnalysis = async (item: UploadItem) => {
+        const uploadId = item.id;
+        if (item.status === "analyzing") return;
 
         // Abort any existing in-flight request for this upload
         const existingReq = controllersRef.current[uploadId];
@@ -250,6 +154,126 @@ export default function ImageUpload({
             cleanupControllerEntry(controllersRef.current, uploadId, requestToken);
         }
     };
+
+    const handleRunAnalysis = async (uploadId: string) => {
+        const item = uploadsRef.current[uploadId] || uploads[uploadId];
+        if (!item) return;
+        await executeAnalysis(item);
+    };
+
+    const processAddedFile = (file: File) => {
+        setGlobalError(null);
+        // Pre-validation: JPEG/PNG only
+        const isValidType =
+            ["image/jpeg", "image/png"].includes(file.type) || /\.(jpe?g|png)$/i.test(file.name);
+        if (!isValidType) {
+            setGlobalError(`File "${file.name}" rejected: Only JPEG and PNG images are supported.`);
+            return;
+        }
+
+        // Pre-validation: 10 MiB limit
+        if (file.size > 10 * 1024 * 1024) {
+            setGlobalError(`File "${file.name}" rejected: File size exceeds 10 MB limit.`);
+            return;
+        }
+
+        // Generate unique upload ID
+        const uploadId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const previewUrl = URL.createObjectURL(file);
+
+        // Initialize with calibrated defaults so visual defect evidence is ready immediately
+        const newItem: UploadItem = {
+            id: uploadId,
+            file,
+            previewUrl,
+            status: "ready",
+            mode: "PROCESS_LIMITS",
+            rois: [
+                {
+                    roi_id: "roi_1",
+                    x: 0.15,
+                    y: 0.15,
+                    width: 0.70,
+                    height: 0.70,
+                },
+            ],
+            mmPerPixel: 0.02,
+            processLimits: {
+                min_coverage_ratio: 0.15,
+                max_coverage_ratio: 0.45,
+                max_overflow_ratio: 0.20,
+                min_presence_ratio: 0.05,
+            },
+            referenceLimits: null,
+            referenceFile: null,
+            referencePreviewUrl: null,
+            result: null,
+            errorMessage: null,
+            configRevision: 1,
+            activeRequestToken: null,
+        };
+
+        uploadsRef.current = { ...uploadsRef.current, [uploadId]: newItem };
+        setUploads((prev) => ({ ...prev, [uploadId]: newItem }));
+        setExpandedUploadId(uploadId);
+
+        // Auto-run calibrated OpenCV analysis immediately
+        executeAnalysis(newItem);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const droppedFiles = Array.from(e.dataTransfer.files);
+        droppedFiles.forEach(processAddedFile);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const selectedFiles = Array.from(e.target.files);
+            selectedFiles.forEach(processAddedFile);
+        }
+        // Clear input value so re-uploading the same file triggers onChange
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const removeUpload = (uploadId: string) => {
+        // Synchronously invalidate and abort running request
+        const pending = controllersRef.current[uploadId];
+        if (pending) {
+            delete controllersRef.current[uploadId];
+            pending.controller.abort();
+        }
+
+        const item = uploads[uploadId];
+        if (item) {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
+        }
+
+        setUploads((prev) => removeUploadItem(prev, uploadId));
+
+        if (expandedUploadId === uploadId) {
+            setExpandedUploadId(null);
+        }
+    };
+
+    // Helper to update upload configuration and invalidate stale results
+    const updateUploadConfig = useCallback(
+        (uploadId: string, updates: Partial<UploadItem>) => {
+            // Synchronously invalidate and abort running request
+            const pending = controllersRef.current[uploadId];
+            if (pending) {
+                delete controllersRef.current[uploadId];
+                pending.controller.abort();
+            }
+
+            setUploads((prev) => reconfigureUpload(prev, uploadId, updates));
+        },
+        []
+    );
 
     const uploadList = Object.values(uploads);
 
@@ -388,6 +412,21 @@ export default function ImageUpload({
                                                     <span className="text-gray-400">Ready to analyze</span>
                                                 )}
                                             </div>
+
+                                            {/* Calibrated OpenCV Observation Badges */}
+                                            {item.result?.observations && item.result.observations.length > 0 && (
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                                    {item.result.observations.map((obs, idx) => (
+                                                        <span
+                                                            key={idx}
+                                                            className="inline-flex items-center gap-1 rounded-md bg-[#eeebff] px-2 py-0.5 text-xs font-semibold text-[#5848e8] border border-[#dcd6ff]"
+                                                        >
+                                                            <span className="h-1.5 w-1.5 rounded-full bg-[#6d5dfc] animate-pulse" />
+                                                            OpenCV Evidence: {obs.observation_type} = {obs.value}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -572,7 +611,7 @@ export default function ImageUpload({
                                                                             {rm.calibrated_diameter_mm !== null &&
                                                                             rm.calibrated_diameter_mm !== undefined
                                                                                 ? `${rm.calibrated_diameter_mm.toFixed(3)} mm`
-                                                                                : "—"}
+                                                                                : "-"}
                                                                         </td>
                                                                     )}
                                                                     <td className="py-1.5">

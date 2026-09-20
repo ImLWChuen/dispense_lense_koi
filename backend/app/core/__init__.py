@@ -1,1 +1,1 @@
-"""DispenseIQ — Core package."""
+"""Dispense Lens - Core package."""

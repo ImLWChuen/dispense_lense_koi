@@ -65,7 +65,7 @@ export default function RegisterPage() {
                     Create an account
                 </h1>
                 <p className="mt-1 text-sm text-gray-500">
-                    Join DispenseIQ today
+                    Join Dispense Lens today
                 </p>
             </div>
 

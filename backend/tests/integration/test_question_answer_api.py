@@ -1,5 +1,5 @@
 """
-DispenseIQ — Technician Question-Answer Submission API Integration Tests
+Dispense Lens - Technician Question-Answer Submission API Integration Tests
 
 Tests persistent technician question-answer submission (POST /api/v1/cases/{case_id}/answers)
 against real PostgreSQL. Verifies atomicity, provenance preservation, optimistic concurrency

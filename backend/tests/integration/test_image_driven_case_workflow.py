@@ -1,5 +1,5 @@
 """
-DispenseIQ — Image-Driven Durable Case Workflow Integration Tests
+Dispense Lens - Image-Driven Durable Case Workflow Integration Tests
 
 Verifies end-to-end against disposable PostgreSQL:
 1. Running image analysis producing calibrated observations with metadata.

@@ -13,7 +13,7 @@ base_branch: main
 
 ## Objective
 
-Establish the first real PostgreSQL persistence boundary for DispenseIQ and prove that one prepared diagnostic case plus its structured observations and initial analysis revision can be written atomically and read back without losing diagnostic meaning.
+Establish the first real PostgreSQL persistence boundary for Dispense Lens and prove that one prepared diagnostic case plus its structured observations and initial analysis revision can be written atomically and read back without losing diagnostic meaning.
 
 This is a persistence-foundation task, not a durable HTTP workflow task. The existing `POST /api/v1/diagnoses` endpoint must remain stateless and behaviorally unchanged. The next task will expose durable create/retrieve behavior only after this schema, migration, configuration, and repository contract is accepted.
 
@@ -210,10 +210,10 @@ Do not commit `.env`; commit only `.env.example` or equivalent documentation.
 - `database/schema.sql` only to add a short notice that Alembic migrations are authoritative; do not maintain a duplicate hand-written schema here
 - `.env.example`
 - `compose.yaml`
-- `.agents/handoff/reviews/DLK-M3-005-review.md` — include the accepted planner review unchanged if it is still an uncommitted handoff artifact
+- `.agents/handoff/reviews/DLK-M3-005-review.md` - include the accepted planner review unchanged if it is still an uncommitted handoff artifact
 - `.agents/handoff/tasks/DLK-M3-006-postgresql-persistence-foundation.md`
 - `.agents/handoff/QUEUE.md`
-- `.agents/handoff/NEXT-STEPS.md` — status wording for DLK-M3-006 only; do not release later tasks
+- `.agents/handoff/NEXT-STEPS.md` - status wording for DLK-M3-006 only; do not release later tasks
 
 If the live repository uses an already-established equivalent location for Compose/environment configuration, stop and ask the planner before moving the contract to materially different paths.
 
@@ -329,7 +329,7 @@ Proposed commit message: `feat(db): establish postgresql persistence foundation`
 
 ### Summary
 
-Established the PostgreSQL persistence foundation for DispenseLens/DispenseIQ:
+Established the PostgreSQL persistence foundation for DispenseLens/Dispense Lens:
 - Installed authorized persistence dependencies: `SQLAlchemy 2.0.52`, `Alembic 1.20.0`, and `psycopg 3.3.5` (binary);
 - Configured local PostgreSQL 16 development service in `compose.yaml` and safe configuration template in `.env.example`;
 - Implemented lazy database configuration in `app.core.config`, ensuring that importing the app or running stateless tests requires no active database and explicitly raises `ValueError` if SQLite or other unsupported database schemes are specified;

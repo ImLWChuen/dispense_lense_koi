@@ -1,5 +1,5 @@
 """
-DispenseIQ — LLM Prompt Manager
+Dispense Lens - LLM Prompt Manager
 
 Centralizes all system prompts, instruction schemas, and few-shot formatting
 for bounded LLM operations. Keeps prompts separate from Python business logic.

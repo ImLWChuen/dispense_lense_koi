@@ -1,6 +1,6 @@
-# DispenseLens Backend
+# Dispense Lens Backend
 
-Backend service for the DispenseLens competition prototype, built with FastAPI.
+Backend service for the Dispense Lens competition prototype, built with FastAPI.
 
 ## Setup and Installation (Windows PowerShell)
 
@@ -192,11 +192,11 @@ It **does not** perform or verify:
 ## Durable Case Endpoints
 
 - **Endpoints:**
-  - `POST /api/v1/cases` — Submits a diagnostic case, runs the deterministic engine, and atomically persists the case, observations, and initial revision-1 diagnosis to PostgreSQL, returning `201 Created`.
-  - `GET /api/v1/cases/{case_id}` — Retrieves the persisted state of a case and its immutable revision-1 diagnosis by case UUID without recalculating diagnosis.
-  - `POST /api/v1/cases/{case_id}/answers` — Submits a technician answer for an active case, executes Member 2's question-answer workflow, evaluates the next immutable analysis revision, and atomically persists the answer, derived observations, and revision N+1 snapshot to PostgreSQL.
-  - `POST /api/v1/cases/{case_id}/check-results` — Submits a technician troubleshooting check result, executes Member 2's check workflow, evaluates the next immutable analysis revision, and atomically persists the check-result history, derived observations, and revision N+1 snapshot to PostgreSQL.
-  - `POST /api/v1/cases/{case_id}/cause-confirmations` — Submits an explicit technician root-cause confirmation, executes Member 2's `confirm_cause()` diagnostic engine workflow, evaluates the next immutable analysis revision, and atomically persists the confirmation history and revision N+1 snapshot to PostgreSQL.
+  - `POST /api/v1/cases` - Submits a diagnostic case, runs the deterministic engine, and atomically persists the case, observations, and initial revision-1 diagnosis to PostgreSQL, returning `201 Created`.
+  - `GET /api/v1/cases/{case_id}` - Retrieves the persisted state of a case and its immutable revision-1 diagnosis by case UUID without recalculating diagnosis.
+  - `POST /api/v1/cases/{case_id}/answers` - Submits a technician answer for an active case, executes Member 2's question-answer workflow, evaluates the next immutable analysis revision, and atomically persists the answer, derived observations, and revision N+1 snapshot to PostgreSQL.
+  - `POST /api/v1/cases/{case_id}/check-results` - Submits a technician troubleshooting check result, executes Member 2's check workflow, evaluates the next immutable analysis revision, and atomically persists the check-result history, derived observations, and revision N+1 snapshot to PostgreSQL.
+  - `POST /api/v1/cases/{case_id}/cause-confirmations` - Submits an explicit technician root-cause confirmation, executes Member 2's `confirm_cause()` diagnostic engine workflow, evaluates the next immutable analysis revision, and atomically persists the confirmation history and revision N+1 snapshot to PostgreSQL.
 - **Contract & Scope:**
   - Requires active PostgreSQL database connection.
   - Uses `CaseRepository` to guarantee atomic writes and consistent reads.

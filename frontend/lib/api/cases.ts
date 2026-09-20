@@ -71,5 +71,35 @@ export const casesApi = {
             expected_revision: expectedRevision,
             performed_by: performedBy,
         });
+    },
+
+    async getSimilarCases(caseId: string, limit: number = 5, minScore: number = 0.20): Promise<SimilarCasesResponse> {
+        return apiClient.get<SimilarCasesResponse>(`/cases/${caseId}/similar?limit=${limit}&min_score=${minScore}`);
     }
 };
+
+export interface SimilarCaseItem {
+    case_id: string;
+    short_id: string;
+    defect_code?: string;
+    defect_name?: string;
+    description: string;
+    material?: string;
+    method?: string;
+    line_id?: string;
+    issue_condition: string;
+    is_resolved: boolean;
+    similarity_score: number;
+    similarity_percentage: number;
+    matching_factors: string[];
+    confirmed_causes: string[];
+    resolution_summary?: string;
+    created_at: string;
+    resolved_at?: string;
+}
+
+export interface SimilarCasesResponse {
+    target_case_id: string;
+    count: number;
+    similar_cases: SimilarCaseItem[];
+}

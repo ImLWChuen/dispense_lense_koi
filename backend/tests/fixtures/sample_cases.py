@@ -1,5 +1,5 @@
 """
-DispenseIQ — Sample Cases Test Fixtures (Section 23)
+Dispense Lens - Sample Cases Test Fixtures (Section 23)
 
 Provides standardized sample cases covering all six dispensing defects,
 various process contexts, observations, and technician inputs.

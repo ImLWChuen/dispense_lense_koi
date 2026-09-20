@@ -1,5 +1,5 @@
 """
-DispenseIQ — Diagnostic Intelligence Data Contracts
+Dispense Lens - Diagnostic Intelligence Data Contracts
 
 All typed Pydantic models used by the diagnosis engine.
 These are internal engine contracts, not database ORM models.

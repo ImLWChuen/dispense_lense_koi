@@ -1,5 +1,5 @@
 """
-DispenseIQ — Phases 9–11 Verification Test
+Dispense Lens - Phases 9–11 Verification Test
 
 Verifies:
   1. Phase 9: Check Result Handling
@@ -63,7 +63,7 @@ def separator(title: str) -> None:
 
 
 # ===================================================================
-# Test 1: Phase 9 — Check Result Handling: All Statuses & Findings
+# Test 1: Phase 9 - Check Result Handling: All Statuses & Findings
 # ===================================================================
 
 def test_phase_9_statuses_and_findings() -> None:
@@ -110,7 +110,7 @@ def test_phase_9_statuses_and_findings() -> None:
 
 
 # ===================================================================
-# Test 2: Phase 9 — Blocked Checks MUST Remain UNKNOWN
+# Test 2: Phase 9 - Blocked Checks MUST Remain UNKNOWN
 # ===================================================================
 
 def test_phase_9_blocked_checks_remain_unknown() -> None:
@@ -173,13 +173,13 @@ def test_phase_9_blocked_checks_remain_unknown() -> None:
         assert res_after_blocked.next_check.check_id != "ACT01", (
             "ActionPlanner should not re-select blocked check ACT01"
         )
-        print(f"Next recommended check after blocked ACT01: {res_after_blocked.next_check.check_id} — {res_after_blocked.next_check.name}")
+        print(f"Next recommended check after blocked ACT01: {res_after_blocked.next_check.check_id} - {res_after_blocked.next_check.name}")
 
     print("\n✓ Phase 9 blocked checks rule passed")
 
 
 # ===================================================================
-# Test 3: Phase 9 — Completed Check Finding Affects Evidence
+# Test 3: Phase 9 - Completed Check Finding Affects Evidence
 # ===================================================================
 
 def test_phase_9_completed_check_finding() -> None:
@@ -236,7 +236,7 @@ def test_phase_9_completed_check_finding() -> None:
 
 
 # ===================================================================
-# Test 4: Phase 10 — Re-ranking After New Evidence & Revision History
+# Test 4: Phase 10 - Re-ranking After New Evidence & Revision History
 # ===================================================================
 
 def test_phase_10_reranking_and_revisions() -> None:
@@ -302,7 +302,7 @@ def test_phase_10_reranking_and_revisions() -> None:
 
 
 # ===================================================================
-# Test 5: Phase 10 — Multi-step Investigation
+# Test 5: Phase 10 - Multi-step Investigation
 # ===================================================================
 
 def test_phase_10_multistep_investigation() -> None:
@@ -368,7 +368,7 @@ def test_phase_10_multistep_investigation() -> None:
 
 
 # ===================================================================
-# Test 6: Phase 11 — State Management: 4 Separate Dimensions
+# Test 6: Phase 11 - State Management: 4 Separate Dimensions
 # ===================================================================
 
 def test_phase_11_four_state_dimensions() -> None:
@@ -444,7 +444,7 @@ def test_phase_11_four_state_dimensions() -> None:
 
 
 # ===================================================================
-# Test 7: Phase 11 — Issue Condition State Machine & Verification
+# Test 7: Phase 11 - Issue Condition State Machine & Verification
 # ===================================================================
 
 def test_phase_11_issue_lifecycle_and_verification() -> None:
@@ -457,7 +457,7 @@ def test_phase_11_issue_lifecycle_and_verification() -> None:
         verification_details="Replaced clogged nozzle with 0.25mm ceramic tip.",
     )
     assert cond1 == IssueCondition.RECOVERY_PENDING_VERIFICATION
-    print(f"Step 1: {cond1.value} — {msg1}")
+    print(f"Step 1: {cond1.value} - {msg1}")
 
     # 2. Illegal transition: Trying to jump to RESOLVED without verification
     try:
@@ -478,7 +478,7 @@ def test_phase_11_issue_lifecycle_and_verification() -> None:
         verification_details="20 test shots performed; CV = 2.1%, all dot diameters within nominal spec.",
     )
     assert cond3 == IssueCondition.RESOLVED
-    print(f"Step 3: {cond3.value} — {msg3}")
+    print(f"Step 3: {cond3.value} - {msg3}")
 
     # 4. Legal transition: RESOLVED -> RECURRED
     cond4, msg4 = StateManager.transition_issue_condition(
@@ -487,7 +487,7 @@ def test_phase_11_issue_lifecycle_and_verification() -> None:
         verification_details="Defect re-appeared after 4 hours on shift 2.",
     )
     assert cond4 == IssueCondition.RECURRED
-    print(f"Step 4: {cond4.value} — {msg4}")
+    print(f"Step 4: {cond4.value} - {msg4}")
 
     # 5. Illegal transition: Direct UNRESOLVED -> RESOLVED
     try:

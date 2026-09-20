@@ -1,5 +1,5 @@
 """
-DispenseIQ — Question Answer Handler (Member 2 Contract)
+Dispense Lens - Question Answer Handler (Member 2 Contract)
 
 Interprets technician answers to diagnostic questions into structured observations.
 Adheres strictly to the Member 2 Contract Readiness specification (DLK-M3-012):

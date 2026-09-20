@@ -41,7 +41,7 @@ The accepted JSON report already guarantees:
 
 The PDF export must reuse those guarantees rather than reimplementing them.
 
-## Phase A — carry forward nonblocking DLK-M3-022 documentation corrections
+## Phase A - carry forward nonblocking DLK-M3-022 documentation corrections
 
 Before PDF work, correct only the remaining inaccurate names in the DLK-M3-022 implementation report:
 
@@ -112,7 +112,7 @@ Return `200 OK` with:
 
 Suggested filename pattern:
 
-`dispenseiq-case-<case_id>-r<current_revision>.pdf`
+`dispenselens-case-<case_id>-r<current_revision>.pdf`
 
 Use the actual accepted product/project naming convention if one already exists; do not rename the application in unrelated code.
 
@@ -120,8 +120,8 @@ Use the actual accepted product/project naming convention if one already exists;
 
 Preserve:
 
-- `404 Not Found` — durable case missing
-- sanitized `500 Internal Server Error` — unexpected report/rendering failure
+- `404 Not Found` - durable case missing
+- sanitized `500 Internal Server Error` - unexpected report/rendering failure
 
 Do not expose raw renderer/internal exception details.
 
@@ -501,7 +501,7 @@ Do not push, merge, rebase, create/update a pull request, or modify `main`.
 ## Implementation report
 
 ### Summary
-Addressed all five review findings (R1–R5) from `.agents/handoff/reviews/DLK-M3-023-review.md` on commit `07abe45aaf56f52fc1bad918277bfb689b17b03b` for `DLK-M3-023 — Deterministic downloadable PDF case report`:
+Addressed all five review findings (R1–R5) from `.agents/handoff/reviews/DLK-M3-023-review.md` on commit `07abe45aaf56f52fc1bad918277bfb689b17b03b` for `DLK-M3-023 - Deterministic downloadable PDF case report`:
 1. **R1: Removed live clock from visible PDF content:** Replaced live `datetime.now(timezone.utc)` in `backend/app/services/reporting/pdf_generator.py` with the deterministic persisted timestamp `Case Created: {_escape(report.created_at)}`. Added `test_render_case_report_pdf_logical_repeatability` unit test asserting identical extracted text/order across repeated renders of the same unchanged case.
 2. **R2: Rendered persisted diagnostic evidence and explanation:** Section 3 now renders `Diagnostic Explanation` (`diag.explanation` or "None recorded."), evaluated evidence per candidate cause (supporting, neutral, contradicting) with relation badge, strength, source, score, observation ID, and details, as well as `Recommended Next Question` (`diag.next_question`) and `Recommended Next Troubleshooting Check` (`diag.next_check`) (or neutral "None recorded.").
 3. **R3: Section-scoped multi-row history order and value verification:**
@@ -515,7 +515,7 @@ Addressed all five review findings (R1–R5) from `.agents/handoff/reviews/DLK-M
    - Negative verification: proved that reversing rows in any of the 4 history sections raises `AssertionError`.
    - Negative verification: proved that mismatched row values (e.g., altered answer value, finding, confirmer, or actor) raise `AssertionError`.
 4. **R4: Visual layout verification:** Generated representative PDFs for rich-history (2 pages), empty-history (1 page), long-text wrapping & HTML escaping (3 pages), and multi-page audit history (4 pages). Rendered all 10 pages to PNG images via Windows built-in `Windows.Data.Pdf.PdfDocument`. Verified page geometry (1224x1584 px), symmetrical margins (L=71px, R=71px, T=60px, B=69px), zero clipping, zero table overflow, clean word-wrapping, and running header/footer pagination (`Page X of Y`). Adjusted Section 7 table column widths (`[18, 108, 132, 28, 60, 88, 106]`) and font styles (`cell_small_bold`, `cell_trans`) so long identifiers (`RECOVERY_VERIFICATION`, `UNRESOLVED → RECOVERY_PENDING_VERIFICATION`, `Rev`) fit cleanly without hyphenless word-breaking.
-5. **R5: Removed unsupported confidentiality label:** Replaced `"Confidential — Generated from persisted diagnostic records"` with neutral provenance text `"Generated from persisted diagnostic records"`.
+5. **R5: Removed unsupported confidentiality label:** Replaced `"Confidential - Generated from persisted diagnostic records"` with neutral provenance text `"Generated from persisted diagnostic records"`.
 
 The PDF report continues to be rendered directly in memory from the accepted, immutable `CaseReportResponse` read model produced by `build_case_report` (DLK-M3-022). The endpoint creates zero database mutations, executes in a read-only transaction, performs zero diagnostic recalculations, reads no secondary unpinned data paths, and introduces no PDF persistence.
 
@@ -534,7 +534,7 @@ The PDF report continues to be rendered directly in memory from the accepted, im
 ### PDF route/rendering design
 - Route: `GET /api/v1/cases/{case_id}/report.pdf`
 - Status codes: `200 OK`, `404 Not Found`, `422 Unprocessable Entity` (invalid UUID), `500 Internal Server Error` (sanitized).
-- Flow: Validates case ID -> calls `build_case_report(case_id, repository)` -> calls `render_case_report_pdf(report)` -> returns `Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="dispenseiq-case-{case_id}-r{current_revision}.pdf"'})`.
+- Flow: Validates case ID -> calls `build_case_report(case_id, repository)` -> calls `render_case_report_pdf(report)` -> returns `Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="dispenselens-case-{case_id}-r{current_revision}.pdf"'})`.
 - Rendering layout:
   - Document header with title, case ID, revision, and persisted `Case Created` timestamp (zero live clocks).
   - Section 1: Case Identity & Process Context (case ID, revision, defect category, defect name, issue condition, material, method, problem description, machine context).
@@ -563,7 +563,7 @@ Inspection using image bounding box analysis confirmed:
 - **Logical repeatability**: `test_render_case_report_pdf_logical_repeatability` proves that rendering the same unchanged `CaseReportResponse` twice yields identical logical extracted text and section order.
 - **Zero-recalculation proof**: `test_pdf_report_no_recalculation_proof` patches `DiagnosticEngine.diagnose` to raise a `RuntimeError` and proves that `GET /report.pdf` succeeds with 200 without invoking diagnostic calculation.
 - **Read-only proof**: `test_pdf_report_read_only_state_proof` captures full database state before and after GET in fresh independent sessions, asserting 100% exact equality across cases, revisions, and histories.
-- **Concurrent-write consistency**: `test_pdf_report_consistency_under_concurrent_update` interleaves a recurrence commit (rev 7 `RECURRED`) via independent session while PDF assembly is in flight. Asserts returned PDF is named `dispenseiq-case-{case_id}-r6.pdf` and describes rev 6 (`RESOLVED`) consistently, excludes rev 7 recurrence event, and proves PDF generation wrote nothing.
+- **Concurrent-write consistency**: `test_pdf_report_consistency_under_concurrent_update` interleaves a recurrence commit (rev 7 `RECURRED`) via independent session while PDF assembly is in flight. Asserts returned PDF is named `dispenselens-case-{case_id}-r6.pdf` and describes rev 6 (`RESOLVED`) consistently, excludes rev 7 recurrence event, and proves PDF generation wrote nothing.
 - **Sanitized-500 nonmutation proof**: `test_pdf_report_sanitized_500_on_internal_error` simulates an internal rendering error with a sensitive marker; proves status 500, detail is sanitized, sensitive token is absent, and database state before/after is strictly identical.
 
 ### Verification results

@@ -36,7 +36,7 @@ class SkillPackageTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(path.is_file())
 
-    def test_dispenseiq_installation_has_required_handoff_files(self) -> None:
+    def test_dispenselens_installation_has_required_handoff_files(self) -> None:
         expected_paths = [
             REPOSITORY_ROOT / ".agents" / "handoff" / "PROJECT.md",
             REPOSITORY_ROOT / ".agents" / "handoff" / "QUEUE.md",
@@ -47,7 +47,7 @@ class SkillPackageTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(path.is_file())
 
-    def test_dispenseiq_policy_names_feature_branch_and_blocks_remote_actions(self) -> None:
+    def test_dispenselens_policy_names_feature_branch_and_blocks_remote_actions(self) -> None:
         project_config = (
             REPOSITORY_ROOT / ".agents" / "handoff" / "PROJECT.md"
         ).read_text(encoding="utf-8")

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Diagnostic Question Engine
+Dispense Lens - Diagnostic Question Engine
 
 Selects the next most useful diagnostic question to distinguish
 competing hypotheses. Does NOT simply generate five generic questions.
@@ -70,9 +70,9 @@ class QuestionEngine:
     The engine ranks questions by their ability to distinguish
     between the current competing causes. It considers:
 
-    1. Cause coverage — how many top-ranked causes does the question address?
-    2. Uncertainty reduction — does the question fill a gap in missing evidence?
-    3. Already-answered penalty — avoid re-asking the same question.
+    1. Cause coverage - how many top-ranked causes does the question address?
+    2. Uncertainty reduction - does the question fill a gap in missing evidence?
+    3. Already-answered penalty - avoid re-asking the same question.
 
     Stopping conditions:
     - A cause already has high confidence (≥ threshold)

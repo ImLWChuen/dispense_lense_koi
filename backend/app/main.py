@@ -12,7 +12,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.project_name,
         version=settings.project_version,
-        description="DispenseLens competition prototype backend service.",
+        description="Dispense Lens competition prototype backend service.",
     )
 
     # Enable CORS for frontend integration (e.g. Next.js on port 3000)

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Segmentation Service
+Dispense Lens - Vision Segmentation Service
 
 Performs localized, ROI-bounded segmentation of dispensing deposits.
 Enforces candidate selection using target overlap/proximity and rejects

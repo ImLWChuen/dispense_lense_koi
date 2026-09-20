@@ -32,6 +32,8 @@ from app.schemas.analytics import (
     ResolutionDistributionItem,
 )
 from app.schemas.diagnosis import IssueCondition
+from app.schemas.spc import SpcAnalysisResponse
+from app.services.spc.spc_service import generate_spc_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +105,10 @@ async def sse_events(request: Request) -> StreamingResponse:
 
 def time_ago(dt: datetime) -> str:
     now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     diff = now - dt
-    minutes = int(diff.total_seconds() / 60)
+    minutes = max(0, int(diff.total_seconds() / 60))
     if minutes < 60:
         return f"{minutes} min ago"
     hours = minutes // 60
@@ -515,3 +519,18 @@ def get_performance_analytics(
         period=period,
         last_updated=now.strftime("%Y-%m-%d %H:%M:%S UTC"),
     )
+
+
+@router.get(
+    "/spc",
+    response_model=SpcAnalysisResponse,
+    summary="Get Statistical Process Control (SPC) process capability metrics and charts",
+    description="Returns Cp, Cpk, Pp, Ppk, I-MR control chart data, frequency histogram, and Nelson out-of-control rules.",
+)
+def get_spc_analytics(
+    parameter: str = Query("dot_diameter", enum=["dot_diameter", "dispense_weight", "line_width", "fluid_pressure"]),
+    line_id: str = Query("all", enum=["all", "line-a", "line-b", "line-c", "line-d"]),
+    sample_size: int = Query(50, ge=20, le=200),
+) -> SpcAnalysisResponse:
+    """Retrieve statistical process control metrics, capability indices, and control charts."""
+    return generate_spc_analysis(parameter=parameter, line_id=line_id, sample_size=sample_size)

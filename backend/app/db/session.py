@@ -1,5 +1,5 @@
 """
-DispenseIQ — Database Session Management
+Dispense Lens - Database Session Management
 
 Provides transactional session scopes and session factory utilities.
 """

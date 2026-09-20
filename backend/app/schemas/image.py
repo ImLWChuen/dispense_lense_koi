@@ -1,5 +1,5 @@
 """
-DispenseIQ — Image Analysis Schemas and Contracts
+Dispense Lens - Image Analysis Schemas and Contracts
 
 Defines the typed data contracts for calibrated, resolution-independent
 computer-vision operations, normalized ROIs, process/reference limits,

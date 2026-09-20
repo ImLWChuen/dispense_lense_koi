@@ -480,7 +480,7 @@ def test_render_case_report_pdf_valid_bytes_and_structure():
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
 
     # Assert major title and headers
-    assert "DispenseIQ Diagnostic Case Report" in extracted_text
+    assert "Dispense Lens Diagnostic Case Report" in extracted_text
     assert report.case_id in extracted_text
     assert f"Report Revision: {report.current_revision}" in extracted_text or f"Revision {report.current_revision}" in extracted_text
     assert "1. Case Identity & Process Context" in extracted_text
@@ -579,7 +579,7 @@ def test_render_case_report_pdf_empty_history():
     assert len(reader.pages) >= 1
 
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    assert "DispenseIQ Diagnostic Case Report" in extracted_text
+    assert "Dispense Lens Diagnostic Case Report" in extracted_text
     assert "UNRESOLVED" in extracted_text
     # Should display neutral notices for empty tables
     assert "None recorded." in extracted_text
@@ -646,7 +646,7 @@ def test_render_case_report_pdf_multi_page_and_page_numbering():
     # Check that each page has the expected header and footer text
     page1_text = reader.pages[0].extract_text()
     assert f"Page 1 of {total_pages}" in page1_text
-    assert "DispenseIQ Diagnostic Automation System" in page1_text
+    assert "Dispense Lens Diagnostic Automation System" in page1_text
 
     last_page_text = reader.pages[-1].extract_text()
     assert f"Page {total_pages} of {total_pages}" in last_page_text

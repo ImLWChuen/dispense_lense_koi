@@ -1,8 +1,8 @@
-# DispenseIQ — Database Entity-Relationship Specification
+# Dispense Lens - Database Entity-Relationship Specification
 
 ## Overview
 
-DispenseIQ uses PostgreSQL with SQLAlchemy 2.x and Alembic migrations for relational persistence.
+Dispense Lens uses PostgreSQL with SQLAlchemy 2.x and Alembic migrations for relational persistence.
 Schema evolution is strictly governed by Alembic (`backend/alembic/versions/`).
 
 The persistence foundation establishes relational storage for:
@@ -296,7 +296,7 @@ Revisions are strictly append-only:
 - Attempting to overwrite an existing revision raises an integrity violation.
 
 ### 3. Separation of Cause Confirmation and Issue Recovery
-In accordance with DispenseIQ diagnostic principles:
+In accordance with Dispense Lens diagnostic principles:
 - Completing troubleshooting checks does NOT automatically confirm a root cause.
 - Confirming a root cause does NOT automatically mean the dispensing defect is resolved.
 - Resolving an issue requires independent recovery verification.
@@ -328,7 +328,7 @@ Technician root-cause confirmations are stored in `case_cause_confirmations` to 
 
 ### 7. Lifecycle Transition History and Independent Verification Rationale
 Technician recovery actions and post-correction verifications are stored in `case_lifecycle_events` to provide an immutable, append-only audit log of issue lifecycle transitions:
-- In accordance with DispenseIQ diagnostic principles:
+- In accordance with Dispense Lens diagnostic principles:
   - Applying a recovery action transitions the case to `RECOVERY_PENDING_VERIFICATION` through `StateManager.transition_issue_condition(...)` and does **not** directly resolve the issue.
   - Resolving an issue requires an explicit verification step (`verification_passed = True`) moving the case from `RECOVERY_PENDING_VERIFICATION` to `RESOLVED`.
   - If verification fails (`verification_passed = False`), the issue transitions back to `UNRESOLVED`, preserving prior investigation and confirmation history.

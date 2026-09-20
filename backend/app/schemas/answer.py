@@ -1,4 +1,4 @@
-"""DispenseIQ — Question Answer Schemas."""
+"""Dispense Lens - Question Answer Schemas."""
 
 from __future__ import annotations
 

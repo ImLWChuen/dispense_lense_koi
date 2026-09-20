@@ -1,5 +1,5 @@
 """
-DispenseIQ — Database Engine and Metadata
+Dispense Lens - Database Engine and Metadata
 
 Declares the SQLAlchemy Declarative Base and lazy engine initialization.
 """
@@ -15,7 +15,7 @@ from app.core.config import get_database_url
 
 
 class Base(DeclarativeBase):
-    """Base declarative class for DispenseIQ ORM entities."""
+    """Base declarative class for Dispense Lens ORM entities."""
     pass
 
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dispense-lens-backend"
 version = "0.1.0"
-description = "DispenseLens competition prototype backend service"
+description = "Dispense Lens competition prototype backend service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

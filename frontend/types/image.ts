@@ -1,5 +1,5 @@
 /**
- * DispenseLens — Calibrated Image Frontend Contracts
+ * Dispense Lens - Calibrated Image Frontend Contracts
  *
  * Types for multipart image analysis, normalized rectangular ROIs,
  * process/reference calibration limits, and upload lifecycle snapshots.

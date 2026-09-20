@@ -1,5 +1,5 @@
 """
-DispenseIQ — Durable Case API Integration Tests
+Dispense Lens - Durable Case API Integration Tests
 
 Tests persistent case creation (POST /api/v1/cases) and retrieval (GET /api/v1/cases/{case_id})
 against real PostgreSQL. Verifies atomicity, provenance preservation, absence of recalculation

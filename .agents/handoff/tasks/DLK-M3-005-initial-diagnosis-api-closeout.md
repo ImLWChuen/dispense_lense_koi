@@ -66,8 +66,8 @@ This task does not authorize narrowing the reused `Observation` transport model,
 
 - `backend/tests/integration/test_diagnosis_api.py`
 - `docs/api/api-spec.md`
-- `.agents/handoff/reviews/DLK-M3-004-review.md` — stage the planner record unchanged
-- `.agents/handoff/tasks/DLK-M3-004-initial-diagnosis-api.md` — factual implementation-report correction/addendum only
+- `.agents/handoff/reviews/DLK-M3-004-review.md` - stage the planner record unchanged
+- `.agents/handoff/tasks/DLK-M3-004-initial-diagnosis-api.md` - factual implementation-report correction/addendum only
 - `.agents/handoff/tasks/DLK-M3-005-initial-diagnosis-api-closeout.md`
 - `.agents/handoff/QUEUE.md`
 

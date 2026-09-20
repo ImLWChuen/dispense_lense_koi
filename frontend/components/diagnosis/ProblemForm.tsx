@@ -9,6 +9,7 @@ import {
     CircleOff,
     Waves,
     Wind,
+    Check,
 } from "lucide-react";
 
 export interface ProblemFormData {
@@ -24,39 +25,98 @@ export interface ProblemFormData {
 const defectTypes = [
     {
         code: "D01_TOO_LITTLE",
+        shortCode: "D01",
+        tag: "Undersized",
         name: "Too Little Material",
-        description: "Undersized deposits, less than target amount",
-        icon: Droplets,
+        description: "Dispensed volume is consistently less than target amount (< 80% nominal).",
+        accent: "text-[#6d5dfc]",
+        badgeBg: "bg-indigo-50 text-[#5848e8] border-indigo-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-[#6d5dfc]" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="14" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="3 3" />
+                <circle cx="20" cy="20" r="6" fill="currentColor" opacity="0.9" />
+            </svg>
+        ),
     },
     {
         code: "D02_TOO_MUCH",
+        shortCode: "D02",
+        tag: "Oversized",
         name: "Too Much Material",
-        description: "Oversized deposits, more than target amount",
-        icon: Waves,
+        description: "Dispensed volume is consistently more than target amount (> 120% nominal).",
+        accent: "text-blue-600",
+        badgeBg: "bg-blue-50 text-blue-700 border-blue-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-blue-600" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="10" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="3 3" />
+                <circle cx="20" cy="20" r="16" fill="currentColor" opacity="0.65" />
+                <circle cx="20" cy="20" r="10" fill="currentColor" opacity="0.9" />
+            </svg>
+        ),
     },
     {
         code: "D03_INCONSISTENT_SIZE",
+        shortCode: "D03",
+        tag: "Shot Variance",
         name: "Inconsistent Size",
-        description: "Deposit volume varies from shot to shot",
-        icon: Scaling,
+        description: "Dispensed volume varies significantly from shot to shot on same substrate.",
+        accent: "text-amber-600",
+        badgeBg: "bg-amber-50 text-amber-700 border-amber-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-amber-600" viewBox="0 0 40 40" fill="none">
+                <circle cx="8" cy="20" r="4" fill="currentColor" opacity="0.85" />
+                <circle cx="20" cy="20" r="11" fill="currentColor" opacity="0.85" />
+                <circle cx="33" cy="20" r="7" fill="currentColor" opacity="0.85" />
+            </svg>
+        ),
     },
     {
         code: "D04_MISSING_DOTS",
+        shortCode: "D04",
+        tag: "Empty Target",
         name: "Missing Dots",
-        description: "One or more locations receive no material",
-        icon: CircleOff,
+        description: "One or more designated dispensing positions receive zero fluid delivery.",
+        accent: "text-rose-600",
+        badgeBg: "bg-rose-50 text-rose-700 border-rose-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-rose-600" viewBox="0 0 40 40" fill="none">
+                <circle cx="8" cy="20" r="6" fill="currentColor" opacity="0.85" />
+                <circle cx="20" cy="20" r="7" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="2 2" />
+                <path d="M17 17L23 23M23 17L17 23" stroke="#f43f5e" strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="32" cy="20" r="6" fill="currentColor" opacity="0.85" />
+            </svg>
+        ),
     },
     {
         code: "D05_SPREADING",
+        shortCode: "D05",
+        tag: "Halo Bleed",
         name: "Spreading",
-        description: "Material spreads excessively on substrate",
-        icon: CircleDot,
+        description: "Material wets out uncontrollably past target diameter into active lens area.",
+        accent: "text-teal-600",
+        badgeBg: "bg-teal-50 text-teal-700 border-teal-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-teal-600" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="16" fill="currentColor" opacity="0.15" />
+                <circle cx="20" cy="20" r="11" fill="currentColor" opacity="0.35" />
+                <circle cx="20" cy="20" r="6" fill="currentColor" opacity="0.9" />
+            </svg>
+        ),
     },
     {
         code: "D06_BUBBLES_ABNORMAL_SHAPE",
+        shortCode: "D06",
+        tag: "Void Bubble",
         name: "Bubbles / Abnormal Shape",
-        description: "Trapped air bubbles or irregular deposit shapes",
-        icon: Wind,
+        description: "Deposits contain trapped air voids, stringing tails, or irregular geometry.",
+        accent: "text-purple-600",
+        badgeBg: "bg-purple-50 text-purple-700 border-purple-200",
+        renderVisual: () => (
+            <svg className="h-10 w-10 text-purple-600" viewBox="0 0 40 40" fill="none">
+                <path d="M12 23 C10 15, 16 10, 25 11 C31 12, 34 19, 31 25 C27 30, 15 30, 12 23 Z" fill="currentColor" opacity="0.8" />
+                <circle cx="19" cy="18" r="4.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+        ),
     },
 ];
 
@@ -176,58 +236,87 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Defect Type */}
+            {/* Visual Defect Taxonomy Picker */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="text-base font-semibold text-gray-900">
-                    Observed Defect Type
-                </h2>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <h2 className="text-base font-semibold text-gray-900">
+                            Observed Defect Taxonomy
+                        </h2>
+                        <p className="mt-1 text-xs text-gray-500">
+                            Select the optical defect pattern matching your dispensing inspection
+                        </p>
+                    </div>
 
-                <p className="mt-1 text-xs text-gray-500">
-                    Select the primary defect category that best matches the symptom
-                </p>
+                    {selectedDefect && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedDefect(null)}
+                            className="text-xs font-semibold text-[#6d5dfc] hover:underline self-start sm:self-auto"
+                        >
+                            Clear selection
+                        </button>
+                    )}
+                </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
                     {defectTypes.map((defect) => {
-                        const Icon = defect.icon;
                         const isSelected = selectedDefect === defect.code;
 
                         return (
-                            <button
+                            <div
                                 key={defect.code}
-                                type="button"
                                 onClick={() => setSelectedDefect(defect.code)}
-                                className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+                                className={`group relative flex flex-col justify-between rounded-2xl border p-4 text-left cursor-pointer transition-all duration-150 ${
                                     isSelected
-                                        ? "border-[#6d5dfc] bg-[#eeebff] ring-1 ring-[#6d5dfc]"
-                                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                        ? "border-[#6d5dfc] bg-[#eeebff]/30 shadow-md ring-2 ring-[#6d5dfc]/25"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-xs hover:bg-gray-50/60"
                                 }`}
                             >
-                                <div
-                                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                                        isSelected
-                                            ? "bg-[#6d5dfc] text-white"
-                                            : "bg-gray-100 text-gray-500"
-                                    }`}
-                                >
-                                    <Icon size={18} />
-                                </div>
-
                                 <div>
-                                    <p
-                                        className={`text-sm font-semibold ${
-                                            isSelected
-                                                ? "text-[#5848e8]"
-                                                : "text-gray-900"
+                                    {/* Card Header: Code Badge & Selected Indicator */}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span
+                                                className={`rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold ${defect.badgeBg}`}
+                                            >
+                                                {defect.shortCode}
+                                            </span>
+                                            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                                                {defect.tag}
+                                            </span>
+                                        </div>
+
+                                        <div
+                                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
+                                                isSelected
+                                                    ? "border-[#6d5dfc] bg-[#6d5dfc] text-white"
+                                                    : "border-gray-200 bg-white text-transparent group-hover:border-gray-300"
+                                            }`}
+                                        >
+                                            <Check size={11} strokeWidth={3} />
+                                        </div>
+                                    </div>
+
+                                    {/* Visual Micro-Illustration */}
+                                    <div className="my-3 flex items-center justify-center rounded-xl bg-gray-50/80 py-2.5 border border-gray-100 group-hover:bg-gray-100/50 transition">
+                                        {defect.renderVisual()}
+                                    </div>
+
+                                    {/* Defect Title & Description */}
+                                    <h3
+                                        className={`text-sm font-bold tracking-tight transition ${
+                                            isSelected ? "text-[#5848e8]" : "text-gray-900 group-hover:text-gray-900"
                                         }`}
                                     >
                                         {defect.name}
-                                    </p>
+                                    </h3>
 
-                                    <p className="mt-0.5 text-xs text-gray-500">
+                                    <p className="mt-1 text-xs text-gray-500 leading-relaxed">
                                         {defect.description}
                                     </p>
                                 </div>
-                            </button>
+                            </div>
                         );
                     })}
                 </div>

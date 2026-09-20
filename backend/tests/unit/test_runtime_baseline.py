@@ -1,5 +1,5 @@
 """
-DispenseIQ — Runtime Baseline & Offline Safety Unit Tests (DLK-M3-025)
+Dispense Lens - Runtime Baseline & Offline Safety Unit Tests (DLK-M3-025)
 
 Verifies:
 1. Deterministic offline diagnosis operation with no OpenAI API key configured.

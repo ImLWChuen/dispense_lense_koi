@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
     ArrowLeft,
     CheckCircle2,
@@ -14,17 +15,17 @@ import {
     Sparkles,
     Loader2,
     ShieldAlert,
+    ShieldCheck,
     Cpu,
     Check,
     HelpCircle,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
-import { reportsApi, CaseReportResponse } from "@/lib/api/reports";
+import { reportsApi, CaseReportResponse, EightDReportResponse } from "@/lib/api/reports";
+import EightDReportView from "@/components/reports/EightDReportView";
 
-export default function ReportDetailPage({
+function ReportDetailContent({
     params,
 }: {
     params: Promise<{ id: string }>;
@@ -32,6 +33,13 @@ export default function ReportDetailPage({
     const resolvedParams = use(params);
     const { id } = resolvedParams;
 
+    const searchParams = useSearchParams();
+    const initialFormat = searchParams.get("format") === "8d" ? "8d" : "standard";
+
+    // View format: Standard vs 8D
+    const [reportFormat, setReportFormat] = useState<"standard" | "8d">(initialFormat);
+
+    // Standard Report State
     const [report, setReport] = useState<CaseReportResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -39,6 +47,11 @@ export default function ReportDetailPage({
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [aiSource, setAiSource] = useState<"llm" | "deterministic" | null>(null);
+
+    // 8D Report State
+    const [eightDReport, setEightDReport] = useState<EightDReportResponse | null>(null);
+    const [isLoading8D, setIsLoading8D] = useState(false);
+    const [isDownloading8D, setIsDownloading8D] = useState(false);
 
     useEffect(() => {
         const fetchReportData = async () => {
@@ -48,7 +61,6 @@ export default function ReportDetailPage({
                 const data = await reportsApi.getCaseReport(id);
                 setReport(data);
 
-                // Auto-generate or load initial AI summary if available in current diagnosis explanation
                 if (data.current_diagnosis?.explanation) {
                     setAiSummary(data.current_diagnosis.explanation);
                     setAiSource("deterministic");
@@ -66,15 +78,43 @@ export default function ReportDetailPage({
         }
     }, [id]);
 
+    const fetch8DData = async () => {
+        try {
+            setIsLoading8D(true);
+            const data = await reportsApi.get8DReport(id);
+            setEightDReport(data);
+        } catch (err: any) {
+            console.warn("Failed to load 8D report:", err);
+        } finally {
+            setIsLoading8D(false);
+        }
+    };
+
+    useEffect(() => {
+        if (reportFormat === "8d" && !eightDReport) {
+            fetch8DData();
+        }
+    }, [reportFormat, id]);
+
     const handleDownloadPdf = () => {
         setIsDownloadingPdf(true);
         try {
             const filename = report
-                ? `dispenseiq-case-${report.case_id}-r${report.current_revision}.pdf`
+                ? `dispenselens-case-${report.case_id}-r${report.current_revision}.pdf`
                 : `case-${id}-report.pdf`;
             reportsApi.downloadPdf(id, filename);
         } finally {
             setTimeout(() => setIsDownloadingPdf(false), 1500);
+        }
+    };
+
+    const handleDownload8DPdf = () => {
+        setIsDownloading8D(true);
+        try {
+            const filename = `dispenselens-8d-${id}-r${report?.current_revision || 1}.pdf`;
+            reportsApi.download8DPdf(id, filename);
+        } finally {
+            setTimeout(() => setIsDownloading8D(false), 1500);
         }
     };
 
@@ -105,24 +145,65 @@ export default function ReportDetailPage({
     const confirmedCauses = report?.outcome_summary?.confirmed_causes || [];
 
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-            <Sidebar />
+        <PageContainer>
+            {/* Top Bar with Back Link and Format Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <Link
+                    href="/reports"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition"
+                >
+                    <ArrowLeft size={16} />
+                    Back to Reports
+                </Link>
 
-            <div className="ml-64">
-                <Header />
+                {/* Report Format Switcher */}
+                <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 shadow-sm">
+                    <button
+                        onClick={() => setReportFormat("standard")}
+                        className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                            reportFormat === "standard"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                        }`}
+                    >
+                        <FileText size={14} className={reportFormat === "standard" ? "text-[#6d5dfc]" : ""} />
+                        Diagnostic Report
+                    </button>
+                    <button
+                        onClick={() => setReportFormat("8d")}
+                        className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                            reportFormat === "8d"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                        }`}
+                    >
+                        <ShieldCheck size={14} className={reportFormat === "8d" ? "text-[#6d5dfc]" : ""} />
+                        8D Quality & CAPA Report (AIAG / VDA)
+                    </button>
+                </div>
+            </div>
 
-                <PageContainer>
-                    {/* Back Link */}
-                    <div className="mb-6">
-                        <Link
-                            href="/reports"
-                            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition"
-                        >
-                            <ArrowLeft size={16} />
-                            Back to Reports
-                        </Link>
+            {/* 8D Report View Mode */}
+            {reportFormat === "8d" ? (
+                isLoading8D ? (
+                    <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+                        <Loader2 size={32} className="animate-spin text-[#6d5dfc] mb-3" />
+                        <p className="text-sm font-medium">Assembling AIAG / VDA 8D Quality Compliance Report...</p>
                     </div>
-
+                ) : eightDReport ? (
+                    <EightDReportView
+                        report={eightDReport}
+                        onDownloadPdf={handleDownload8DPdf}
+                        isDownloadingPdf={isDownloading8D}
+                    />
+                ) : (
+                    <div className="text-center py-16 text-gray-500">
+                        Unable to load 8D report data.
+                    </div>
+                )
+            ) : (
+                /* Standard Diagnostic Report View Mode */
+                <>
                     {/* Report Header */}
                     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-8 pb-6 border-b border-gray-200">
                         <div>
@@ -226,210 +307,157 @@ export default function ReportDetailPage({
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
                                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6d5dfc] text-white">
-                                            <Sparkles size={16} />
+                                            <Sparkles size={18} />
                                         </div>
                                         <div>
                                             <h2 className="text-base font-bold text-gray-900">
-                                                AI Executive Summary
+                                                Executive Summary
                                             </h2>
                                             <p className="text-xs text-gray-500">
-                                                {aiSource === "llm"
-                                                    ? "Generated by Bounded LLM Service"
-                                                    : "Deterministic Diagnostic Synthesis"}
+                                                Synthesized case findings and operational impact
                                             </p>
                                         </div>
                                     </div>
 
                                     {aiSource && (
-                                        <span className="rounded-full bg-[#eeebff] px-2.5 py-0.5 text-[11px] font-semibold text-[#5848e8]">
-                                            {aiSource.toUpperCase()}
+                                        <span className="text-xs font-mono font-medium text-[#6d5dfc] bg-[#6d5dfc]/10 px-2 py-0.5 rounded-full">
+                                            {aiSource === "llm" ? "AI Generated" : "Deterministic Summary"}
                                         </span>
                                     )}
                                 </div>
 
-                                {isGeneratingAi ? (
-                                    <div className="flex flex-col items-center justify-center py-8 text-[#6d5dfc]">
-                                        <Loader2 size={24} className="animate-spin mb-2" />
-                                        <p className="text-xs font-medium">Synthesizing diagnostic case evidence...</p>
+                                <div className="text-sm leading-relaxed text-gray-700 bg-white/80 p-4 rounded-xl border border-gray-100 shadow-inner">
+                                    {aiSummary ? (
+                                        <p>{aiSummary}</p>
+                                    ) : (
+                                        <p className="text-gray-400 italic">
+                                            Click &quot;Generate AI Summary&quot; above to synthesize an automated executive briefing for this case.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Root Cause & Evidence Findings Card */}
+                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldAlert size={18} className="text-[#6d5dfc]" />
+                                        <h2 className="text-base font-bold text-gray-900">
+                                            Root Cause Analysis
+                                        </h2>
                                     </div>
-                                ) : aiSummary ? (
-                                    <div className="rounded-xl bg-white/80 p-4 border border-[#6d5dfc]/10 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
-                                        {aiSummary}
+
+                                    {topCause && (
+                                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                                            {Math.round(topCause.score * 100)}% Match
+                                        </span>
+                                    )}
+                                </div>
+
+                                {topCause ? (
+                                    <div className="space-y-4">
+                                        <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                                Leading Hypothesis
+                                            </span>
+                                            <h3 className="text-base font-bold text-gray-900 mt-1">
+                                                {topCause.cause_name}
+                                            </h3>
+                                            <p className="mt-1 text-xs sm:text-sm text-gray-600">
+                                                {report?.current_diagnosis?.explanation || "Confirmed via diagnostic checks."}
+                                            </p>
+                                        </div>
+
+                                        {/* Confirmed Causes List */}
+                                        {confirmedCauses.length > 0 && (
+                                            <div>
+                                                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                                                    Confirmed Causes
+                                                </h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {confirmedCauses.map((c, idx) => (
+                                                        <span
+                                                            key={idx}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200"
+                                                        >
+                                                            <Check size={13} />
+                                                            {c}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
-                                    <div className="rounded-xl bg-gray-50 p-6 text-center border border-dashed border-gray-200">
-                                        <p className="text-sm text-gray-600 mb-3">
-                                            No executive summary has been generated for this case yet.
-                                        </p>
-                                        <button
-                                            onClick={handleGenerateAiSummary}
-                                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#6d5dfc] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5848e8]"
-                                        >
-                                            <Sparkles size={13} />
-                                            Generate Now
-                                        </button>
+                                    <div className="text-center py-6 text-gray-400 text-sm">
+                                        No root cause determined yet.
                                     </div>
                                 )}
                             </div>
 
-                            {/* Problem Overview & Diagnostic Findings */}
+                            {/* Action History & Timeline */}
                             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <h2 className="text-base font-bold text-gray-900 mb-4">
-                                    Problem Description & Diagnostic Findings
-                                </h2>
-
-                                <div className="rounded-xl bg-gray-50 p-4 mb-5 border border-gray-100">
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
-                                        Technician Problem Description
-                                    </p>
-                                    <p className="text-sm text-gray-800 leading-relaxed">
-                                        {report?.description ||
-                                            "On Line A, dispensed dots showed severe inconsistency in size, worsening intermittently after continuous operation."}
-                                    </p>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Activity size={18} className="text-[#6d5dfc]" />
+                                    <h2 className="text-base font-bold text-gray-900">
+                                        Audit & Action History
+                                    </h2>
                                 </div>
 
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                    <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Defect Category
-                                        </p>
-                                        <p className="mt-1 text-sm font-bold text-gray-900">
-                                            {report?.defect_code || "D01"}
-                                        </p>
-                                        <p className="text-xs text-gray-500 truncate">
-                                            {report?.defect_name || "Dispensing Defect"}
-                                        </p>
-                                    </div>
-
-                                    <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Confirmed Cause
-                                        </p>
-                                        <p className="mt-1 text-sm font-bold text-emerald-700">
-                                            {confirmedCauses.length > 0
-                                                ? confirmedCauses.join(", ")
-                                                : "None confirmed"}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {confirmedCauses.length > 0 ? "Verified" : "Under review"}
-                                        </p>
-                                    </div>
-
-                                    <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Top Hypothesis
-                                        </p>
-                                        <p className="mt-1 text-sm font-bold text-[#6d5dfc] truncate">
-                                            {topCause?.cause_name || "Nozzle Restriction"}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            Score: {topCause ? `${topCause.score.toFixed(0)}/100` : "87/100"}
-                                        </p>
-                                    </div>
-
-                                    <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Analysis Revisions
-                                        </p>
-                                        <p className="mt-1 text-sm font-bold text-gray-900">
-                                            {report?.current_revision || 1}
-                                        </p>
-                                        <p className="text-xs text-gray-500">Snapshots evaluated</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Troubleshooting & Check History */}
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <h2 className="text-base font-bold text-gray-900 mb-4">
-                                    Troubleshooting & Verification History
-                                </h2>
-
-                                {report?.check_results && report.check_results.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {report.check_results.map((check, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 text-sm"
-                                            >
-                                                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                                                    <Check size={13} />
+                                {report?.lifecycle_events && report.lifecycle_events.length > 0 ? (
+                                    <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
+                                        {report.lifecycle_events.map((event, idx) => (
+                                            <div key={idx} className="relative">
+                                                <div className="absolute -left-[27px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#6d5dfc]" />
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="text-xs font-bold text-gray-800">
+                                                        {event.event_type.replace(/_/g, " ")}
+                                                    </span>
+                                                    <span className="text-[11px] font-mono text-gray-400">
+                                                        {event.created_at ? new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "10:00"}
+                                                    </span>
                                                 </div>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <p className="font-semibold text-gray-900">
-                                                            {check.check_id}
-                                                        </p>
-                                                        <span className="text-xs text-gray-400">
-                                                            Rev {check.resulting_revision_number}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-0.5 text-xs text-gray-600">
-                                                        Finding: <span className="font-medium text-gray-800">{check.finding}</span>
-                                                        {check.outcome && ` — ${check.outcome}`}
-                                                    </p>
-                                                </div>
+                                                <p className="mt-1 text-xs text-gray-600">
+                                                    {event.details || `State shifted to ${event.resulting_issue_condition}`}
+                                                </p>
+                                                {event.actor && (
+                                                    <span className="mt-1 inline-block text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                                                        By: {event.actor}
+                                                    </span>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
-                                        <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 text-sm">
-                                            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                                                <Check size={13} />
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-gray-900">
-                                                    Nozzle inspection & clean (CHK-01)
-                                                </p>
-                                                <p className="text-xs text-gray-600">
-                                                    Finding: Material buildup detected at nozzle tip; cleaned with approved solvent.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 text-sm">
-                                            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                                                <Activity size={13} />
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-gray-900">
-                                                    Flow rate verification
-                                                </p>
-                                                <p className="text-xs text-gray-600">
-                                                    Test shots completed within standard tolerance across 20 cycles.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <p className="text-xs text-gray-400 italic">No lifecycle events recorded.</p>
                                 )}
                             </div>
                         </div>
 
-                        {/* Right Column: Metadata & Preventative Actions */}
+                        {/* Right Column: Case Info & Metadata */}
                         <div className="space-y-6">
-                            {/* Report Details & Metadata */}
+                            {/* Case Parameters Card */}
                             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <h3 className="text-sm font-bold text-gray-900 mb-4">
-                                    Case Metadata
+                                <h3 className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                                    Process & Equipment Specs
                                 </h3>
 
-                                <dl className="space-y-3.5 text-sm">
+                                <dl className="space-y-3.5 text-xs">
                                     <div>
                                         <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            Case UUID
+                                            Defect Category
                                         </dt>
-                                        <dd className="mt-1 font-mono text-xs text-gray-700 break-all">
-                                            {report?.case_id || id}
+                                        <dd className="mt-0.5 font-semibold text-gray-800">
+                                            {report?.defect_code || "D01"} - {report?.defect_name || "Tailing"}
                                         </dd>
                                     </div>
 
                                     <div>
                                         <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            Material
+                                            Dispensing Material
                                         </dt>
-                                        <dd className="mt-1 text-sm font-medium text-gray-900">
-                                            {report?.material || "Adhesive Loctite 3525"}
+                                        <dd className="mt-0.5 font-medium text-gray-700">
+                                            {report?.material || "UV-Curable Optical Adhesive"}
                                         </dd>
                                     </div>
 
@@ -437,8 +465,8 @@ export default function ReportDetailPage({
                                         <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                                             Dispensing Method
                                         </dt>
-                                        <dd className="mt-1 text-sm font-medium text-gray-900">
-                                            {report?.method || "Time-Pressure Dispense"}
+                                        <dd className="mt-0.5 font-medium text-gray-700">
+                                            {report?.method || "Piezoelectric Jetting"}
                                         </dd>
                                     </div>
 
@@ -491,8 +519,26 @@ export default function ReportDetailPage({
                             </div>
                         </div>
                     </div>
-                </PageContainer>
-            </div>
-        </div>
+                </>
+            )}
+        </PageContainer>
+    );
+}
+
+export default function ReportDetailPage({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}) {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex min-h-[400px] items-center justify-center">
+                    <Loader2 size={32} className="animate-spin text-[#6d5dfc]" />
+                </div>
+            }
+        >
+            <ReportDetailContent params={params} />
+        </Suspense>
     );
 }

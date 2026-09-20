@@ -1,10 +1,10 @@
-# DLK-M3-012 — Member 2 Question-Answer Contract Readiness Verification
+# DLK-M3-012 - Member 2 Question-Answer Contract Readiness Verification
 
 ## Objective
 
 Verify whether the existing Member 2 implementation is ready for:
 
-**DLK-M3-012 — Submit technician answer and append new diagnosis revision API**
+**DLK-M3-012 - Submit technician answer and append new diagnosis revision API**
 
 Do **not** redesign or rewrite the diagnosis engine.
 
@@ -75,7 +75,7 @@ Potential issue:
 
 ---
 
-# 2. READINESS REQUIREMENT 1 — STABLE QUESTION DEFINITIONS
+# 2. READINESS REQUIREMENT 1 - STABLE QUESTION DEFINITIONS
 
 ## Goal
 
@@ -143,7 +143,7 @@ No contradictory option names or semantics remain.
 
 ---
 
-# 3. READINESS REQUIREMENT 2 — QUESTIONANSWERHANDLER ALIGNMENT
+# 3. READINESS REQUIREMENT 2 - QUESTIONANSWERHANDLER ALIGNMENT
 
 ## Goal
 
@@ -204,7 +204,7 @@ Every supported answer maps to the intended structured meaning, with no conflict
 
 ---
 
-# 4. READINESS REQUIREMENT 3 — ANSWER → OBSERVATION SEMANTICS
+# 4. READINESS REQUIREMENT 3 - ANSWER → OBSERVATION SEMANTICS
 
 ## Goal
 
@@ -299,7 +299,7 @@ Each test proves the intended answer-to-observation contract.
 
 ---
 
-# 5. READINESS REQUIREMENT 4 — DETERMINISTIC DIAGNOSIS RERUN
+# 5. READINESS REQUIREMENT 4 - DETERMINISTIC DIAGNOSIS RERUN
 
 ## Goal
 
@@ -373,13 +373,13 @@ Do not implement Phase 12 merely to satisfy this test.
 
 ---
 
-# 6. READINESS REQUIREMENT 5 — DUPLICATE EVIDENCE PROTECTION
+# 6. READINESS REQUIREMENT 5 - DUPLICATE EVIDENCE PROTECTION
 
 ## Goal
 
 Verify that submitting the same answer repeatedly does not create repeated diagnostic evidence or artificially increase cause support.
 
-### Test A — Same answer submitted twice
+### Test A - Same answer submitted twice
 
 ```text
 Initial case
@@ -405,7 +405,7 @@ No second independent copy of the same evidence
 
 The system may record that the answer was repeated, but repeated evidence must not receive another full diagnostic contribution.
 
-### Test B — Equivalent observation wording
+### Test B - Equivalent observation wording
 
 For example:
 
@@ -421,7 +421,7 @@ and:
 
 If both normalize to the same structured observation, they must not be treated as two independent pieces of evidence.
 
-### Test C — Revision history
+### Test C - Revision history
 
 Verify that:
 
@@ -441,7 +441,7 @@ This is especially important because the diagnostic plan explicitly requires dup
 
 ---
 
-# 7. READINESS REQUIREMENT 6 — UPDATED DIAGNOSTIC RESULT
+# 7. READINESS REQUIREMENT 6 - UPDATED DIAGNOSTIC RESULT
 
 ## Goal
 
@@ -505,7 +505,7 @@ A question answer propagates through the entire diagnostic pipeline instead of m
 
 ---
 
-# 8. READINESS REQUIREMENT 7 — REVISION N → N+1
+# 8. READINESS REQUIREMENT 7 - REVISION N → N+1
 
 ## Goal
 
@@ -737,8 +737,8 @@ Generate a machine-readable or documentation mapping table:
 |---|---|---|---|---|---|---|
 | Q01 | ALL_POINTS | spatial_pattern | systemic | USER_ANSWER | N/A | observation |
 | Q01 | ONE_POINT | spatial_pattern | localized | USER_ANSWER | N/A | observation |
-| Q01 | UNKNOWN | — | — | — | — | no evidence |
-| Q01 | NOT_APPLICABLE | — | — | — | — | no contradiction |
+| Q01 | UNKNOWN | - | - | - | - | no evidence |
+| Q01 | NOT_APPLICABLE | - | - | - | - | no contradiction |
 | Q02 | ... | ... | ... | ... | ... | ... |
 
 The purpose of this table is to give Member 3 a stable contract.

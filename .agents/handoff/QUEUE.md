@@ -6,7 +6,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Active task
 
-- `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **accepted**
+- `DLK-M3-027` - Calibrated image workflow and dynamic diagnosis analysis - **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`
   - review: `.agents/handoff/reviews/DLK-M3-027-review.md`
   - reviewed commit: `ebeacc7d0bb65e42dd4da3c154f43aa0c6adad61`
@@ -20,7 +20,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Accepted calibrated-vision task
 
-- `DLK-M3-026` — Calibrated vision and evidence-safety foundation — **accepted**
+- `DLK-M3-026` - Calibrated vision and evidence-safety foundation - **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`
   - review: `.agents/handoff/reviews/DLK-M3-026-review.md`
   - reviewed commit: `6e52628f4e6e192a5044dc9de07b0f01b9cdc213`
@@ -34,7 +34,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Accepted current task
 
-- `DLK-M3-025` — Restore safe backend startup and offline troubleshooting baseline — **accepted**
+- `DLK-M3-025` - Restore safe backend startup and offline troubleshooting baseline - **accepted**
   - reviewed commit: `f1db85435b177dd9961a14116900c03556a912de`
   - verification: Gemini reports 401 backend tests passed; reviewer source review, task validation and committed whitespace checks passed; no independent backend rerun
   - review: `.agents/handoff/reviews/DLK-M3-025-review.md`
@@ -47,7 +47,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Deferred after the calibrated-vision programme
 
-- Canonical lossless check-history integrity — **planned, not released**
+- Canonical lossless check-history integrity - **planned, not released**
   - preserve stored check outcome, provenance, notes, and revision consistently across case responses and reports;
   - retain compatibility with the teammate check-execution projection;
   - cover legacy canonical records that do not yet have a projection;
@@ -63,7 +63,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Accepted prerequisite
 
-- `DLK-M3-023` — Deterministic downloadable PDF case report — **accepted**
+- `DLK-M3-023` - Deterministic downloadable PDF case report - **accepted**
   - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
   - recorded full backend verification: 297 passed, 0 failed, 0 skipped
   - PDF unit verification: 5 passed
@@ -71,7 +71,7 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Accepted
 
-- `DLK-M3-024` — Final backend MVP contract and end-to-end acceptance — **accepted**
+- `DLK-M3-024` - Final backend MVP contract and end-to-end acceptance - **accepted**
   - reviewed commit: `2f60f9292b07edfe6982996e1d10cdfe84d48d66`
   - review: `.agents/handoff/reviews/DLK-M3-024-review.md`
   - corrections: genuine empty-list integration proof with transactional isolation and rollback, failure-path and asserted revision 7 rich-state nonmutation proof, accurate Member 1 contract documentation.

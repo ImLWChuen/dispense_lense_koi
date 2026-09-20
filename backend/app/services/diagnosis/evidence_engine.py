@@ -1,5 +1,5 @@
 """
-DispenseIQ — Evidence Engine
+Dispense Lens - Evidence Engine
 
 The core reasoning layer. Evaluates every observation against every
 candidate cause to determine SUPPORTS / CONTRADICTS / NEUTRAL / DUPLICATE.
@@ -8,7 +8,7 @@ Design rules:
 - Every evidence item records its provenance (USER, MEASUREMENT, etc.).
 - Duplicate/correlated observations do NOT independently contribute weight.
 - Missing evidence is distinguished from contradictory evidence.
-- The engine is deterministic — no LLM involvement in scoring.
+- The engine is deterministic - no LLM involvement in scoring.
 """
 
 from __future__ import annotations

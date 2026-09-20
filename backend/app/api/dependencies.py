@@ -39,3 +39,15 @@ def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+def require_admin(
+    current_user: UserModel = Depends(get_current_active_user),
+) -> UserModel:
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required to access this resource.",
+        )
+    return current_user
+

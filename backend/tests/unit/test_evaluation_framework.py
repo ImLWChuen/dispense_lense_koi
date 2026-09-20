@@ -1,5 +1,5 @@
 """
-DispenseIQ — Evaluation Framework Unit Tests (Phase 15)
+Dispense Lens - Evaluation Framework Unit Tests (Phase 15)
 
 Verifies:
 1. All 12 evaluation scenarios exist and cover all 6 defects (2 each)

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Synthetic Image Fixtures for Vision Testing
+Dispense Lens - Synthetic Image Fixtures for Vision Testing
 
 Generates deterministic synthetic image buffers for testing resolution-independence,
 ROI segmentation, calibrated defect classification, and failure handling.

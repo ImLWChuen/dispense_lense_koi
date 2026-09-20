@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
 import EngineerVerification from "@/components/diagnosis/EngineerVerification";
 import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import { casesApi } from "@/lib/api/cases";
@@ -92,17 +91,11 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
 
     if (isLoading && !caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading case data...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-64 items-center justify-center">
+                    <p className="text-gray-500">Loading case data...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
@@ -110,36 +103,31 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     const topCause = diagnosis?.ranked_causes?.[0];
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="verification"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                        Engineer Verification
+                    </h1>
 
-                <PageContainer>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split('-')[0]}
-                            </p>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Review the diagnostic conclusion and provide your engineering verification.
+                    </p>
+                </div>
 
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Engineer Verification
-                            </h1>
-
-                            <p className="mt-2 text-sm text-gray-500">
-                                Review the diagnostic conclusion and provide
-                                your engineering verification.
-                            </p>
-                        </div>
-
-                        <Link
-                            href={`/diagnosis/${resolvedParams.id}`}
-                            className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                        >
-                            ← Back to Diagnosis
-                        </Link>
-                    </div>
+                <Link
+                    href={`/diagnosis/${resolvedParams.id}`}
+                    className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                >
+                    ← Back to Overview
+                </Link>
+            </div>
 
                     {error && (
                         <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
@@ -169,7 +157,5 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

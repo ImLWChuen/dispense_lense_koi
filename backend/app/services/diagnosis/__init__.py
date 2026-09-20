@@ -1,4 +1,4 @@
-"""DispenseIQ — Diagnosis service package."""
+"""Dispense Lens - Diagnosis service package."""
 
 from app.services.diagnosis.action_planner import ActionPlanner, ActionSelectionResult
 from app.services.diagnosis.cause_ranker import CauseRanker, RankingResult

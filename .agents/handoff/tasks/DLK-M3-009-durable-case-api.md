@@ -112,11 +112,11 @@ The initial diagnosis must remain semantically equivalent to the `DiagnosisResul
 
 Use:
 
-- `201 Created` — successful create
-- `200 OK` — successful retrieve
-- `404 Not Found` — unknown case
+- `201 Created` - successful create
+- `200 OK` - successful retrieve
+- `404 Not Found` - unknown case
 - normal FastAPI/Pydantic `422` behavior for malformed input/path values
-- `500 Internal Server Error` — unexpected diagnosis/persistence failure
+- `500 Internal Server Error` - unexpected diagnosis/persistence failure
 
 Error responses must not expose:
 

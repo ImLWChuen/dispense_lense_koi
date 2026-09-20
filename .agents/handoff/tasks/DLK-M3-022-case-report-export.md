@@ -31,7 +31,7 @@ DLK-M3-021 is accepted at:
 
 The durable workflow now covers initial diagnosis, question answers, troubleshooting checks, explicit cause confirmation, recovery action, recovery verification, recurrence reporting, immutable revisions, and append-only audit histories.
 
-## Phase A — carry forward DLK-M3-021 documentation corrections
+## Phase A - carry forward DLK-M3-021 documentation corrections
 
 Before new report work, correct only the inaccurate names in the DLK-M3-021 implementation report.
 

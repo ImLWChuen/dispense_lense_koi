@@ -1,4 +1,4 @@
-"""DispenseIQ — Models package."""
+"""Dispense Lens - Models package."""
 
 from app.models.case import (
     AnalysisRevisionModel,

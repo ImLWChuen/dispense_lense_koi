@@ -1,5 +1,5 @@
 """
-DispenseIQ — Scoring Configuration & Math Unit Tests (Section 23)
+Dispense Lens - Scoring Configuration & Math Unit Tests (Section 23)
 
 Verifies:
 1. Support weight mappings for STRONG, MODERATE, WEAK

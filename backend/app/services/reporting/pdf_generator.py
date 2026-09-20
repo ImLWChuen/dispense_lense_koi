@@ -1,4 +1,4 @@
-"""DispenseIQ — Deterministic Downloadable PDF Case Report Generator.
+"""Dispense Lens - Deterministic Downloadable PDF Case Report Generator.
 
 Renders a complete, professional, competition-demo-ready PDF document from an
 already-accepted, immutable CaseReportResponse read model.
@@ -64,7 +64,7 @@ class NumberedCanvas(canvas.Canvas):
         self.setFillColor(colors.HexColor("#64748b"))  # slate-500
 
         # Running Header (on all pages)
-        self.drawString(36, 756, "DispenseIQ Diagnostic Automation System — Case Report")
+        self.drawString(36, 756, "Dispense Lens Diagnostic Automation System - Case Report")
         self.setStrokeColor(colors.HexColor("#cbd5e1"))  # slate-300
         self.setLineWidth(0.5)
         self.line(36, 750, 576, 750)
@@ -81,13 +81,13 @@ class NumberedCanvas(canvas.Canvas):
 def _escape(val: Any) -> str:
     """Safely format and HTML-escape any value for ReportLab Paragraphs."""
     if val is None:
-        return "—"
+        return "-"
     if isinstance(val, datetime):
         return html.escape(val.strftime("%Y-%m-%d %H:%M:%S UTC"))
     if hasattr(val, "value"):
         return html.escape(str(val.value))
     text = str(val).strip()
-    return html.escape(text) if text else "—"
+    return html.escape(text) if text else "-"
 
 
 def render_case_report_pdf(report: CaseReportResponse) -> bytes:
@@ -201,7 +201,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     # ---------------------------------------------------------
     # Document Header
     # ---------------------------------------------------------
-    story.append(Paragraph("DispenseIQ Diagnostic Case Report", title_style))
+    story.append(Paragraph("Dispense Lens Diagnostic Case Report", title_style))
     story.append(
         Paragraph(
             f"Case Identifier: <b>{_escape(report.case_id)}</b> &nbsp;|&nbsp; "
@@ -395,7 +395,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
             c_name = getattr(cause, "cause_name", getattr(cause, "name", cause.cause_id))
             story.append(
                 Paragraph(
-                    f"<b>Evaluated Evidence &mdash; {_escape(c_name)}</b> (<code>{_escape(cause.cause_id)}</code>):",
+                    f"<b>Evaluated Evidence - {_escape(c_name)}</b> (<code>{_escape(cause.cause_id)}</code>):",
                     cell_bold,
                 )
             )
@@ -425,7 +425,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                     ev_expl = getattr(ev, "explanation", "")
                     obs_id = getattr(ev, "observation_id", "")
 
-                    details_text = _escape(ev_expl) if ev_expl else "—"
+                    details_text = _escape(ev_expl) if ev_expl else "-"
                     if obs_id:
                         details_text += f" &nbsp;[obs: <code>{_escape(obs_id)}</code>]"
 
@@ -466,7 +466,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     if diag.next_question:
         nq = diag.next_question
         opts_str = f" [Options: {', '.join(_escape(o) for o in nq.options)}]" if getattr(nq, "options", None) else ""
-        purpose_str = f" &mdash; <i>{_escape(nq.purpose)}</i>" if getattr(nq, "purpose", None) else ""
+        purpose_str = f" - <i>{_escape(nq.purpose)}</i>" if getattr(nq, "purpose", None) else ""
         story.append(
             Paragraph(
                 f"<b>Recommended Next Question:</b> [{_escape(nq.question_id)}] {_escape(nq.text)}{opts_str}{purpose_str}",
@@ -479,7 +479,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     if diag.next_check:
         nc = diag.next_check
         proc = getattr(nc, "procedure", "") or getattr(nc, "description", "")
-        proc_str = f" &mdash; {_escape(proc)}" if proc else ""
+        proc_str = f" - {_escape(proc)}" if proc else ""
         story.append(
             Paragraph(
                 f"<b>Recommended Next Troubleshooting Check:</b> [{_escape(nc.check_id)}] {_escape(nc.name)}{proc_str}",

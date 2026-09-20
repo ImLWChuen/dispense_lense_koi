@@ -21,17 +21,17 @@ Accepted after correction commit e68015c4587b5f5afe7b14e78b2fe161dd3bf40c. The o
 
 ## Findings
 
-### R1 — P2: Assemble the report from one consistent revision basis
+### R1 - P2: Assemble the report from one consistent revision basis
 
 In backend/app/services/reporting/report_generator.py:147-207, case state, latest revision, and four unrestricted histories are read separately. The request session has no configured consistent-snapshot isolation or case lock, and history queries omit the supported max_revision bound. Under the normal PostgreSQL READ COMMITTED configuration, a concurrent recurrence commit after the latest-revision read can produce current_revision=6 and a RESOLVED diagnosis alongside the R7 recurrence event. A commit between the case and latest-revision reads can instead leave the top-level condition behind the diagnosis. Such a report misrepresents the audit basis.
 
 Provide a consistent snapshot for the whole report, or use a pinned immutable revision with all histories scoped to that revision and mutable outcome fields derived consistently from that basis. Merely adding max_revision does not fix a case-state/latest-revision mismatch. Add an integration regression that deliberately interleaves a valid writer commit with report reads; assert diagnosis, condition, summary, and histories describe one revision and that report generation itself writes nothing.
 
-### R2 — P2: Complete the required failure-path nonmutation proof
+### R2 - P2: Complete the required failure-path nonmutation proof
 
 backend/tests/integration/test_case_report_api.py:398 tests the sanitized error by replacing the entire assembler and asserting only status/message. It never captures before/after durable state, although the task Security section explicitly requires zero durable mutation for this failure scenario. Add complete-state snapshots in independent sessions around the failing GET, preferably with a rich case and an assembly/read failure after report reads have begun. Retain the sensitive-marker assertion and compare all case/history/revision data.
 
-### R3 — P2: Correct inconsistent verification evidence and report contract
+### R3 - P2: Correct inconsistent verification evidence and report contract
 
 The task implementation report lists recurrence 19 passed, recovery verification 22 passed, and cause confirmation 19 passed. Those files are unchanged by this commit and contain 9, 23, and 17 unparameterized tests respectively, matching the prior accepted report. The listed per-suite counts cannot be treated as verified evidence for the stated commands. Record actual command output and counts; rerun any command whose output is unavailable. The full-suite 281-pass claim remains implementer-reported, not independently verified by this reviewer.
 

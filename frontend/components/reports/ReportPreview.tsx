@@ -6,7 +6,7 @@ export default function ReportPreview() {
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-[#6d5dfc]">
-                            DispenseIQ Diagnostic Report
+                            Dispense Lens Diagnostic Report
                         </p>
 
                         <h2 className="mt-2 text-xl font-bold text-gray-900">
@@ -94,9 +94,9 @@ export default function ReportPreview() {
 
                 <ul className="mt-2 space-y-1.5">
                     {[
-                        "Undersized deposits (SUPPORTS nozzle restriction — STRONG)",
-                        "Issue isolated to specific nozzle (SUPPORTS — STRONG)",
-                        "Intermittent occurrence (SUPPORTS — MODERATE)",
+                        "Undersized deposits (SUPPORTS nozzle restriction - STRONG)",
+                        "Issue isolated to specific nozzle (SUPPORTS - STRONG)",
+                        "Intermittent occurrence (SUPPORTS - MODERATE)",
                         "Visual inspection confirmed partial blockage at nozzle tip",
                     ].map((item, i) => (
                         <li
@@ -118,10 +118,10 @@ export default function ReportPreview() {
 
                 <ul className="mt-2 space-y-1.5">
                     {[
-                        "Nozzle removed and inspected — dried material buildup found at tip",
+                        "Nozzle removed and inspected - dried material buildup found at tip",
                         "Nozzle cleaned with approved solvent",
                         "O-ring seal replaced due to minor wear",
-                        "Test shots performed — 20/20 within specification",
+                        "Test shots performed - 20/20 within specification",
                     ].map((item, i) => (
                         <li
                             key={i}
