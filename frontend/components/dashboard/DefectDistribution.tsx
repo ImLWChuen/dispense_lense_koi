@@ -60,9 +60,9 @@ export default function DefectDistribution({ data = [] }: DefectDistributionProp
                             </Pie>
 
                             <Tooltip
-                                formatter={(value, name, item) => [
-                                    `${value}% (${item.payload.count ?? 1} cases)`,
-                                    name,
+                                formatter={(value: unknown, name: unknown, item: { payload?: { count?: number } }) => [
+                                    `${String(value)}% (${item?.payload?.count ?? 1} cases)`,
+                                    String(name),
                                 ]}
                                 contentStyle={{
                                     backgroundColor: "#ffffff",

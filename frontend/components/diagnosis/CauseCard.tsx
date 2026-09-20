@@ -73,7 +73,7 @@ export default function CauseCard({ cause, rank }: CauseCardProps) {
             </div>
 
             <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                <ConfidenceScore score={cause.score} size="sm" />
+                <ConfidenceScore score={cause.score} size="sm" label="Evidence Support" />
 
                 <div className="flex items-center gap-3 text-[10px]">
                     <span className="flex items-center gap-1 text-green-600">

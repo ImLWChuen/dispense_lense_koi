@@ -7,7 +7,7 @@ interface ConfidenceScoreProps {
 export default function ConfidenceScore({
     score,
     size = "md",
-    label,
+    label = "Evidence Support",
 }: ConfidenceScoreProps) {
     const getColor = () => {
         if (score >= 80) return { bar: "bg-[#6d5dfc]", text: "text-[#5848e8]" };
@@ -24,6 +24,7 @@ export default function ConfidenceScore({
     };
 
     const cfg = sizeConfig[size];
+    const clampedScore = Math.max(0, Math.min(100, score));
 
     return (
         <div className="flex items-center gap-3">
@@ -32,12 +33,12 @@ export default function ConfidenceScore({
             >
                 <div
                     className={`h-full rounded-full ${color.bar} transition-all duration-500`}
-                    style={{ width: `${score}%` }}
+                    style={{ width: `${clampedScore}%` }}
                 />
             </div>
 
             <span className={`${cfg.text} font-semibold ${color.text}`}>
-                {score}%
+                {score}/100
             </span>
 
             {label && (

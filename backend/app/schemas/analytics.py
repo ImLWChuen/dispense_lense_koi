@@ -6,12 +6,12 @@ class KpiMetrics(BaseModel):
     active_diagnoses: int
     open_defects: int
     resolved_cases: int
-    avg_diagnosis_time_minutes: float
-    active_diagnoses_trend: str = "0%"
-    open_defects_trend: str = "0%"
-    resolved_cases_trend: str = "0%"
-    avg_time_trend: str = "0%"
-    ai_accuracy_rate: float = 100.0
+    avg_diagnosis_time_minutes: Optional[float] = None
+    active_diagnoses_trend: Optional[str] = None
+    open_defects_trend: Optional[str] = None
+    resolved_cases_trend: Optional[str] = None
+    avg_time_trend: Optional[str] = None
+    cause_confirmation_rate: Optional[float] = None
 
 class RecentCaseRecord(BaseModel):
     id: str
@@ -20,7 +20,7 @@ class RecentCaseRecord(BaseModel):
     equipment: str
     cause: str
     status: str
-    confidence: int
+    evidence_support: Optional[float] = None
     time: str
 
 class DefectDistributionItem(BaseModel):
@@ -43,13 +43,13 @@ class DashboardAnalyticsResponse(BaseModel):
 class AnalyticsKpiMetrics(BaseModel):
     total_cases: int
     resolved_cases: int
-    avg_resolution_time_minutes: float
-    first_time_resolution_rate: float
-    diagnostic_accuracy_rate: float
-    total_cases_trend: str = "+18%"
-    avg_resolution_trend: str = "-41%"
-    first_time_resolution_trend: str = "+5%"
-    diagnostic_accuracy_trend: str = "+3%"
+    avg_resolution_time_minutes: Optional[float] = None
+    first_time_resolution_rate: Optional[float] = None
+    cause_confirmation_rate: Optional[float] = None
+    total_cases_trend: Optional[str] = None
+    avg_resolution_trend: Optional[str] = None
+    first_time_resolution_trend: Optional[str] = None
+    cause_confirmation_trend: Optional[str] = None
 
 class DefectTrendItem(BaseModel):
     month: str
@@ -61,7 +61,7 @@ class ResolutionDistributionItem(BaseModel):
 
 class DefectTypeBreakdownItem(BaseModel):
     name: str
-    code: str
+    code: Optional[str] = None
     count: int
     percentage: float
 
