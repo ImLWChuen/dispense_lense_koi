@@ -39,6 +39,8 @@ import {
     retryWorkflowRefresh,
     WorkflowMutationError,
     REFRESH_WARNING_MESSAGE,
+    UNCONFIRMED_REFRESH_WARNING_MESSAGE,
+    deriveQuestionPresentation,
 } from "../lib/diagnostic-workflow-state.ts";
 
 const mockCase = {
@@ -650,11 +652,13 @@ async function runTests() {
             assert.equal(result.isRefreshRequired, false);
             assert.equal(result.mutationError, null);
             assert.equal(result.refreshWarning, null);
+            assert.equal(result.refreshWarningKind, null);
             assert.equal(result.caseData.current_revision, 2);
             assert.deepEqual(stateEmitted, {
                 caseData: updatedCase,
                 mutationError: null,
                 refreshWarning: null,
+                refreshWarningKind: null,
                 isRefreshRequired: false,
             });
 
@@ -699,6 +703,7 @@ async function runTests() {
                 caseData: updatedCase,
                 mutationError: "409 Conflict: expected revision 1, but current revision is 2",
                 refreshWarning: null,
+                refreshWarningKind: null,
                 isRefreshRequired: false,
             });
 
@@ -708,7 +713,7 @@ async function runTests() {
             assert.equal(formState.error, "409 Conflict: expected revision 1, but current revision is 2");
         }
 
-        // Scenario C: POST failure + GET failure
+        // Scenario C: POST failure + GET failure (Unconfirmed Action & Refresh Failed)
         {
             let stateEmitted = null;
             let mutationCalled = 0;
@@ -743,13 +748,64 @@ async function runTests() {
             assert.deepEqual(stateEmitted, {
                 caseData: baseCase,
                 mutationError: "500 Internal Server Error",
-                refreshWarning: null,
-                isRefreshRequired: false,
+                refreshWarning: UNCONFIRMED_REFRESH_WARNING_MESSAGE,
+                refreshWarningKind: "state_refresh_required",
+                isRefreshRequired: true,
             });
 
-            // Input preservation after POST rejection
+            // 1. Form input strictly preserved after POST rejection
             const formState = evaluateFormInputsOnMutation(initialFormInput, emptyFormInput, false, rejectedError.message);
             assert.equal(formState.value, initialFormInput, "Form input must be preserved on POST failure");
+
+            // 2. All subsequent workflow mutations gated while isRefreshRequired is true
+            let blockedMutationCalled = 0;
+            let blockedError = null;
+            try {
+                await coordinateWorkflowMutation({
+                    currentCase: baseCase,
+                    isRefreshRequired: stateEmitted.isRefreshRequired, // true!
+                    performMutation: async () => {
+                        blockedMutationCalled++;
+                        return {};
+                    },
+                    performRefresh: async () => baseCase,
+                });
+            } catch (err) {
+                blockedError = err;
+            }
+            assert.equal(blockedMutationCalled, 0, "All mutations must be gated when refresh is required");
+            assert.ok(blockedError, "Attempting mutation when refresh is required must throw error");
+
+            // 3. GET-only retry performs refresh with ZERO POST replay
+            let retryRefreshCalled = 0;
+            let retryPostCalled = 0;
+
+            const retryResult = await retryWorkflowRefresh({
+                currentCase: baseCase,
+                previousWarningKind: stateEmitted.refreshWarningKind,
+                performRefresh: async () => {
+                    retryRefreshCalled++;
+                    return updatedCase;
+                },
+                onStateChange: (s) => {
+                    stateEmitted = s;
+                },
+            });
+
+            assert.equal(retryRefreshCalled, 1, "GET-only retry performs GET");
+            assert.equal(retryPostCalled, 0, "Zero POST replay during retry");
+            assert.equal(mutationCalled, 1, "Original POST mutation count untouched (no replay)");
+            assert.equal(retryResult.isRefreshRequired, false, "Successful GET clears refresh-required flag");
+            assert.equal(retryResult.refreshWarning, null, "Successful GET clears refresh warning");
+            assert.equal(retryResult.refreshWarningKind, null, "Successful GET clears refresh warning kind");
+            assert.equal(retryResult.caseData.current_revision, 2, "Successful GET updates case state");
+            assert.deepEqual(stateEmitted, {
+                caseData: updatedCase,
+                mutationError: null,
+                refreshWarning: null,
+                refreshWarningKind: null,
+                isRefreshRequired: false,
+            });
         }
 
         // Scenario D: POST success + GET failure (Partial Success)
@@ -780,11 +836,13 @@ async function runTests() {
             assert.equal(result.isRefreshRequired, true, "isRefreshRequired must be true when GET fails");
             assert.equal(result.mutationError, null, "Must NOT treat refresh failure as mutation failure");
             assert.equal(result.refreshWarning, REFRESH_WARNING_MESSAGE);
+            assert.equal(result.refreshWarningKind, "action_saved");
             assert.equal(result.caseData.current_revision, 1, "Retains safe existing case state");
             assert.deepEqual(stateEmitted, {
                 caseData: baseCase,
                 mutationError: null,
                 refreshWarning: REFRESH_WARNING_MESSAGE,
+                refreshWarningKind: "action_saved",
                 isRefreshRequired: true,
             });
 
@@ -818,6 +876,7 @@ async function runTests() {
 
             const retryState = await retryWorkflowRefresh({
                 currentCase: result.caseData,
+                previousWarningKind: result.refreshWarningKind,
                 performRefresh: async () => {
                     retryRefreshCalled++;
                     return updatedCase;
@@ -831,17 +890,72 @@ async function runTests() {
             assert.equal(retryPostCalled, 0, "No automatic POST replay");
             assert.equal(retryState.isRefreshRequired, false, "GET-only retry clears refresh-required state");
             assert.equal(retryState.refreshWarning, null, "Refresh warning cleared");
+            assert.equal(retryState.refreshWarningKind, null, "Refresh warning kind cleared");
             assert.equal(retryState.caseData.current_revision, 2, "Case updated to refreshed data");
             assert.deepEqual(stateEmitted, {
                 caseData: updatedCase,
                 mutationError: null,
                 refreshWarning: null,
+                refreshWarningKind: null,
                 isRefreshRequired: false,
             });
         }
 
         testsPassed++;
         console.log("✓ Test 15 Passed: Production workflow coordinator handles all 4 outcomes, input lifecycle, refresh gating, and GET-only retry without POST replay.");
+    }
+
+    // --- 16. Diagnostic Question State: Active, Submitting/Disabled, Refresh-Required/Disabled, and Persisted-Answered ---
+    {
+        // 1. Active question (not answered, not submitting, no refresh required)
+        const activeState = deriveQuestionPresentation({
+            isPersistedAnswered: false,
+            isSubmitting: false,
+            isRefreshRequired: false,
+        });
+        assert.equal(activeState.isAnswered, false, "Active question must not have answered styling");
+        assert.equal(activeState.disabled, false, "Active question must not be disabled");
+        assert.equal(activeState.iconType, "help", "Active question must show help icon");
+        assert.equal(activeState.canSelectOption, true, "Active question options must be selectable");
+        assert.ok(activeState.containerClass.includes("border-gray-200"), "Active question has neutral border");
+
+        // 2. Submitting question (in flight, not yet persisted)
+        const submittingState = deriveQuestionPresentation({
+            isPersistedAnswered: false,
+            isSubmitting: true,
+            isRefreshRequired: false,
+        });
+        assert.equal(submittingState.isAnswered, false, "In-flight question must NEVER have answered styling");
+        assert.equal(submittingState.disabled, true, "In-flight question must be disabled");
+        assert.equal(submittingState.iconType, "help", "In-flight question must still show help icon, never check icon");
+        assert.equal(submittingState.canSelectOption, false, "In-flight question options must be disabled");
+        assert.ok(!submittingState.containerClass.includes("border-green-200"), "In-flight question must not have green border");
+
+        // 3. Refresh-required question (gated due to unconfirmed / failed refresh)
+        const refreshRequiredState = deriveQuestionPresentation({
+            isPersistedAnswered: false,
+            isSubmitting: false,
+            isRefreshRequired: true,
+        });
+        assert.equal(refreshRequiredState.isAnswered, false, "Gated question must not have answered styling");
+        assert.equal(refreshRequiredState.disabled, true, "Gated question must be disabled");
+        assert.equal(refreshRequiredState.iconType, "help", "Gated question must show help icon");
+        assert.equal(refreshRequiredState.canSelectOption, false, "Gated question options must be disabled");
+
+        // 4. Persisted answered question (historical question from case data)
+        const persistedState = deriveQuestionPresentation({
+            isPersistedAnswered: true,
+            isSubmitting: false,
+            isRefreshRequired: false,
+        });
+        assert.equal(persistedState.isAnswered, true, "Persisted question must have answered styling");
+        assert.equal(persistedState.disabled, false, "Persisted question disabled flag not needed because isAnswered disables");
+        assert.equal(persistedState.iconType, "check", "Persisted question shows check icon");
+        assert.equal(persistedState.canSelectOption, false, "Persisted question options must not be selectable");
+        assert.ok(persistedState.containerClass.includes("border-green-200"), "Persisted question has green border");
+
+        testsPassed++;
+        console.log("✓ Test 16 Passed: Diagnostic question states strictly separate active question locking from persisted completion styling.");
     }
 
     console.log(`\nAll ${testsPassed} diagnostic workflow state regression tests passed successfully.`);

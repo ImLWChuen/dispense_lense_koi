@@ -356,8 +356,13 @@ export function formatEvidenceSupport(score: number | null | undefined): string 
 // 7. Mutation State & Input Lifecycle Helpers
 // ---------------------------------------------------------------------------
 
+export type RefreshWarningKind = "action_saved" | "state_refresh_required";
+
 export const REFRESH_WARNING_MESSAGE =
     "The action was saved, but the latest case state could not be refreshed.";
+
+export const UNCONFIRMED_REFRESH_WARNING_MESSAGE =
+    "The action result could not be confirmed, and the latest case state could not be refreshed. Refresh the case before retrying.";
 
 export class WorkflowMutationError<TCase> extends Error {
     readonly syncedCase: TCase;
@@ -379,6 +384,7 @@ export interface WorkflowMutationState<TCase> {
     caseData: TCase;
     mutationError: string | null;
     refreshWarning: string | null;
+    refreshWarningKind: RefreshWarningKind | null;
     isRefreshRequired: boolean;
 }
 
@@ -389,6 +395,7 @@ export interface WorkflowMutationResult<TCase, TMutation = unknown> {
     mutationResult?: TMutation;
     mutationError: string | null;
     refreshWarning: string | null;
+    refreshWarningKind: RefreshWarningKind | null;
     isRefreshRequired: boolean;
 }
 
@@ -448,13 +455,25 @@ export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
             getSucceeded = false;
         }
 
-        const failureState: WorkflowMutationState<TCase> = {
-            caseData: syncedCase,
-            mutationError: mutationErrorMsg,
-            refreshWarning: null,
-            isRefreshRequired: false,
-        };
-        params.onStateChange?.(failureState);
+        if (getSucceeded) {
+            const failureState: WorkflowMutationState<TCase> = {
+                caseData: syncedCase,
+                mutationError: mutationErrorMsg,
+                refreshWarning: null,
+                refreshWarningKind: null,
+                isRefreshRequired: false,
+            };
+            params.onStateChange?.(failureState);
+        } else {
+            const failureState: WorkflowMutationState<TCase> = {
+                caseData: syncedCase,
+                mutationError: mutationErrorMsg,
+                refreshWarning: UNCONFIRMED_REFRESH_WARNING_MESSAGE,
+                refreshWarningKind: "state_refresh_required",
+                isRefreshRequired: true,
+            };
+            params.onStateChange?.(failureState);
+        }
 
         throw new WorkflowMutationError(mutationErrorMsg, syncedCase, getSucceeded);
     }
@@ -468,6 +487,7 @@ export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
             caseData: params.currentCase,
             mutationError: null,
             refreshWarning: REFRESH_WARNING_MESSAGE,
+            refreshWarningKind: "action_saved",
             isRefreshRequired: true,
         };
         params.onStateChange?.(partialSuccessState);
@@ -479,6 +499,7 @@ export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
             mutationResult,
             mutationError: null,
             refreshWarning: REFRESH_WARNING_MESSAGE,
+            refreshWarningKind: "action_saved",
             isRefreshRequired: true,
         };
     }
@@ -487,6 +508,7 @@ export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
         caseData: refreshedCase,
         mutationError: null,
         refreshWarning: null,
+        refreshWarningKind: null,
         isRefreshRequired: false,
     };
     params.onStateChange?.(fullSuccessState);
@@ -498,12 +520,14 @@ export async function coordinateWorkflowMutation<TCase, TMutation = unknown>(
         mutationResult,
         mutationError: null,
         refreshWarning: null,
+        refreshWarningKind: null,
         isRefreshRequired: false,
     };
 }
 
 export interface RetryWorkflowRefreshParams<TCase> {
     currentCase: TCase;
+    previousWarningKind?: RefreshWarningKind | null;
     performRefresh: () => Promise<TCase>;
     onStateChange?: (state: WorkflowMutationState<TCase>) => void;
 }
@@ -517,6 +541,7 @@ export async function retryWorkflowRefresh<TCase>(
 ): Promise<{
     caseData: TCase;
     refreshWarning: string | null;
+    refreshWarningKind: RefreshWarningKind | null;
     isRefreshRequired: boolean;
 }> {
     try {
@@ -525,29 +550,67 @@ export async function retryWorkflowRefresh<TCase>(
             caseData: refreshed,
             mutationError: null,
             refreshWarning: null,
+            refreshWarningKind: null,
             isRefreshRequired: false,
         };
         params.onStateChange?.(successState);
         return {
             caseData: refreshed,
             refreshWarning: null,
+            refreshWarningKind: null,
             isRefreshRequired: false,
         };
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to refresh case state.";
+        const warningKind: RefreshWarningKind =
+            params.previousWarningKind || "state_refresh_required";
+        const baseMessage =
+            warningKind === "action_saved"
+                ? REFRESH_WARNING_MESSAGE
+                : UNCONFIRMED_REFRESH_WARNING_MESSAGE;
         const failureState: WorkflowMutationState<TCase> = {
             caseData: params.currentCase,
             mutationError: null,
-            refreshWarning: `${REFRESH_WARNING_MESSAGE} (${msg})`,
+            refreshWarning: `${baseMessage} (${msg})`,
+            refreshWarningKind: warningKind,
             isRefreshRequired: true,
         };
         params.onStateChange?.(failureState);
         return {
             caseData: params.currentCase,
             refreshWarning: failureState.refreshWarning,
+            refreshWarningKind: warningKind,
             isRefreshRequired: true,
         };
     }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Diagnostic Question Presentation Helpers
+// ---------------------------------------------------------------------------
+
+export interface QuestionItemPresentation {
+    isAnswered: boolean;
+    disabled: boolean;
+    containerClass: string;
+    iconType: "check" | "help";
+    canSelectOption: boolean;
+}
+
+export function deriveQuestionPresentation(params: {
+    isPersistedAnswered: boolean;
+    isSubmitting?: boolean;
+    isRefreshRequired?: boolean;
+}): QuestionItemPresentation {
+    const isAnswered = Boolean(params.isPersistedAnswered);
+    const disabled = Boolean(params.isSubmitting || params.isRefreshRequired);
+    return {
+        isAnswered,
+        disabled,
+        containerClass: isAnswered ? "border-green-200 bg-green-50/30" : "border-gray-200 bg-white",
+        iconType: isAnswered ? "check" : "help",
+        canSelectOption: !isAnswered && !disabled,
+    };
 }
 
 export interface MutationState<T> {

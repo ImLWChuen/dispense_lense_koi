@@ -18,6 +18,7 @@ import {
     buildRecurrencePayload,
     coordinateWorkflowMutation,
     retryWorkflowRefresh,
+    RefreshWarningKind,
 } from "@/lib/diagnostic-workflow-state";
 
 export default function VerificationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +27,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+    const [refreshWarningKind, setRefreshWarningKind] = useState<RefreshWarningKind | null>(null);
     const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,6 +38,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
             setCaseData(data);
             setError(null);
             setRefreshWarning(null);
+            setRefreshWarningKind(null);
             setIsRefreshRequired(false);
         } catch (err: unknown) {
             console.error("Failed to fetch case", err);
@@ -52,11 +55,13 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         try {
             await retryWorkflowRefresh({
                 currentCase: caseData,
+                previousWarningKind: refreshWarningKind,
                 performRefresh: () => casesApi.getCase(caseData.case_id),
                 onStateChange: (state) => {
                     setCaseData(state.caseData);
                     setError(state.mutationError);
                     setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
                     setIsRefreshRequired(state.isRefreshRequired);
                 },
             });
@@ -74,6 +79,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     setCaseData(data);
                     setError(null);
                     setRefreshWarning(null);
+                    setRefreshWarningKind(null);
                     setIsRefreshRequired(false);
                     setIsLoading(false);
                 }
@@ -127,6 +133,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     setCaseData(state.caseData);
                     setError(state.mutationError);
                     setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
                     setIsRefreshRequired(state.isRefreshRequired);
                 },
             });
@@ -165,6 +172,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     setCaseData(state.caseData);
                     setError(state.mutationError);
                     setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
                     setIsRefreshRequired(state.isRefreshRequired);
                 },
             });
@@ -204,6 +212,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     setCaseData(state.caseData);
                     setError(state.mutationError);
                     setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
                     setIsRefreshRequired(state.isRefreshRequired);
                 },
             });
@@ -242,6 +251,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     setCaseData(state.caseData);
                     setError(state.mutationError);
                     setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
                     setIsRefreshRequired(state.isRefreshRequired);
                 },
             });
@@ -355,12 +365,19 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </Link>
                     </div>
 
-                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed) */}
+                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
                     {refreshWarning && (
                         <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             <div>
-                                <p className="font-semibold">Action Saved</p>
+                                <p className="font-semibold">
+                                    {refreshWarningKind === "state_refresh_required"
+                                        ? "State Refresh Required"
+                                        : "Action Saved"}
+                                </p>
                                 <p className="mt-0.5">{refreshWarning}</p>
+                                {refreshWarningKind === "state_refresh_required" && error && (
+                                    <p className="mt-1 text-xs text-amber-700">Error: {error}</p>
+                                )}
                             </div>
                             <button
                                 onClick={handleRetryRefresh}
@@ -373,7 +390,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </div>
                     )}
 
-                    {/* Stale / Mutation Error Banner (POST failed) */}
+                    {/* Stale / Mutation Error Banner (POST failed, but GET succeeded) */}
                     {error && caseData && !refreshWarning && (
                         <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             <div>

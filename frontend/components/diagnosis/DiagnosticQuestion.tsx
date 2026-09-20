@@ -15,6 +15,7 @@ interface DiagnosticQuestionProps {
     selectedValue?: string | null;
     onAnswer?: (value: string) => void;
     isAnswered?: boolean;
+    disabled?: boolean;
 }
 
 export default function DiagnosticQuestion({
@@ -24,6 +25,7 @@ export default function DiagnosticQuestion({
     selectedValue,
     onAnswer,
     isAnswered = false,
+    disabled = false,
 }: DiagnosticQuestionProps) {
     return (
         <div
@@ -63,17 +65,18 @@ export default function DiagnosticQuestion({
                     <div className="mt-4 flex flex-wrap gap-2">
                         {options.map((option) => {
                             const isSelected = selectedValue === option.value;
+                            const isOptionDisabled = isAnswered || disabled;
 
                             return (
                                 <button
                                     key={option.value}
                                     onClick={() => onAnswer?.(option.value)}
-                                    disabled={isAnswered}
+                                    disabled={isOptionDisabled}
                                     className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
                                         isSelected
                                             ? "border-[#6d5dfc] bg-[#6d5dfc] text-white"
-                                            : isAnswered
-                                              ? "border-gray-200 bg-gray-50 text-gray-400"
+                                            : isOptionDisabled
+                                              ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
                                               : "border-gray-200 bg-white text-gray-700 hover:border-[#6d5dfc] hover:bg-[#faf9ff] hover:text-[#5848e8]"
                                     }`}
                                 >
