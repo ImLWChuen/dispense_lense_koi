@@ -173,7 +173,20 @@ When creating a case (`POST /api/v1/cases`), manual observations submitted from 
   - Cause distributions in both dashboard and performance analytics count unique cases via `func.distinct(CaseCauseConfirmationModel.case_id)`, avoiding duplicate counts when a case undergoes multiple confirmation revisions.
 - **Insight & Defect Trend Alignment (R7):**
   - Dashboard AI insight defect share is labeled `"{value}% of defect-recorded cases"` (matching the queried population of cases with recorded defects).
-  - Monthly defect trend counts cases with recorded defect categories (`CaseModel.defect_code.isnot(None)`) across an independent 6-calendar-month window and is explicitly labeled as such (`Monthly Defect Trend (Last 6 Months)`).
+- **Empty Chart Arrays When No Observed Data (R8):**
+  - Defect trend returns `defect_trend = []` when the six-month window contains no defect-classified cases. Once at least one case exists in that window, the full six-month series (including meaningful zero months) is returned.
+  - Resolution duration distribution returns `resolution_time_distribution = []` when no case duration is measurable (`res_times_minutes` is empty). Once at least one duration is measured, the complete bucket series is returned.
+- **Deterministic Defect Order & Independent Insight Aggregates (R9):**
+  - Defect distribution is sorted deterministically by case count descending and defect name ascending (`order_by(func.count(CaseModel.case_id).desc(), CaseModel.defect_name.asc())`).
+  - Dashboard AI insight presents separate scoped facts: `"Most recorded defect category: {top_defect.name}. Most commonly confirmed cause across all confirmed cases: {top_cause}."` (or `"Root cause investigations are currently in progress."` if no causes are confirmed).
+  - Unwarranted causal claims (e.g. "primary contributing factor") and unsupported recency claims ("recent verified investigations") are strictly excluded.
+- **Nullable Defect Breakdown Code (R10):**
+  - `DefectTypeBreakdownItem.code` is nullable (`Optional[str] = None` in backend schema, `string | null` in frontend type).
+  - Invented fallback codes such as `D00` are prohibited. The frontend uses `key={dt.code || dt.name}` to safely render items without recorded defect codes.
+- **Truthful Reports Reload & Refresh State (R11):**
+  - In `reports/page.tsx`, `reloadReports` preserves previously loaded reports upon refresh failure, rendering a top stale warning banner while keeping data visible.
+  - Initial load failure exclusively displays a dedicated full-page error state with retry action without rendering the table or empty states.
+  - A reachable `Refresh` button is provided in the reports header. Verified via dependency-free regression suite `frontend/scripts/test-reports-state.mjs`.
 - **Report Data Integrity:**
   - `GET /api/v1/cases/{case_id}/report` and `ReportPreview` render only real persisted case data and lifecycle events.
   - Mock fallback reports (`mockFallbackReports`), synthetic defect descriptions ("A particle or debris..."), invented measurements, and canned recommendations are forbidden. Missing sections explicitly state "Not recorded" or display neutral empty states.

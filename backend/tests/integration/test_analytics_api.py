@@ -136,6 +136,8 @@ def test_empty_database_analytics(tracked_cases: list[str]) -> None:
 
     assert perf_data["cause_distribution"] == []
     assert perf_data["defect_types"] == []
+    assert perf_data["defect_trend"] == []
+    assert perf_data["resolution_time_distribution"] == []
 
 
 def test_case_without_machine_context_or_ranked_causes(tracked_cases: list[str]) -> None:
@@ -577,9 +579,7 @@ def test_resolved_case_without_resolution_event_excluded_from_duration(
     assert perf_resp.status_code == 200
     perf_data = perf_resp.json()
     assert perf_data["kpis"]["avg_resolution_time_minutes"] is None
-
-    bucket_0_5 = next(b for b in perf_data["resolution_time_distribution"] if b["range"] == "0-5 min")
-    assert bucket_0_5["count"] == 0
+    assert perf_data["resolution_time_distribution"] == []
 
     # Now add measured case with 12-minute duration
     with factory() as session:
@@ -612,6 +612,7 @@ def test_resolved_case_without_resolution_event_excluded_from_duration(
     assert perf_resp2.status_code == 200
     perf_data2 = perf_resp2.json()
     assert perf_data2["kpis"]["avg_resolution_time_minutes"] == 12.0
+    assert len(perf_data2["resolution_time_distribution"]) == 6
 
     bucket_0_5_after = next(b for b in perf_data2["resolution_time_distribution"] if b["range"] == "0-5 min")
     bucket_10_15_after = next(b for b in perf_data2["resolution_time_distribution"] if b["range"] == "10-15 min")
@@ -750,3 +751,126 @@ def test_insight_population_label_and_defect_trend(tracked_cases: list[str]) -> 
     current_month_name = now.strftime("%b")
     cur_trend = next(t for t in trend if t["month"] == current_month_name)
     assert cur_trend["defects"] == 1
+
+
+def test_deterministic_defect_order_and_unrelated_cause_insight(
+    tracked_cases: list[str],
+) -> None:
+    """R9: Defect distribution is sorted deterministically by count desc, and insight presents separate scoped facts."""
+    case_stringing_id = str(uuid.uuid4())
+    case_bridging_1_id = str(uuid.uuid4())
+    case_bridging_2_id = str(uuid.uuid4())
+    tracked_cases.extend([case_stringing_id, case_bridging_1_id, case_bridging_2_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        # Insert Stringing FIRST (1 case). If unsorted, PostgreSQL might return Stringing first.
+        c_str = CaseModel(
+            case_id=case_stringing_id,
+            description="Stringing defect",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D03_STRINGING",
+            defect_name="Stringing",
+            issue_condition=IssueCondition.RESOLVED.value,
+            created_at=now - timedelta(hours=3),
+        )
+        session.add(c_str)
+
+        # Confirmed cause for Stringing case
+        conf = CaseCauseConfirmationModel(
+            case_id=case_stringing_id,
+            cause_id="nozzle_restriction",
+            resulting_revision_number=2,
+            confirmed_by="technician",
+            notes="Confirmed nozzle restriction",
+            confirmed_at=now - timedelta(hours=2),
+        )
+        session.add(conf)
+
+        # Insert Bridging SECOND and THIRD (2 cases). Bridging must be top defect by count.
+        c_br1 = CaseModel(
+            case_id=case_bridging_1_id,
+            description="Bridging defect 1",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now - timedelta(hours=1),
+        )
+        session.add(c_br1)
+
+        c_br2 = CaseModel(
+            case_id=case_bridging_2_id,
+            description="Bridging defect 2",
+            material="solder_paste",
+            method="jetting",
+            defect_code="D01_BRIDGING",
+            defect_name="Bridging",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add(c_br2)
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/dashboard")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # 1. Defect distribution must have Bridging first (2 cases = 66.7%), Stringing second (1 case = 33.3%)
+    defects = data["defect_distribution"]
+    assert len(defects) == 2
+    assert defects[0]["name"] == "Bridging"
+    assert defects[0]["count"] == 2
+    assert defects[0]["value"] == 66.7
+    assert defects[1]["name"] == "Stringing"
+    assert defects[1]["count"] == 1
+    assert defects[1]["value"] == 33.3
+
+    # 2. Insight must present separate scoped facts and never link Bridging causally to Nozzle Restriction
+    insight_text = data["ai_insight_text"]
+    assert insight_text is not None
+    assert "Most recorded defect category: Bridging." in insight_text
+    assert "Most commonly confirmed cause across all confirmed cases: Nozzle Restriction." in insight_text
+    # Prohibit unsupported causal link or recency
+    assert "recent" not in insight_text.lower()
+    assert "primary contributing factor" not in insight_text.lower()
+    assert data["ai_insight_trend"] == "66.7% of defect-recorded cases"
+
+
+def test_defect_breakdown_with_missing_defect_code(
+    tracked_cases: list[str],
+) -> None:
+    """R10: Defect type breakdown preserves null defect_code without inventing D00."""
+    case_id = str(uuid.uuid4())
+    tracked_cases.append(case_id)
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        c = CaseModel(
+            case_id=case_id,
+            description="Satellite defect without code",
+            material="solder_paste",
+            method="jetting",
+            defect_code=None,  # No defect code recorded
+            defect_name="Satellite Droplets",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add(c)
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/performance?period=all")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    defect_types = data["defect_types"]
+    assert len(defect_types) >= 1
+    target = next((d for d in defect_types if d["name"] == "Satellite Droplets"), None)
+    assert target is not None
+    assert target["code"] is None  # Must remain None, not "D00"
+    assert target["count"] == 1
+    assert "D00" not in [d["code"] for d in defect_types if d.get("code") is not None]

@@ -311,7 +311,7 @@ export default function AnalyticsPage() {
                                         <div className="space-y-4">
                                             {analytics?.defect_types && analytics.defect_types.length > 0 ? (
                                                 analytics.defect_types.map((dt) => (
-                                                    <div key={dt.code} className="space-y-1.5">
+                                                    <div key={dt.code || dt.name} className="space-y-1.5">
                                                         <div className="flex items-center justify-between text-xs font-medium">
                                                             <span className="text-gray-800 font-semibold">{dt.name}</span>
                                                             <span className="text-gray-500 font-mono">{dt.percentage}% ({dt.count})</span>

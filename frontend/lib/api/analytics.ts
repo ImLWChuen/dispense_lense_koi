@@ -29,7 +29,7 @@ export interface ResolutionDistributionItem {
 
 export interface DefectTypeBreakdownItem {
     name: string;
-    code: string;
+    code: string | null;
     count: number;
     percentage: number;
 }

@@ -21,25 +21,20 @@ import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import { reportsApi } from "@/lib/api/reports";
 import { DurableCaseResponse } from "@/types/api";
-
-interface ReportItem {
-    id: string;
-    displayId: string;
-    caseRef: string;
-    title: string;
-    date: string;
-    type: string;
-    status: string;
-    isResolved: boolean;
-}
+import {
+    ReportsPageState,
+    createInitialReportsState,
+    startReportsLoading,
+    reportsLoadSuccess,
+    reportsLoadFailure,
+    mapCasesToReports,
+} from "@/lib/reports-state";
 
 function ReportsContent() {
     const searchParams = useSearchParams();
     const searchParam = searchParams.get("search") || "";
 
-    const [reports, setReports] = useState<ReportItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [state, setState] = useState<ReportsPageState>(createInitialReportsState());
     const [searchQuery, setSearchQuery] = useState(searchParam);
     const [prevSearchParam, setPrevSearchParam] = useState(searchParam);
 
@@ -51,53 +46,17 @@ function ReportsContent() {
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     const reloadReports = useCallback(() => {
-        setIsLoading(true);
-        setError(null);
+        setState((prev) => startReportsLoading(prev));
         reportsApi
             .listCasesForReports()
             .then((cases) => {
-                if (cases && cases.length > 0) {
-                    const mapped: ReportItem[] = cases.map((c: DurableCaseResponse) => {
-                        const shortId = c.case_id.substring(0, 8).toUpperCase();
-                        const isResolved =
-                            c.issue_condition === "RESOLVED" ||
-                            c.issue_condition === "IssueCondition.RESOLVED";
-                        const cleanStatus = isResolved
-                            ? "Complete"
-                            : c.issue_condition.replace("IssueCondition.", "").replace(/_/g, " ");
-
-                        const dateStr = c.created_at
-                            ? new Date(c.created_at).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                              })
-                            : "Recent";
-
-                        return {
-                            id: c.case_id,
-                            displayId: `RPT-${shortId}`,
-                            caseRef: `DSP-${shortId}`,
-                            title: c.defect_name || c.description || "Dispensing Diagnostic Report",
-                            date: dateStr,
-                            type: "Diagnostic Report",
-                            status: cleanStatus,
-                            isResolved,
-                        };
-                    });
-                    setReports(mapped);
-                } else {
-                    setReports([]);
-                }
-                setError(null);
+                const mapped = mapCasesToReports((cases || []) as DurableCaseResponse[]);
+                setState((prev) => reportsLoadSuccess(prev, mapped));
             })
             .catch((err: unknown) => {
                 console.error("Failed to load reports from cases API:", err);
-                setError(err instanceof Error ? err.message : "Failed to load case reports.");
-                setReports([]);
-            })
-            .finally(() => {
-                setIsLoading(false);
+                const msg = err instanceof Error ? err.message : "Failed to load case reports.";
+                setState((prev) => reportsLoadFailure(prev, msg));
             });
     }, []);
 
@@ -107,49 +66,15 @@ function ReportsContent() {
             .listCasesForReports()
             .then((cases) => {
                 if (isCurrent) {
-                    if (cases && cases.length > 0) {
-                        const mapped: ReportItem[] = cases.map((c: DurableCaseResponse) => {
-                            const shortId = c.case_id.substring(0, 8).toUpperCase();
-                            const isResolved =
-                                c.issue_condition === "RESOLVED" ||
-                                c.issue_condition === "IssueCondition.RESOLVED";
-                            const cleanStatus = isResolved
-                                ? "Complete"
-                                : c.issue_condition.replace("IssueCondition.", "").replace(/_/g, " ");
-
-                            const dateStr = c.created_at
-                                ? new Date(c.created_at).toLocaleDateString("en-US", {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                  })
-                                : "Recent";
-
-                            return {
-                                id: c.case_id,
-                                displayId: `RPT-${shortId}`,
-                                caseRef: `DSP-${shortId}`,
-                                title: c.defect_name || c.description || "Dispensing Diagnostic Report",
-                                date: dateStr,
-                                type: "Diagnostic Report",
-                                status: cleanStatus,
-                                isResolved,
-                            };
-                        });
-                        setReports(mapped);
-                    } else {
-                        setReports([]);
-                    }
-                    setError(null);
-                    setIsLoading(false);
+                    const mapped = mapCasesToReports((cases || []) as DurableCaseResponse[]);
+                    setState((prev) => reportsLoadSuccess(prev, mapped));
                 }
             })
             .catch((err: unknown) => {
                 if (isCurrent) {
                     console.error("Failed to load reports from cases API:", err);
-                    setError(err instanceof Error ? err.message : "Failed to load case reports.");
-                    setReports([]);
-                    setIsLoading(false);
+                    const msg = err instanceof Error ? err.message : "Failed to load case reports.";
+                    setState((prev) => reportsLoadFailure(prev, msg));
                 }
             });
 
@@ -168,6 +93,8 @@ function ReportsContent() {
             setTimeout(() => setDownloadingId(null), 1200);
         }
     };
+
+    const { reports, isLoading, error } = state;
 
     const filteredReports = reports.filter(
         (r) =>
@@ -193,6 +120,15 @@ function ReportsContent() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={reloadReports}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                        title="Refresh reports"
+                    >
+                        <RefreshCw size={16} className={isLoading ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
+                        <span>Refresh</span>
+                    </button>
                     <Link
                         href="/diagnosis/new"
                         className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5848e8]"

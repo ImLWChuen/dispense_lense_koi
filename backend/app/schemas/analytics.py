@@ -61,7 +61,7 @@ class ResolutionDistributionItem(BaseModel):
 
 class DefectTypeBreakdownItem(BaseModel):
     name: str
-    code: str
+    code: Optional[str] = None
     count: int
     percentage: float
 

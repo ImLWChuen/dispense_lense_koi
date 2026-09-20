@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -250,10 +250,19 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
             )
         )
 
-    defect_counts = session.query(
-        CaseModel.defect_name,
-        func.count(CaseModel.case_id),
-    ).filter(CaseModel.defect_name.isnot(None)).group_by(CaseModel.defect_name).all()
+    defect_counts = (
+        session.query(
+            CaseModel.defect_name,
+            func.count(CaseModel.case_id),
+        )
+        .filter(CaseModel.defect_name.isnot(None))
+        .group_by(CaseModel.defect_name)
+        .order_by(
+            func.count(CaseModel.case_id).desc(),
+            CaseModel.defect_name.asc(),
+        )
+        .all()
+    )
 
     total_defects = sum([count for _, count in defect_counts])
     defect_distribution: list[DefectDistributionItem] = []
@@ -288,16 +297,15 @@ def get_dashboard_analytics(session: Session = Depends(get_db)) -> DashboardAnal
         if cause_distribution:
             top_cause = cause_distribution[0].cause
             ai_insight_text = (
-                f"{top_defect.name} defects observed across dispensing operations. "
-                f"Recent verified investigations indicate {top_cause} as the primary contributing factor."
+                f"Most recorded defect category: {top_defect.name}. "
+                f"Most commonly confirmed cause across all confirmed cases: {top_cause}."
             )
-            ai_insight_trend = f"{top_defect.value}% of defect-recorded cases"
         else:
             ai_insight_text = (
-                f"{top_defect.name} defects observed across dispensing operations. "
+                f"Most recorded defect category: {top_defect.name}. "
                 "Root cause investigations are currently in progress."
             )
-            ai_insight_trend = f"{top_defect.value}% of defect-recorded cases"
+        ai_insight_trend = f"{top_defect.value}% of defect-recorded cases"
 
     return DashboardAnalyticsResponse(
         kpis=kpis,
@@ -492,11 +500,14 @@ def get_performance_analytics(
     defect_trend = []
     for y, m, m_name in month_slots:
         month_count = session.query(CaseModel).filter(
-            CaseModel.defect_code.isnot(None),
+            or_(CaseModel.defect_code.isnot(None), CaseModel.defect_name.isnot(None)),
             func.extract("year", CaseModel.created_at) == y,
             func.extract("month", CaseModel.created_at) == m,
         ).count()
         defect_trend.append(DefectTrendItem(month=m_name, defects=month_count))
+
+    if not any(d.defects > 0 for d in defect_trend):
+        defect_trend = []
 
     # 5. Root Cause Distribution (Actual confirmed root causes)
     cause_counts_query = (
@@ -523,31 +534,34 @@ def get_performance_analytics(
         cause_distribution.append(CauseDistributionItem(cause=cause_name, cases=count))
 
     # 6. Resolution Time Distribution (Actual resolved case duration buckets)
-    buckets = {
-        "0-5 min": 0,
-        "5-10 min": 0,
-        "10-15 min": 0,
-        "15-20 min": 0,
-        "20-30 min": 0,
-        "30+ min": 0,
-    }
-    for m in res_times_minutes:
-        if m <= 5:
-            buckets["0-5 min"] += 1
-        elif m <= 10:
-            buckets["5-10 min"] += 1
-        elif m <= 15:
-            buckets["10-15 min"] += 1
-        elif m <= 20:
-            buckets["15-20 min"] += 1
-        elif m <= 30:
-            buckets["20-30 min"] += 1
-        else:
-            buckets["30+ min"] += 1
+    if not res_times_minutes:
+        resolution_time_distribution = []
+    else:
+        buckets = {
+            "0-5 min": 0,
+            "5-10 min": 0,
+            "10-15 min": 0,
+            "15-20 min": 0,
+            "20-30 min": 0,
+            "30+ min": 0,
+        }
+        for m in res_times_minutes:
+            if m <= 5:
+                buckets["0-5 min"] += 1
+            elif m <= 10:
+                buckets["5-10 min"] += 1
+            elif m <= 15:
+                buckets["10-15 min"] += 1
+            elif m <= 20:
+                buckets["15-20 min"] += 1
+            elif m <= 30:
+                buckets["20-30 min"] += 1
+            else:
+                buckets["30+ min"] += 1
 
-    resolution_time_distribution = [
-        ResolutionDistributionItem(range=r, count=c) for r, c in buckets.items()
-    ]
+        resolution_time_distribution = [
+            ResolutionDistributionItem(range=r, count=c) for r, c in buckets.items()
+        ]
 
     # 7. Defect Type Breakdown (Actual defects in current period)
     defect_counts_query = (
@@ -576,7 +590,7 @@ def get_performance_analytics(
             defect_types.append(
                 DefectTypeBreakdownItem(
                     name=d_name or "Unknown",
-                    code=d_code or "D00",
+                    code=d_code,
                     count=count,
                     percentage=pct,
                 )

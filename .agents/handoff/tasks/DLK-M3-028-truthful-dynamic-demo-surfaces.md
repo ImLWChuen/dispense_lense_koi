@@ -260,6 +260,11 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
   - **R5 (Canonical Equipment Key):** Updated recent cases in dashboard to read `machine_context.equipment` as the primary canonical key alongside compatibility fallbacks `machine_id` and `equipment_id`.
   - **R6 (Distinct Case Count in Cause Distribution):** Scoped cause distribution queries in both dashboard and performance endpoints to count unique cases via `func.count(func.distinct(CaseCauseConfirmationModel.case_id))`, preventing duplicate counting when a case undergoes multiple confirmation revisions.
   - **R7 (Population Alignment for Insight & Defect Trend):** Aligned dashboard AI insight label to `"{value}% of defect-recorded cases"` (matching the queried population of cases with recorded defects). Filtered performance monthly defect trend query strictly to cases with recorded defect categories (`CaseModel.defect_code.isnot(None)`) across the independent 6-calendar-month window, clearly labeled as `Monthly Defect Trend (Last 6 Months)`.
+- Addressed Review Findings R8–R11:
+  - **R8 (Empty Chart Arrays When No Observed Data):** Defect trend returns `defect_trend = []` when the six-month window contains no defect-classified cases; once at least one defect case exists in the window, the complete 6-month series (including meaningful zero months) is returned. Resolution duration distribution returns `resolution_time_distribution = []` when `res_times_minutes` is empty (no measured durations); once at least one case has an explicit resolution duration, the complete 6-bucket series is returned. Extended `test_empty_database_analytics` and `test_resolved_case_without_resolution_event_excluded_from_duration` to assert empty arrays and complete series exactly.
+  - **R9 (Deterministic Defect Ordering & Independent Insight Statements):** Ordered dashboard defect distribution query deterministically by `func.count(CaseModel.case_id).desc(), CaseModel.defect_name.asc()`. Rewrote AI insight text to present separate scoped facts (`"Most recorded defect category: {top_defect.name}. Most commonly confirmed cause across all confirmed cases: {top_cause}."` or `"Root cause investigations are currently in progress."`). Strictly removed unsupported causal linkages ("primary contributing factor") and recency claims ("recent verified investigations"). Added integration regression test `test_deterministic_defect_order_and_unrelated_cause_insight` inserting cases out of order to verify sorting and decoupled phrasing.
+  - **R10 (Remove Invented D00 Code):** Made `DefectTypeBreakdownItem.code` nullable end-to-end (`Optional[str] = None` in backend schema, `string | null` in frontend type) and removed the `"D00"` fallback in `backend/app/api/analytics.py`. Updated frontend list key in `frontend/app/(dashboard)/analytics/page.tsx` to `key={dt.code || dt.name}`. Added regression test `test_defect_breakdown_with_missing_defect_code` verifying null code is preserved without fabricating `"D00"`.
+  - **R11 (Truthful Reports Refresh State & Reachable UI):** Extracted pure reports state transitions and helpers into `frontend/lib/reports-state.ts`. In `frontend/app/(dashboard)/reports/page.tsx`, `reloadReports` preserves previously loaded reports on reload failure rather than clearing them, allowing the stale warning banner to render while keeping data visible. Initial load failure renders the dedicated error card exclusively. Added a reachable "Refresh" button in the reports header. Authored dependency-free regression suite `frontend/scripts/test-reports-state.mjs` verifying initial failure, initial success, refresh in-flight, refresh failure with stale banner, refresh recovery, and empty state (8/8 tests passed).
 - Frontend components and pages (Dashboard, Cases, Reports, Analytics, ConfidenceScore, CauseCard, DiagnosisSummary, CaseTable, RecentCases, Defect/Cause/Resolution charts) render only real persisted data. Clean loading, empty, and retryable error states are displayed when data is missing or unavailable.
 - Cause scores are consistently labeled `Evidence Support /100` or `Evidence Support` across all task-owned surfaces. Zero is treated as a valid score (`0/100`).
 - Updated `docs/api/frontend-backend-contract.md` matrix and Section 3.7.
@@ -272,6 +277,8 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 - `docs/api/frontend-backend-contract.md`
 - `frontend/lib/api/analytics.ts`
 - `frontend/lib/api/reports.ts`
+- `frontend/lib/reports-state.ts`
+- `frontend/scripts/test-reports-state.mjs`
 - `frontend/components/dashboard/KpiCard.tsx`
 - `frontend/components/dashboard/RecentCases.tsx`
 - `frontend/components/dashboard/DefectDistribution.tsx`
@@ -301,15 +308,21 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 - Derived first-time resolution strictly from `CaseLifecycleEventModel` verification events (`verification_passed is True`, 0 failed, 0 recurred), eliminating revision-count proxies and returning `None` when evidence is unsupported.
 - Excluded unmeasured resolved cases from duration calculations and buckets rather than assigning synthetic `0.0` values.
 - Enforced mutually exclusive loading, error, and data states in the UI so that initial request failures never present misleading zero data or empty messages, and refresh failures clearly present retained data as stale.
+- Returned empty arrays for charts (`defect_trend = []`, `resolution_time_distribution = []`) when no observed data exists, returning complete series once real cases are recorded.
+- Sorted defect distributions deterministically (`count desc, defect_name asc`) and decoupled defect aggregate descriptions from confirmed cause aggregates in dashboard insights.
+- Nullified missing defect codes end-to-end instead of fabricating `"D00"`.
+- Extracted pure reports state logic into `frontend/lib/reports-state.ts` and validated via standalone node regression script `frontend/scripts/test-reports-state.mjs` without adding external test dependencies.
 - Preserved zero as a valid score (`0/100`) while clamping the visual bar width to `[0, 100]`.
 - Strictly preserved protected teammate file `frontend/app/(dashboard)/cases/[id]/page.tsx` without staging or modifying it.
 
 ### Verification results
 
-- **PostgreSQL Integration Tests**: `backend/.venv/Scripts/python.exe -m pytest -v backend/tests/integration/test_analytics_api.py --basetemp .phase3-analytics-pytest-tmp` (12 passed, 11 warnings in 4.19s) with `TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"`.
-- **Full Backend Suite**: `backend/.venv/Scripts/python.exe -m pytest -q --basetemp .phase3-full-pytest-tmp` (478 passed, 42 warnings in 54.20s).
+- **PostgreSQL Integration Tests**: `backend/.venv/Scripts/python.exe -m pytest -v backend/tests/integration/test_analytics_api.py --basetemp .phase3-analytics-pytest-tmp` (14 passed, 11 warnings in 2.99s) with `TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"`.
+- **Full Backend Suite**: `backend/.venv/Scripts/python.exe -m pytest -q --basetemp .phase3-full-pytest-tmp` (480 passed, 42 warnings in 54.30s).
+- **Reports State Regressions**: `node frontend/scripts/test-reports-state.mjs` (8/8 passed).
+- **Image Upload State Regressions**: `node frontend/scripts/test-image-upload-state.mjs` (7/7 passed).
 - **Focused ESLint**: `npx eslint` across all changed frontend files passed with 0 errors and 0 warnings.
-- **Production Build**: `npm run build` in `frontend/` passed cleanly (Compiled in 804ms, TypeScript finished in 2.3s, 13/13 static pages generated).
+- **Production Build**: `npm run build` in `frontend/` passed cleanly (Compiled in 821ms, TypeScript finished in 2.3s, 13/13 static pages generated).
 - **Task Validation**: `backend/.venv/Scripts/python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md` reported `VALID`.
 - **Whitespace Check**: `git diff --check` passed cleanly with 0 errors.
 
@@ -320,4 +333,4 @@ Proposed commit message: `fix(analytics): make demo surfaces data truthful`
 
 ### Proposed commit message
 
-`fix(analytics): address review corrections for truthful demo surfaces`
+`fix(analytics): address review corrections R8-R11 for truthful demo surfaces`
