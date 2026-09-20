@@ -1,5 +1,5 @@
 """
-DispenseIQ — Image Analysis API Integration Tests
+Dispense Lens - Image Analysis API Integration Tests
 
 Verifies:
 - Successful multipart upload with JSON profile returning typed ImageAnalysisResponse.

@@ -164,11 +164,11 @@ Return `200 OK` on success. Expose:
 The response must reflect committed state.
 
 ### 5. Status/error contract
-- `200 OK` — confirmation accepted
-- `404 Not Found` — case missing
-- `409 Conflict` — stale `expected_revision`
-- `422 Unprocessable Entity` — invalid confirmation request or unknown cause
-- `500 Internal Server Error` — unexpected internal failure
+- `200 OK` - confirmation accepted
+- `404 Not Found` - case missing
+- `409 Conflict` - stale `expected_revision`
+- `422 Unprocessable Entity` - invalid confirmation request or unknown cause
+- `500 Internal Server Error` - unexpected internal failure
 Errors must not leak DB URLs, credentials, SQL, stack traces, local paths, or secrets.
 
 ## Allowed paths

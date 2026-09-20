@@ -1,10 +1,10 @@
 """
-DispenseIQ — Defect Identifier
+Dispense Lens - Defect Identifier
 
 Deterministic defect identification from structured observations.
 Maps extracted observations to one of six mandatory defect types.
 
-This is a traceable, rule-based mapper — NOT a neural classifier.
+This is a traceable, rule-based mapper - NOT a neural classifier.
 Every identification includes a human-readable reason.
 """
 

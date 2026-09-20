@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import ProblemForm, { ProblemFormData } from "@/components/diagnosis/ProblemForm";
 import ImageUpload from "@/components/diagnosis/ImageUpload";
@@ -94,13 +92,7 @@ export default function NewDiagnosisPage() {
     };
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
-
-            <div className="ml-64">
-                <Header />
-
-                <PageContainer>
+        <PageContainer>
                     <div>
                         <p className="text-sm font-medium text-[#6d5dfc]">
                             Diagnostic workflow
@@ -166,7 +158,5 @@ export default function NewDiagnosisPage() {
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

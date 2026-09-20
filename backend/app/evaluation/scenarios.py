@@ -1,5 +1,5 @@
 """
-DispenseIQ — Evaluation Scenarios (Phase 15 Placeholder)
+Dispense Lens - Evaluation Scenarios (Phase 15 Placeholder)
 
 Defines 12 controlled functional benchmark scenarios covering all six mandatory
 dispensing defect categories (6 defects × 2 scenarios each):

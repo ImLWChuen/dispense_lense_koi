@@ -1,5 +1,5 @@
 """
-DispenseIQ — Symptom Extractor Unit Tests (Section 23)
+Dispense Lens - Symptom Extractor Unit Tests (Section 23)
 
 Verifies:
 1. Regex extraction across all observation dimensions

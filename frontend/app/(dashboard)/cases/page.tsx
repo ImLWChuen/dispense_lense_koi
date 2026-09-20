@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search, Filter, X, RefreshCw, AlertCircle } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 
 import { casesApi } from "@/lib/api/cases";
@@ -314,14 +312,8 @@ function CasesContent() {
 
 export default function CasesPage() {
     return (
-        <div className="min-h-screen">
-            <Sidebar />
-            <div className="ml-64">
-                <Header />
-                <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading cases...</div>}>
-                    <CasesContent />
-                </Suspense>
-            </div>
-        </div>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading cases...</div>}>
+            <CasesContent />
+        </Suspense>
     );
 }

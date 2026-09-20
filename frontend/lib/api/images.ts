@@ -1,5 +1,5 @@
 /**
- * DispenseLens — Calibrated Image API Client
+ * Dispense Lens - Calibrated Image API Client
  *
  * Implements multipart POST /api/v1/images/analyze communicating with
  * the backend image analysis service.

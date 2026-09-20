@@ -24,13 +24,13 @@ Changes requested: a bounded portability and verification closeout. No defect wa
 
 ## Findings
 
-### R1 — P2: Share generated-file exclusions with teammates
+### R1 - P2: Share generated-file exclusions with teammates
 
 The tracked `.gitignore` excludes bytecode but omits `.venv/`, `.pytest_cache/`, and `*.egg-info/`. Gemini instead added these to `.git/info/exclude`, a local-only file. A teammate following the README can therefore generate untracked packaging metadata without receiving this checkout's safeguards. Some tools may self-ignore their output, but the repository should not depend on that or on a local Git exclusion file. Add the relevant exclusions to tracked `.gitignore`, preserving existing rules.
 
 The original packet's prohibition against redesigning the handoff `.gitignore` contributed to this workaround. The correction explicitly authorizes narrowly scoped generated-file exclusions; it does not require Gemini to alter or remove local exclusions.
 
-### R2 — Verification gap: Complete setup/startup evidence
+### R2 - Verification gap: Complete setup/startup evidence
 
 The report lists passing tests and import verification but does not record the required setup/install commands' outcomes or a startup smoke check. An editable installation exists locally, so this is missing reproducibility evidence rather than a claim that installation failed. Record a fresh-environment installation, tests, dependency consistency check, and a loopback HTTP smoke check using the documented server command. Include the actual warning messages and their implications.
 

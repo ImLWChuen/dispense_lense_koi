@@ -1,5 +1,5 @@
 """
-DispenseIQ — Explanation Service
+Dispense Lens - Explanation Service
 
 Turns deterministic diagnostic engine results into clear, professional,
 human-readable text. Uses bounded LLM generation when available, with

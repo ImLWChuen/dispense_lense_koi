@@ -1,5 +1,5 @@
 """
-DispenseIQ — Diagnostic Engine Orchestrator
+Dispense Lens - Diagnostic Engine Orchestrator
 
 Phases 9–11 Implementation & Phase 13 Orchestrator:
 - Phase 9: Check Result Handling (supports COMPLETED, BLOCKED, UNKNOWN, FAILED,
@@ -360,7 +360,7 @@ _CHECK_OUTCOME_PATTERNS: dict[str, dict[str, list[str]]] = {
 _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]] = {
     "ACT01": {
         "no_blockage": (ObservationType.NOZZLE_CONDITION, "clean"),
-        "blockage_found": (ObservationType.NOZZLE_CONDITION, "blocked"),   # DLK-M3-013: "blocked" not "damaged" — blockage ≠ damage
+        "blockage_found": (ObservationType.NOZZLE_CONDITION, "blocked"),   # DLK-M3-013: "blocked" not "damaged" - blockage ≠ damage
         "damage_found": (ObservationType.NOZZLE_CONDITION, "damaged"),
     },
     "ACT02": {
@@ -372,7 +372,7 @@ _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]
     },
     "ACT04": {
         "pressure_unstable": (ObservationType.PRESSURE, "fluctuating"),
-        "pressure_low": (ObservationType.PRESSURE, "low"),               # DLK-M3-013: "low" not "fluctuating" — low ≠ fluctuating
+        "pressure_low": (ObservationType.PRESSURE, "low"),               # DLK-M3-013: "low" not "fluctuating" - low ≠ fluctuating
         "pressure_stable": (ObservationType.PRESSURE, "stable"),
     },
     "ACT08": {
@@ -380,7 +380,7 @@ _ACTION_OUTCOME_TO_OBSERVATION: dict[str, dict[str, tuple[ObservationType, str]]
         "temperature_normal": (ObservationType.TEMPERATURE, "normal"),
     },
     "ACT10": {
-        "calibration_drift": (ObservationType.EQUIPMENT_CONDITION, "calibration_drift"),  # DLK-M3-013: "calibration_drift" not "worn" — drift ≠ wear
+        "calibration_drift": (ObservationType.EQUIPMENT_CONDITION, "calibration_drift"),  # DLK-M3-013: "calibration_drift" not "worn" - drift ≠ wear
     },
 }
 

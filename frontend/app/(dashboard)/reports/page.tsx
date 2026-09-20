@@ -16,51 +16,50 @@ import {
     X,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import { reportsApi } from "@/lib/api/reports";
 import { DurableCaseResponse } from "@/types/api";
-import {
-    ReportsPageState,
-    createInitialReportsState,
-    startReportsLoading,
-    reportsLoadSuccess,
-    reportsLoadFailure,
-    deriveReportsView,
-    getReportStatusPresentation,
-    mapCasesToReports,
-} from "@/lib/reports-state";
+
+interface ReportItem {
+    id: string;
+    displayId: string;
+    caseRef: string;
+    title: string;
+    date: string;
+    type: string;
+    status: string;
+    isResolved: boolean;
+}
 
 function ReportsContent() {
     const searchParams = useSearchParams();
     const searchParam = searchParams.get("search") || "";
 
-    const [state, setState] = useState<ReportsPageState>(createInitialReportsState());
-    const [searchQuery, setSearchQuery] = useState(searchParam);
-    const [prevSearchParam, setPrevSearchParam] = useState(searchParam);
+    const [reports, setReports] = useState<ReportItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState(initialSearch);
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     if (searchParam !== prevSearchParam) {
         setPrevSearchParam(searchParam);
         setSearchQuery(searchParam);
     }
 
-    const [downloadingId, setDownloadingId] = useState<string | null>(null);
-
-    const reloadReports = useCallback(() => {
-        setState((prev) => startReportsLoading(prev));
-        reportsApi
-            .listCasesForReports()
-            .then((cases) => {
-                const mapped = mapCasesToReports((cases || []) as DurableCaseResponse[]);
-                setState((prev) => reportsLoadSuccess(prev, mapped));
-            })
-            .catch((err: unknown) => {
-                console.error("Failed to load reports from cases API:", err);
-                const msg = err instanceof Error ? err.message : "Failed to load case reports.";
-                setState((prev) => reportsLoadFailure(prev, msg));
-            });
-    }, []);
+    const loadReports = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const cases = await reportsApi.listCasesForReports();
+            if (cases && cases.length > 0) {
+                const mapped: ReportItem[] = cases.map((c: DurableCaseResponse) => {
+                    const shortId = c.case_id.substring(0, 8).toUpperCase();
+                    const isResolved =
+                        c.issue_condition === "RESOLVED" ||
+                        c.issue_condition === "IssueCondition.RESOLVED";
+                    const cleanStatus = isResolved
+                        ? "Complete"
+                        : c.issue_condition.replace("IssueCondition.", "").replace(/_/g, " ");
 
     useEffect(() => {
         let isCurrent = true;
@@ -80,9 +79,33 @@ function ReportsContent() {
                 }
             });
 
-        return () => {
-            isCurrent = false;
-        };
+                    return {
+                        id: c.case_id,
+                        displayId: `RPT-${shortId}`,
+                        caseRef: `DSP-${shortId}`,
+                        title: c.defect_name || c.description || "Dispensing Diagnostic Report",
+                        date: dateStr,
+                        type: "Diagnostic Report",
+                        status: cleanStatus,
+                        isResolved,
+                    };
+                });
+                setReports(mapped);
+            } else {
+                setReports([]);
+            }
+        } catch (err: unknown) {
+            console.error("Failed to load reports from cases API:", err);
+            const msg = err instanceof Error ? err.message : "Failed to load reports.";
+            setError(msg);
+            setReports([]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadReports();
     }, []);
 
     const handleDownloadPdf = (e: React.MouseEvent, reportId: string) => {
@@ -206,9 +229,29 @@ function ReportsContent() {
                         </div>
                     </div>
 
-                    {/* Reports Table */}
-                    <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                        {view.showEmpty || filteredReports.length === 0 ? (
+            {error && (
+                <div className="mt-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle size={18} className="text-red-500 shrink-0" />
+                        <span>{error}</span>
+                    </div>
+                    <button
+                        onClick={loadReports}
+                        className="rounded-lg bg-red-100 px-3 py-1 text-xs font-semibold text-red-800 hover:bg-red-200 transition"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
+            {/* Reports Table */}
+            <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                                <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
+                                <p className="text-sm font-medium">Loading case reports...</p>
+                            </div>
+                        ) : filteredReports.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <AlertCircle className="h-10 w-10 text-gray-300 mb-3" />
                                 <p className="text-base font-semibold text-gray-900">No reports found</p>
@@ -240,45 +283,66 @@ function ReportsContent() {
                                                 >
                                                     <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900">
                                                         {report.displayId}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <FileText size={15} className="text-[#6d5dfc]" />
-                                                            <span className="text-sm font-medium text-gray-900">
-                                                                {report.title}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 font-mono text-xs text-gray-500">
-                                                        {report.caseRef}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
+                                                    </Link>
+                                                </td>
+
+                                                <td className="px-6 py-4">
+                                                    <Link
+                                                        href={`/reports/${report.id}`}
+                                                        className="text-sm font-medium text-gray-800 hover:underline block max-w-xs truncate"
+                                                        title={report.title}
+                                                    >
+                                                        {report.title}
+                                                    </Link>
+                                                </td>
+
+                                                <td className="px-6 py-4 text-xs font-mono text-gray-600">
+                                                    {report.caseRef}
+                                                </td>
+
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
                                                             {report.type}
                                                         </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-xs text-gray-500">
-                                                        {report.date}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span
-                                                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPresentation.badgeClass}`}
+                                                        <Link
+                                                            href={`/reports/${report.id}?format=8d`}
+                                                            className="rounded-md bg-[#6d5dfc]/10 text-[#6d5dfc] px-2 py-0.5 text-[11px] font-semibold hover:bg-[#6d5dfc]/20 transition"
+                                                            title="View 8D Quality & CAPA Report"
                                                         >
-                                                            {statusPresentation.icon === "check" ? (
-                                                                <CheckCircle2 size={12} />
-                                                            ) : (
-                                                                <Clock3 size={12} />
-                                                            )}
-                                                            {report.status}
-                                                        </span>
-                                                    </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                            8D Ready
+                                                        </Link>
+                                                    </div>
+                                                </td>
+
+                                                <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                                                    {report.date}
+                                                </td>
+
+                                                <td className="px-6 py-4">
+                                                    <span
+                                                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                                                            report.isResolved
+                                                                ? "bg-emerald-50 text-emerald-700"
+                                                                : "bg-amber-50 text-amber-700"
+                                                        }`}
+                                                    >
+                                                        {report.isResolved ? (
+                                                            <CheckCircle2 size={13} />
+                                                        ) : (
+                                                            <Clock3 size={13} />
+                                                        )}
+                                                        {report.status}
+                                                    </span>
+                                                </td>
+
+                                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                    <div className="flex items-center justify-end gap-1.5">
                                                         <button
                                                             onClick={(e) => handleDownloadPdf(e, report.id)}
                                                             disabled={downloadingId === report.id}
-                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
-                                                            title="Download PDF"
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
+                                                            title="Download Case PDF"
                                                         >
                                                             {downloadingId === report.id ? (
                                                                 <Loader2 size={13} className="animate-spin text-[#6d5dfc]" />
@@ -289,8 +353,16 @@ function ReportsContent() {
                                                         </button>
 
                                                         <Link
+                                                            href={`/reports/${report.id}?format=8d`}
+                                                            className="inline-flex items-center gap-1 rounded-lg border border-[#6d5dfc]/30 bg-[#6d5dfc]/5 px-2.5 py-1.5 text-xs font-semibold text-[#5848e8] transition hover:bg-[#6d5dfc]/15"
+                                                            title="Open 8D Quality Report"
+                                                        >
+                                                            8D Audit
+                                                        </Link>
+
+                                                        <Link
                                                             href={`/reports/${report.id}`}
-                                                            className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-[#6d5dfc] hover:text-white"
+                                                            className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-[#6d5dfc] hover:text-white"
                                                         >
                                                             View
                                                         </Link>
@@ -312,14 +384,8 @@ function ReportsContent() {
 
 export default function ReportsPage() {
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-            <Sidebar />
-            <div className="ml-64">
-                <Header />
-                <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading reports...</div>}>
-                    <ReportsContent />
-                </Suspense>
-            </div>
-        </div>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading reports...</div>}>
+            <ReportsContent />
+        </Suspense>
     );
 }

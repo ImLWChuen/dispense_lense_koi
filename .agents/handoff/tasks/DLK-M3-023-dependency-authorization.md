@@ -56,7 +56,7 @@ No new report persistence is authorized.
 
 Continue the existing task:
 
-`DLK-M3-023 — Deterministic downloadable PDF case report`
+`DLK-M3-023 - Deterministic downloadable PDF case report`
 
 Implement:
 

@@ -59,7 +59,7 @@ The current domain contract already requires explicit verification before transi
 
 Implement one coherent recovery-verification workflow with two explicit durable operations.
 
-### Operation A — record recovery action
+### Operation A - record recovery action
 
 Expose:
 
@@ -71,7 +71,7 @@ A successful request records that a corrective action has been applied and trans
 
 This operation must **not** mark the issue resolved.
 
-### Operation B — verify recovery result
+### Operation B - verify recovery result
 
 Expose:
 
@@ -144,11 +144,11 @@ The client must not submit an arbitrary target issue condition.
 
 At minimum:
 
-- `200 OK` — transition accepted and committed
-- `404 Not Found` — case does not exist
-- `409 Conflict` — stale `expected_revision`
-- `422 Unprocessable Entity` — illegal lifecycle transition or malformed request
-- `500 Internal Server Error` — unexpected internal failure
+- `200 OK` - transition accepted and committed
+- `404 Not Found` - case does not exist
+- `409 Conflict` - stale `expected_revision`
+- `422 Unprocessable Entity` - illegal lifecycle transition or malformed request
+- `500 Internal Server Error` - unexpected internal failure
 
 Known illegal state transitions may return a safe 422 response.
 
@@ -314,7 +314,7 @@ Do not implement:
 - [x] Exactly one new immutable analysis revision is appended.
 - [x] Prior question/check/confirmation history remains unchanged.
 
-### Recovery verification — pass
+### Recovery verification - pass
 
 - [x] Verification from `RECOVERY_PENDING_VERIFICATION` with `verification_passed=true` returns `200`.
 - [x] Issue becomes `RESOLVED`.
@@ -322,7 +322,7 @@ Do not implement:
 - [x] Exactly one lifecycle event and one new revision are appended.
 - [x] Cause conclusions are not fabricated or changed merely because verification passed.
 
-### Recovery verification — fail
+### Recovery verification - fail
 
 - [x] Verification from `RECOVERY_PENDING_VERIFICATION` with `verification_passed=false` returns `200`.
 - [x] Issue returns to `UNRESOLVED`.

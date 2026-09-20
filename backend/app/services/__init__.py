@@ -1,1 +1,1 @@
-"""DispenseIQ — Services package."""
+"""Dispense Lens - Services package."""

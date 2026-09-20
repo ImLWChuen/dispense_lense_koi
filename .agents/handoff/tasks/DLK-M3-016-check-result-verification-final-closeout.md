@@ -37,11 +37,11 @@ DLK-M3-015 was reviewed at commit:
 
 The review returned `changes_requested` with two bounded verification gaps.
 
-### R1 — rollback baselines do not contain prior check history
+### R1 - rollback baselines do not contain prior check history
 
 The API and repository rollback targets are advanced using a question answer only. Their `check_results` baseline is empty. The test therefore proves removal of a failed first check, but cannot detect accidental mutation/corruption of an already persisted check event during a later failed check submission.
 
-### R2 — snapshot helper normalizes distinct stored values
+### R2 - snapshot helper normalizes distinct stored values
 
 `capture_complete_case_state()` currently uses truthiness expressions such as:
 

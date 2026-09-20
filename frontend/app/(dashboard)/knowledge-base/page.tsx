@@ -13,8 +13,6 @@ import {
     FileText,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 
 const tabs = ["Defects", "Causes", "Actions", "Rules"];
@@ -177,7 +175,7 @@ function KnowledgeBaseContent() {
 
                 <p className="mt-2 text-sm text-gray-500">
                     Explore the diagnostic knowledge, defect profiles, and root cause rules that power the
-                    DispenseIQ engine.
+                    Dispense Lens engine.
                 </p>
             </div>
 
@@ -514,14 +512,8 @@ function KnowledgeBaseContent() {
 
 export default function KnowledgeBasePage() {
     return (
-        <div className="min-h-screen">
-            <Sidebar />
-            <div className="ml-64">
-                <Header />
-                <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading knowledge base...</div>}>
-                    <KnowledgeBaseContent />
-                </Suspense>
-            </div>
-        </div>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading knowledge base...</div>}>
+            <KnowledgeBaseContent />
+        </Suspense>
     );
 }

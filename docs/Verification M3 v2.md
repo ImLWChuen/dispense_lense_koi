@@ -1,10 +1,10 @@
-# DLK-M3-013 — Member 2 Troubleshooting Check / Outcome Contract Verification Plan
+# DLK-M3-013 - Member 2 Troubleshooting Check / Outcome Contract Verification Plan
 
 ## 1. Objective
 
 Verify that the existing Member 2 implementation is ready for:
 
-**DLK-M3-013 — Submit troubleshooting check result and append new diagnosis revision API**
+**DLK-M3-013 - Submit troubleshooting check result and append new diagnosis revision API**
 
 This is a **verification and minimum-fix task**.
 
@@ -76,7 +76,7 @@ Its diagnostic finding must be recorded separately.
 
 ---
 
-# 3. FIRST — INSPECT THE EXISTING REPOSITORY
+# 3. FIRST - INSPECT THE EXISTING REPOSITORY
 
 Before modifying code:
 
@@ -106,7 +106,7 @@ Do not create a new handler if the repository already has an equivalent componen
 
 ---
 
-# 4. READINESS REQUIREMENT 1 — STABLE TROUBLESHOOTING CHECK IDs
+# 4. READINESS REQUIREMENT 1 - STABLE TROUBLESHOOTING CHECK IDs
 
 ## Goal
 
@@ -153,7 +153,7 @@ Every supported MVP check can be identified uniquely by ID throughout the comple
 
 ---
 
-# 5. READINESS REQUIREMENT 2 — STABLE TECHNICIAN OUTCOME VALUES
+# 5. READINESS REQUIREMENT 2 - STABLE TECHNICIAN OUTCOME VALUES
 
 ## Goal
 
@@ -260,7 +260,7 @@ There is exactly one authoritative definition of each supported execution/result
 
 ---
 
-# 6. READINESS REQUIREMENT 3 — CHECK RESULT → OBSERVATION / EVIDENCE MAPPING
+# 6. READINESS REQUIREMENT 3 - CHECK RESULT → OBSERVATION / EVIDENCE MAPPING
 
 ## Goal
 
@@ -354,7 +354,7 @@ No check result has contradictory mappings.
 
 ---
 
-# 7. READINESS REQUIREMENT 4 — UNKNOWN / INCONCLUSIVE MUST NOT FABRICATE EVIDENCE
+# 7. READINESS REQUIREMENT 4 - UNKNOWN / INCONCLUSIVE MUST NOT FABRICATE EVIDENCE
 
 This is a hard requirement.
 
@@ -450,7 +450,7 @@ no unsupported evidence is created
 
 ---
 
-# 8. READINESS REQUIREMENT 5 — EXECUTION STATE AND CHECK FINDING MUST REMAIN SEPARATE
+# 8. READINESS REQUIREMENT 5 - EXECUTION STATE AND CHECK FINDING MUST REMAIN SEPARATE
 
 ## Goal
 
@@ -519,7 +519,7 @@ Both values can be changed independently and persisted independently.
 
 ---
 
-# 9. READINESS REQUIREMENT 6 — CHECK SUPPORT DOES NOT AUTOMATICALLY CONFIRM ROOT CAUSE
+# 9. READINESS REQUIREMENT 6 - CHECK SUPPORT DOES NOT AUTOMATICALLY CONFIRM ROOT CAUSE
 
 This is one of the most important tests.
 
@@ -598,7 +598,7 @@ The latter should happen only when the knowledge contract explicitly defines it.
 
 ---
 
-# 10. READINESS REQUIREMENT 7 — DETERMINISTIC RERUN AFTER CHECK RESULT
+# 10. READINESS REQUIREMENT 7 - DETERMINISTIC RERUN AFTER CHECK RESULT
 
 ## Goal
 
@@ -658,9 +658,9 @@ Same structured case + same check result = same diagnostic result.
 
 ---
 
-# 11. READINESS REQUIREMENT 8 — DUPLICATE / REPEATED CHECK RESULTS DO NOT INFLATE EVIDENCE
+# 11. READINESS REQUIREMENT 8 - DUPLICATE / REPEATED CHECK RESULTS DO NOT INFLATE EVIDENCE
 
-## Test A — Exact duplicate
+## Test A - Exact duplicate
 
 Submit:
 
@@ -683,7 +683,7 @@ second identical submission
 
 The system may preserve the fact that the action was repeated, but the ranking must not receive double support.
 
-## Test B — Same observation from repeated checks
+## Test B - Same observation from repeated checks
 
 If two executions generate the same normalized observation:
 
@@ -693,7 +693,7 @@ nozzle_condition = blocked
 
 do not automatically count them as two independent observations.
 
-## Test C — Revision preservation
+## Test C - Revision preservation
 
 Verify:
 

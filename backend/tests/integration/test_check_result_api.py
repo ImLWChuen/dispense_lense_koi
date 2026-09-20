@@ -1,5 +1,5 @@
 """
-DispenseIQ — Technician Troubleshooting Check Result Submission API Integration Tests
+Dispense Lens - Technician Troubleshooting Check Result Submission API Integration Tests
 
 Tests persistent technician troubleshooting check-result submission (POST /api/v1/cases/{case_id}/check-results)
 against real PostgreSQL. Verifies atomicity, provenance preservation, optimistic concurrency via expected_revision,

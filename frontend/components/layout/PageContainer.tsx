@@ -5,10 +5,10 @@ interface PageContainerProps {
 }
 
 export default function PageContainer({
-                                          children,
-                                      }: PageContainerProps) {
+    children,
+}: PageContainerProps) {
     return (
-        <main className="min-h-[calc(100vh-80px)] bg-[#f7f8fa] px-8 py-7">
+        <main className="min-h-[calc(100vh-80px)] bg-[#f7f8fa] px-4 sm:px-6 lg:px-8 py-6 sm:py-7">
             <div className="mx-auto max-w-[1600px]">
                 {children}
             </div>

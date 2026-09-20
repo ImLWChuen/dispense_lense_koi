@@ -130,49 +130,41 @@ export const casesApi = {
         );
     },
 
-    async submitRecoveryAction(
-        caseId: string,
-        payloadOrRecoveryDetails: SubmitRecoveryActionPayload | string,
-        expectedRevision?: number,
-        performedBy: string = "technician"
-    ): Promise<CaseRecoveryActionResponse> {
-        const body: SubmitRecoveryActionPayload =
-            typeof payloadOrRecoveryDetails === "string"
-                ? {
-                      recovery_details: payloadOrRecoveryDetails,
-                      expected_revision: expectedRevision!,
-                      performed_by: performedBy,
-                  }
-                : {
-                      performed_by: "technician",
-                      ...payloadOrRecoveryDetails,
-                  };
-        return apiClient.post<CaseRecoveryActionResponse>(
-            `/cases/${caseId}/recovery-actions`,
-            body
-        );
+    async submitRecoveryAction(caseId: string, recoveryDetails: string, expectedRevision: number, performedBy: string = "engineer") {
+        return apiClient.post(`/cases/${caseId}/recovery-actions`, {
+            recovery_details: recoveryDetails,
+            expected_revision: expectedRevision,
+            performed_by: performedBy,
+        });
     },
 
-    async submitRecurrence(
-        caseId: string,
-        payloadOrDetails: SubmitRecurrencePayload | string,
-        expectedRevision?: number,
-        reportedBy: string = "technician"
-    ): Promise<CaseRecurrenceResponse> {
-        const body: SubmitRecurrencePayload =
-            typeof payloadOrDetails === "string"
-                ? {
-                      recurrence_details: payloadOrDetails,
-                      expected_revision: expectedRevision!,
-                      reported_by: reportedBy,
-                  }
-                : {
-                      reported_by: "technician",
-                      ...payloadOrDetails,
-                  };
-        return apiClient.post<CaseRecurrenceResponse>(
-            `/cases/${caseId}/recurrences`,
-            body
-        );
-    },
+    async getSimilarCases(caseId: string, limit: number = 5, minScore: number = 0.20): Promise<SimilarCasesResponse> {
+        return apiClient.get<SimilarCasesResponse>(`/cases/${caseId}/similar?limit=${limit}&min_score=${minScore}`);
+    }
 };
+
+export interface SimilarCaseItem {
+    case_id: string;
+    short_id: string;
+    defect_code?: string;
+    defect_name?: string;
+    description: string;
+    material?: string;
+    method?: string;
+    line_id?: string;
+    issue_condition: string;
+    is_resolved: boolean;
+    similarity_score: number;
+    similarity_percentage: number;
+    matching_factors: string[];
+    confirmed_causes: string[];
+    resolution_summary?: string;
+    created_at: string;
+    resolved_at?: string;
+}
+
+export interface SimilarCasesResponse {
+    target_case_id: string;
+    count: number;
+    similar_cases: SimilarCaseItem[];
+}

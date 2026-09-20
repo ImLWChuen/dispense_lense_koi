@@ -1,4 +1,4 @@
-"""DispenseIQ — Database package."""
+"""Dispense Lens - Database package."""
 
 from app.db.database import Base, get_engine, reset_engine
 from app.db.session import get_db, get_session_factory, session_scope

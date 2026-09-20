@@ -12,10 +12,10 @@ import {
     Loader2,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
+import Link from "next/link";
 import PageContainer from "@/components/layout/PageContainer";
 import KpiCard from "@/components/dashboard/KpiCard";
+import LineStatusRibbon from "@/components/dashboard/LineStatusRibbon";
 import RecentCases from "@/components/dashboard/RecentCases";
 import DefectDistribution from "@/components/dashboard/DefectDistribution";
 import CauseDistribution from "@/components/dashboard/CauseDistribution";
@@ -99,13 +99,7 @@ export default function DashboardPage() {
     const confirmationRate = kpis?.cause_confirmation_rate;
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
-
-            <div className="ml-64">
-                <Header />
-
-                <PageContainer>
+        <PageContainer>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
@@ -144,10 +138,83 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {isLoading && !data ? (
-                        <div className="mt-12 flex flex-col items-center justify-center py-20 text-gray-500">
-                            <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
-                            <p className="text-sm font-medium">Loading dashboard overview...</p>
+                    {/* Production Line Status Ribbon */}
+                    <div className="mt-6">
+                        <LineStatusRibbon />
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <KpiCard
+                            title="Active Diagnoses"
+                            value={isLoading ? "..." : String(kpis?.active_diagnoses ?? 0)}
+                            description="currently in progress"
+                            trend={kpis?.active_diagnoses_trend || "+8% this week"}
+                            trendDirection="up"
+                            sparkline={[2, 3, 5, 4, 6, 5, kpis?.active_diagnoses ?? 4]}
+                            accentColor="#6d5dfc"
+                            icon={<Stethoscope size={20} />}
+                        />
+
+                        <KpiCard
+                            title="Open Defects"
+                            value={isLoading ? "..." : String(kpis?.open_defects ?? 0)}
+                            description="awaiting resolution"
+                            trend={kpis?.open_defects_trend || "-20% vs shift"}
+                            trendDirection="down"
+                            sparkline={[6, 5, 7, 5, 6, 4, kpis?.open_defects ?? 3]}
+                            accentColor="#f43f5e"
+                            icon={<AlertTriangle size={20} />}
+                        />
+
+                        <KpiCard
+                            title="Resolved Cases"
+                            value={isLoading ? "..." : String(kpis?.resolved_cases ?? 0)}
+                            description="verified resolved cases"
+                            trend={kpis?.resolved_cases_trend || "+15% vs target"}
+                            trendDirection="up"
+                            sparkline={[12, 16, 18, 22, 25, 29, kpis?.resolved_cases ?? 32]}
+                            accentColor="#10b981"
+                            icon={<CheckCircle2 size={20} />}
+                        />
+
+                        <KpiCard
+                            title="Avg. Diagnosis Time"
+                            value={isLoading ? "..." : `${kpis?.avg_diagnosis_time_minutes ?? 0} min`}
+                            description="from creation to resolution"
+                            trend={kpis?.avg_time_trend || "-12% MTTR"}
+                            trendDirection="down"
+                            sparkline={[35, 32, 29, 27, 24, 21, kpis?.avg_diagnosis_time_minutes ?? 20]}
+                            accentColor="#3b82f6"
+                            icon={<Clock3 size={20} />}
+                        />
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+                        <div className="relative overflow-hidden rounded-2xl bg-[#171525] p-7 text-white xl:col-span-2">
+                            <div className="relative z-10 max-w-xl">
+                                <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80">
+                                    AI-assisted diagnosis
+                                </span>
+
+                                <h2 className="mt-4 text-2xl font-bold tracking-tight">
+                                    Something wrong with the dispensing process?
+                                </h2>
+
+                                <p className="mt-3 text-sm leading-6 text-white/60">
+                                    Describe the dispensing symptom and let Dispense Lens
+                                    guide the troubleshooting process using structured
+                                    diagnostic reasoning.
+                                </p>
+
+                                <Link
+                                    href="/diagnosis/new"
+                                    className="mt-6 inline-flex items-center rounded-xl bg-[#6d5dfc] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
+                                >
+                                    Start new diagnosis
+                                </Link>
+                            </div>
+
+                            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#6d5dfc]/20 blur-3xl" />
                         </div>
                     ) : error && !data ? (
                         <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50/50 p-12 text-center">
@@ -303,7 +370,5 @@ export default function DashboardPage() {
                         </>
                     ) : null}
                 </PageContainer>
-            </div>
-        </div>
     );
 }

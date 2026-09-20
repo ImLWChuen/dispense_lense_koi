@@ -1,5 +1,5 @@
 """
-DispenseIQ — Explicit Root-Cause Confirmation API Integration Tests
+Dispense Lens - Explicit Root-Cause Confirmation API Integration Tests
 
 Tests explicit technician root-cause confirmation (POST /api/v1/cases/{case_id}/cause-confirmations)
 against real PostgreSQL. Verifies:

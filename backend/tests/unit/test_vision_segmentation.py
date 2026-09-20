@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Segmentation Unit Tests
+Dispense Lens - Vision Segmentation Unit Tests
 
 Verifies:
 - Local segmentation within target ROIs and expanded windows (prohibiting naive whole-image largest-contour selection).

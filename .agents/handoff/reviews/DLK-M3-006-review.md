@@ -21,13 +21,13 @@ Changes requested. The 23-file commit establishes the intended PostgreSQL founda
 
 ## Findings
 
-### R1 — P1: Parse the test database destination instead of searching the URL
+### R1 - P1: Parse the test database destination instead of searching the URL
 
 `backend/tests/integration/test_persistence.py`, `_assert_safe_test_database`, searches the entire URL for `postgres` to establish locality. Every supported PostgreSQL URL contains that word in its scheme. It also accepts `test` anywhere, including the name `contest`, credentials, or host. A read-only reproduction passed `postgresql+psycopg://user:password@production.example.com/contest` through the guard successfully. The fixture then uses the supplied connection for committed writes and cleanup. This fails the required local/test destination safety boundary.
 
 Parse the URL, validate the actual hostname against an explicit local allowlist and the actual database name against an explicit disposable-test policy. Fail before connecting on other destinations. Do not echo a credential-bearing URL in rejection messages. Add adversarial guard tests that do not connect to a database.
 
-### R2 — P2: Preserve accepted string lengths in persistence
+### R2 - P2: Preserve accepted string lengths in persistence
 
 `backend/app/models/case.py` and `backend/alembic/versions/0001_initial_case_persistence.py` restrict observation IDs to VARCHAR(64), while the accepted domain Observation.id is an unrestricted string. A 65-character ID validates in the domain but exceeds the storage column. Other unrestricted input strings are also narrowed: observation value and case material/method use VARCHAR(255). These valid inputs cannot round-trip through the promised persistence boundary.
 

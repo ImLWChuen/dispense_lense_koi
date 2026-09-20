@@ -49,7 +49,7 @@ Recorded verification evidence:
 
 These database/full-suite results are implementer-reported under the planner/implementer role split.
 
-## Phase A — carry forward nonblocking DLK-M3-023 documentation cleanup
+## Phase A - carry forward nonblocking DLK-M3-023 documentation cleanup
 
 Correct only these implementation-report wording issues when next editing the DLK-M3-023 report:
 
@@ -121,7 +121,7 @@ The suite must use only public HTTP APIs for the main workflow, except for bound
 
 ## Task structure
 
-### Task 1 — inventory the public backend/frontend contract before editing
+### Task 1 - inventory the public backend/frontend contract before editing
 
 Read-only inspect:
 
@@ -163,7 +163,7 @@ At minimum inventory these backend routes:
 - `POST /api/v1/diagnoses`
 - health endpoint(s)
 
-### Task 2 — formally verify the existing `GET /api/v1/cases` list endpoint
+### Task 2 - formally verify the existing `GET /api/v1/cases` list endpoint
 
 The frontend currently calls:
 
@@ -194,7 +194,7 @@ If ordering is currently unspecified, document that it is unspecified rather tha
 
 If a failing test demonstrates a real production defect, make only the smallest correction needed within this endpoint/repository read path.
 
-### Task 3 — full public-API happy-path walkthrough
+### Task 3 - full public-API happy-path walkthrough
 
 Using real PostgreSQL and public HTTP APIs, create one coherent case and progress it through a valid end-to-end workflow.
 
@@ -225,7 +225,7 @@ Assert:
 
 Use current valid knowledge IDs/outcomes from the repository. Do not invent new diagnostic semantics.
 
-### Task 4 — stale-write protection across the integrated workflow
+### Task 4 - stale-write protection across the integrated workflow
 
 Add one focused acceptance scenario demonstrating optimistic concurrency across different workflow event types.
 
@@ -241,7 +241,7 @@ Do not duplicate every endpoint's existing stale test.
 
 The goal is to prove shared global revision behavior survives the integrated workflow.
 
-### Task 5 — report/export read-only final proof
+### Task 5 - report/export read-only final proof
 
 Starting from a rich durable case:
 
@@ -264,7 +264,7 @@ Assert exact durable-state equality for:
 
 This final acceptance proof must demonstrate that all public read surfaces are non-mutating.
 
-### Task 6 — OpenAPI/front-end contract verification
+### Task 6 - OpenAPI/front-end contract verification
 
 Programmatically inspect OpenAPI in the acceptance test or a focused companion test.
 
@@ -284,7 +284,7 @@ Compare the actual backend contract to `docs/api/frontend-backend-contract.md`.
 
 If a mismatch belongs to Member 1 frontend code, document it for handoff instead of editing frontend.
 
-### Task 7 — six-defect backend availability check
+### Task 7 - six-defect backend availability check
 
 Do **not** author or modify diagnostic semantics.
 
@@ -307,7 +307,7 @@ Do not add artificial observations merely to force a category.
 
 Record exact supporting test names/commands in the implementation report.
 
-### Task 8 — final backend readiness report
+### Task 8 - final backend readiness report
 
 Complete a concise final Member 3 readiness section in the task report covering:
 
@@ -606,7 +606,7 @@ Formally characterized and verified `GET /api/v1/cases`:
 8. `GET /api/v1/cases/{id}` -> Verifies detail reflects Revision 7, `RECURRED`, initial diagnosis Rev 1 intact
 9. `GET /api/v1/cases` -> Verifies case list reflects Revision 7, `RECURRED`
 10. `GET /api/v1/cases/{id}/report` -> Verifies JSON report contains 1 answer, 1 check result, 1 confirmation, and 3 lifecycle events (recovery action, verification, recurrence) intact
-11. `GET /api/v1/cases/{id}/report.pdf` -> Verifies downloadable PDF has Content-Type `application/pdf`, filename `dispenseiq-case-{id}-r7.pdf`, logical text matching, and visual table row correspondence with JSON report.
+11. `GET /api/v1/cases/{id}/report.pdf` -> Verifies downloadable PDF has Content-Type `application/pdf`, filename `dispenselens-case-{id}-r7.pdf`, logical text matching, and visual table row correspondence with JSON report.
 
 ### Read-only/concurrency proof
 

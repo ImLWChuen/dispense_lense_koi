@@ -132,11 +132,11 @@ Use clear, deterministic HTTP outcomes.
 
 At minimum:
 
-- `200 OK` — answer accepted, revision N+1 committed
-- `404 Not Found` — case does not exist
-- `409 Conflict` — `expected_revision` is stale / does not equal the current persisted revision
-- `422 Unprocessable Entity` — malformed request schema or answer/question combination rejected by the existing contract, where appropriate
-- `500 Internal Server Error` — unexpected engine/persistence failure
+- `200 OK` - answer accepted, revision N+1 committed
+- `404 Not Found` - case does not exist
+- `409 Conflict` - `expected_revision` is stale / does not equal the current persisted revision
+- `422 Unprocessable Entity` - malformed request schema or answer/question combination rejected by the existing contract, where appropriate
+- `500 Internal Server Error` - unexpected engine/persistence failure
 
 Do not leak:
 

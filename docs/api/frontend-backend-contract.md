@@ -1,6 +1,6 @@
-# DispenseLens Frontend-Backend Contract Matrix
+# Dispense Lens Frontend-Backend Contract Matrix
 
-**Document Purpose:** Defines the integration contract between Member 3 (Backend & Persistence) and Member 1 (Frontend UI) for the DispenseLens / DispenseIQ competition MVP.
+**Document Purpose:** Defines the integration contract between Member 3 (Backend & Persistence) and Member 1 (Frontend UI) for the Dispense Lens / Dispense Lens competition MVP.
 **Authoritative Reference:** FastAPI OpenAPI specification (`/openapi.json`), accepted Member 3 backend implementations (commit `53cc609` / task `DLK-M3-024`), and image analysis endpoint (commit `6e52628f4e6e192a5044dc9de07b0f01b9cdc213` / task `DLK-M3-026`).
 
 ---

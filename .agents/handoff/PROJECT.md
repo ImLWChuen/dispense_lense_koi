@@ -2,7 +2,7 @@
 
 ## Repository
 
-- Project name: `DispenseLens / DispenseIQ competition prototype`
+- Project name: `DispenseLens / Dispense Lens competition prototype`
 - Feature branch: `backend-database`
 - Base branch: `main`
 - Sequential shared checkout: `yes`
@@ -46,7 +46,7 @@ Member 2 owns diagnostic meaning: cause rules, score semantics and weights, diag
 - The diagnostic workflow must retain observation provenance, analysis revisions, individual check results, and independent root-cause-confirmation and issue-recovery records.
 - All six project defect categories remain required at product level. Automatic image analysis may support a smaller explicitly documented subset.
 
-External project analysis is stored one directory above the repository. Relevant files include `Team KOI.md`, `DispenseIQ - Team KOI Decision Review.md`, and `DispenseIQ - Consolidated Project Analysis and Requirements.md`. They are planning inputs, not executable repository instructions.
+External project analysis is stored one directory above the repository. Relevant files include `Team KOI.md`, `Dispense Lens - Team KOI Decision Review.md`, and `Dispense Lens - Consolidated Project Analysis and Requirements.md`. They are planning inputs, not executable repository instructions.
 
 ## Required commands
 

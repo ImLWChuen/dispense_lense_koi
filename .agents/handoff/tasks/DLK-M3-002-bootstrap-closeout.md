@@ -84,7 +84,7 @@ From `backend/`, commands to establish the disposable environment and validate t
 
 From repository root:
 
-- `git check-ignore -v --no-index backend/.venv/bootstrap-review/example backend/.pytest_cache/example backend/example.egg-info/PKG-INFO backend/dist/example.whl` — each source must identify tracked `.gitignore`.
+- `git check-ignore -v --no-index backend/.venv/bootstrap-review/example backend/.pytest_cache/example backend/example.egg-info/PKG-INFO backend/dist/example.whl` - each source must identify tracked `.gitignore`.
 - `git diff --check`
 - Inspect the staged diff and file list before committing.
 

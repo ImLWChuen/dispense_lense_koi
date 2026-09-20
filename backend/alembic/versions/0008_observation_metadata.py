@@ -1,7 +1,7 @@
 """Add metadata column to case_observations
 
 Revision ID: 0008_observation_metadata
-Revises: 0007_check_execution_history
+Revises: e6b358432b0e
 Create Date: 2026-09-19 14:00:00.000000+00:00
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "0008_observation_metadata"
-down_revision: Union[str, None] = "0007_check_execution_history"
+down_revision: Union[str, None] = "e6b358432b0e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

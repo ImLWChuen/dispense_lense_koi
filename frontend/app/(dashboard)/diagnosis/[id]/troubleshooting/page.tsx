@@ -4,13 +4,9 @@ import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import { CheckCircle2, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
-import TroubleshootingChecklist, {
-    TroubleshootingAction,
-    TroubleshootingCheckSubmitParams,
-} from "@/components/diagnosis/TroubleshootingChecklist";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
+import TroubleshootingChecklist from "@/components/diagnosis/TroubleshootingChecklist";
 import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
@@ -152,17 +148,11 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     // 1. Initial Loading
     if (derived.showInitialLoading) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading troubleshooting checks...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-64 items-center justify-center">
+                    <p className="text-gray-500">Loading troubleshooting checks...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
@@ -268,35 +258,31 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     }
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="troubleshooting"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                        Troubleshooting Checks
+                    </h1>
 
-                <PageContainer>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split("-")[0]}
-                            </p>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Perform the recommended checks to gather physical evidence and validate the diagnosis.
+                    </p>
+                </div>
 
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Troubleshooting Checks
-                            </h1>
-
-                            <p className="mt-2 text-sm text-gray-500">
-                                Perform the recommended checks to gather physical evidence and validate the diagnosis.
-                            </p>
-                        </div>
-
-                        <Link
-                            href={`/diagnosis/${resolvedParams.id}`}
-                            className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                        >
-                            ← Back to Diagnosis
-                        </Link>
-                    </div>
+                <Link
+                    href={`/diagnosis/${resolvedParams.id}`}
+                    className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                >
+                    ← Back to Overview
+                </Link>
+            </div>
 
                     {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
                     {refreshWarning && (
@@ -449,7 +435,5 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Bounded LLM & AI Services Unit Tests (Phase 12 Verification)
+Dispense Lens - Bounded LLM & AI Services Unit Tests (Phase 12 Verification)
 
 Verifies:
 1. Valid structured symptom extraction via LLM.

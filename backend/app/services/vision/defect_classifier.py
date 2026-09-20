@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Defect Classifier Service
+Dispense Lens - Vision Defect Classifier Service
 
 Maps calibrated resolution-independent vision measurements to canonical
 diagnostic evidence observations (D01-D05). D06 bubble/shape metrics remain neutral.

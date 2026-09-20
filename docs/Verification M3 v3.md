@@ -1,10 +1,10 @@
-# DLK-M3-013 — Member 2 Check-Result Semantic Correction and Readiness Plan
+# DLK-M3-013 - Member 2 Check-Result Semantic Correction and Readiness Plan
 
 ## 1. Objective
 
 Fix and verify the existing Member 2 troubleshooting-check implementation so it is safe to release:
 
-**DLK-M3-013 — Technician troubleshooting-check result API**
+**DLK-M3-013 - Technician troubleshooting-check result API**
 
 This is a **targeted semantic correction task**.
 
@@ -79,9 +79,9 @@ The project architecture separates evidence/ranking from user verification and f
 
 ---
 
-# PHASE 0 — INSPECT BEFORE MODIFYING
+# PHASE 0 - INSPECT BEFORE MODIFYING
 
-## Step 0.1 — Inspect the repository
+## Step 0.1 - Inspect the repository
 
 Do not modify anything yet.
 
@@ -143,7 +143,7 @@ If the actual project uses a different filename or symbol, use the existing impl
 
 ---
 
-## Step 0.2 — Produce an implementation map
+## Step 0.2 - Produce an implementation map
 
 Before editing, report:
 
@@ -170,9 +170,9 @@ pipeline occurs.
 
 ---
 
-# PHASE 1 — AUDIT AUTOMATIC CAUSE CONFIRMATION
+# PHASE 1 - AUDIT AUTOMATIC CAUSE CONFIRMATION
 
-## Step 1.1 — Search for all automatic confirmation paths
+## Step 1.1 - Search for all automatic confirmation paths
 
 Search the repository for:
 
@@ -196,7 +196,7 @@ Generate a table:
 
 ---
 
-## Step 1.2 — Remove invalid automatic confirmation
+## Step 1.2 - Remove invalid automatic confirmation
 
 The default behaviour must be:
 
@@ -230,13 +230,13 @@ unless that check/result is deliberately and explicitly marked as confirmatory.
 
 ---
 
-## Step 1.3 — Establish confirmation semantics
+## Step 1.3 - Establish confirmation semantics
 
 Determine whether the existing project requires explicit technician/engineer confirmation.
 
 There are two valid possibilities:
 
-### Option A — Explicit confirmation required
+### Option A - Explicit confirmation required
 
 Then:
 
@@ -254,7 +254,7 @@ confirmed cause
 
 Implement or preserve an explicit confirmation action.
 
-### Option B — A specific check is formally confirmatory
+### Option B - A specific check is formally confirmatory
 
 Then the knowledge definition must explicitly state something equivalent to:
 
@@ -272,7 +272,7 @@ If the repository already has a confirmation model, reuse it.
 
 ---
 
-## Step 1.4 — Acceptance condition
+## Step 1.4 - Acceptance condition
 
 After this phase:
 
@@ -290,9 +290,9 @@ ISSUE RESOLUTION
 
 ---
 
-# PHASE 2 — AUDIT `_ACTION_OUTCOME_TO_OBSERVATION`
+# PHASE 2 - AUDIT `_ACTION_OUTCOME_TO_OBSERVATION`
 
-## Step 2.1 — Locate the mapping
+## Step 2.1 - Locate the mapping
 
 Find the exact implementation of:
 
@@ -314,7 +314,7 @@ observation
 
 ---
 
-## Step 2.2 — Audit every mapping
+## Step 2.2 - Audit every mapping
 
 For every entry, ask:
 
@@ -346,7 +346,7 @@ because the check may only demonstrate a visual observation, not complete equipm
 
 ---
 
-## Step 2.3 — Remove semantic overreach
+## Step 2.3 - Remove semantic overreach
 
 Each mapping must only assert what the check result actually demonstrates.
 
@@ -382,9 +382,9 @@ unless explicitly justified by the knowledge definition.
 
 ---
 
-# PHASE 3 — DEFINE THE CHECK OUTCOME CONTRACT
+# PHASE 3 - DEFINE THE CHECK OUTCOME CONTRACT
 
-## Step 3.1 — Audit check IDs
+## Step 3.1 - Audit check IDs
 
 Each troubleshooting action/check must have:
 
@@ -407,7 +407,7 @@ Do not allow the frontend or handler to rely on display labels as identifiers.
 
 ---
 
-## Step 3.2 — Audit execution states
+## Step 3.2 - Audit execution states
 
 Separate execution state from finding.
 
@@ -448,9 +448,9 @@ This matches the project's requirement for explicit user completion/outcomes and
 
 ---
 
-# PHASE 4 — VERIFY EVERY OUTCOME MAPPING
+# PHASE 4 - VERIFY EVERY OUTCOME MAPPING
 
-## Step 4.1 — Create a formal mapping table
+## Step 4.1 - Create a formal mapping table
 
 Produce:
 
@@ -467,7 +467,7 @@ Do not invent production semantics merely to populate the table.
 
 ---
 
-## Step 4.2 — Verify UNKNOWN
+## Step 4.2 - Verify UNKNOWN
 
 For every check supporting UNKNOWN:
 
@@ -481,7 +481,7 @@ UNKNOWN
 
 ---
 
-## Step 4.3 — Verify INCONCLUSIVE
+## Step 4.3 - Verify INCONCLUSIVE
 
 For:
 
@@ -512,7 +512,7 @@ INCONCLUSIVE
 
 ---
 
-## Step 4.4 — Verify BLOCKED
+## Step 4.4 - Verify BLOCKED
 
 For:
 
@@ -548,7 +548,7 @@ cause contradicted
 
 ---
 
-## Step 4.5 — Verify NOT_APPLICABLE
+## Step 4.5 - Verify NOT_APPLICABLE
 
 Do not automatically convert:
 
@@ -573,9 +573,9 @@ NOT_APPLICABLE
 
 ---
 
-# PHASE 5 — WRITE TESTS FOR CORRECTED MAPPINGS
+# PHASE 5 - WRITE TESTS FOR CORRECTED MAPPINGS
 
-## Step 5.1 — Identify existing tests
+## Step 5.1 - Identify existing tests
 
 Locate current:
 
@@ -593,7 +593,7 @@ Do not duplicate equivalent tests.
 
 ---
 
-## Step 5.2 — Add unit tests for each important mapping
+## Step 5.2 - Add unit tests for each important mapping
 
 For every meaningful check/result:
 
@@ -627,7 +627,7 @@ def test_nozzle_check_supports_without_confirming():
 
 ---
 
-## Step 5.3 — Test UNKNOWN
+## Step 5.3 - Test UNKNOWN
 
 ```python
 def test_unknown_does_not_create_evidence():
@@ -644,7 +644,7 @@ Adapt the exact assertions to the project's existing contract.
 
 ---
 
-## Step 5.4 — Test INCONCLUSIVE
+## Step 5.4 - Test INCONCLUSIVE
 
 ```python
 def test_inconclusive_does_not_confirm_cause():
@@ -658,7 +658,7 @@ def test_inconclusive_does_not_confirm_cause():
 
 ---
 
-## Step 5.5 — Test BLOCKED
+## Step 5.5 - Test BLOCKED
 
 ```python
 def test_blocked_check_does_not_create_negative_evidence():
@@ -673,7 +673,7 @@ def test_blocked_check_does_not_create_negative_evidence():
 
 ---
 
-## Step 5.6 — Test NOT_APPLICABLE
+## Step 5.6 - Test NOT_APPLICABLE
 
 Verify:
 
@@ -684,9 +684,9 @@ NOT_APPLICABLE
 
 ---
 
-# PHASE 6 — TEST DETERMINISTIC RERUN
+# PHASE 6 - TEST DETERMINISTIC RERUN
 
-## Step 6.1 — Create a fixed case
+## Step 6.1 - Create a fixed case
 
 Use one stable test fixture:
 
@@ -705,7 +705,7 @@ known initial ranking
 
 ---
 
-## Step 6.2 — Apply one check result
+## Step 6.2 - Apply one check result
 
 Example:
 
@@ -724,7 +724,7 @@ CheckResultHandler
 
 ---
 
-## Step 6.3 — Save resulting analysis
+## Step 6.3 - Save resulting analysis
 
 Capture:
 
@@ -739,7 +739,7 @@ next check
 
 ---
 
-## Step 6.4 — Repeat with identical state
+## Step 6.4 - Repeat with identical state
 
 Run the same test again from the same reconstructed case.
 
@@ -753,9 +753,9 @@ for deterministic diagnostic components.
 
 ---
 
-# PHASE 7 — TEST DUPLICATE / REPEATED RESULTS
+# PHASE 7 - TEST DUPLICATE / REPEATED RESULTS
 
-## Step 7.1 — Submit identical result twice
+## Step 7.1 - Submit identical result twice
 
 Example:
 
@@ -778,7 +778,7 @@ no duplicate independent evidence contribution
 
 ---
 
-## Step 7.2 — Verify score stability
+## Step 7.2 - Verify score stability
 
 Compare:
 
@@ -803,7 +803,7 @@ unless the project's scoring system explicitly represents repeated independent o
 
 ---
 
-## Step 7.3 — Verify equivalent observations
+## Step 7.3 - Verify equivalent observations
 
 If two outcomes normalize to the same observation:
 
@@ -815,9 +815,9 @@ they should not automatically be counted as two independent facts.
 
 ---
 
-# PHASE 8 — VERIFY REVISION HANDLING
+# PHASE 8 - VERIFY REVISION HANDLING
 
-## Step 8.1 — Confirm Revision N remains immutable
+## Step 8.1 - Confirm Revision N remains immutable
 
 Before submitting a check result:
 
@@ -835,7 +835,7 @@ Verify Revision N remains exactly as originally recorded.
 
 ---
 
-## Step 8.2 — Verify new evidence belongs to N+1
+## Step 8.2 - Verify new evidence belongs to N+1
 
 Revision N+1 must contain:
 
@@ -853,7 +853,7 @@ updated next question/check
 
 ---
 
-## Step 8.3 — Confirm no mutation
+## Step 8.3 - Confirm no mutation
 
 Explicitly test:
 
@@ -873,9 +873,9 @@ This aligns with the project's requirement to preserve evidence/history and upda
 
 ---
 
-# PHASE 9 — VERIFY CAUSE CONFIRMATION AND ISSUE RESOLUTION
+# PHASE 9 - VERIFY CAUSE CONFIRMATION AND ISSUE RESOLUTION
 
-## Step 9.1 — Test normal supporting check
+## Step 9.1 - Test normal supporting check
 
 Scenario:
 
@@ -895,7 +895,7 @@ unless explicitly defined otherwise.
 
 ---
 
-## Step 9.2 — Test explicit cause confirmation
+## Step 9.2 - Test explicit cause confirmation
 
 If the project currently has technician/engineer confirmation:
 
@@ -911,7 +911,7 @@ Verify this occurs only through the explicit confirmation mechanism.
 
 ---
 
-## Step 9.3 — Test issue resolution separately
+## Step 9.3 - Test issue resolution separately
 
 A user may resolve the issue while the cause remains unknown.
 
@@ -935,7 +935,7 @@ The product requirements explicitly call for independent root-cause confirmation
 
 ---
 
-# PHASE 10 — RERUN PHASE 9–11 / CHECK-RESULT TESTS
+# PHASE 10 - RERUN PHASE 9–11 / CHECK-RESULT TESTS
 
 After fixing the semantic mappings:
 
@@ -953,7 +953,7 @@ The old behaviour must remain stable unless it was intentionally corrected.
 
 ---
 
-# PHASE 11 — FINAL DLK-M3-013 INTEGRATION TEST
+# PHASE 11 - FINAL DLK-M3-013 INTEGRATION TEST
 
 Run one complete scenario:
 
@@ -1001,7 +1001,7 @@ Use the project's actual response schema rather than creating a second incompati
 
 ---
 
-# PHASE 12 — FINAL AUDIT BEFORE MERGE
+# PHASE 12 - FINAL AUDIT BEFORE MERGE
 
 Generate a final audit:
 
@@ -1061,7 +1061,7 @@ Generate a final audit:
 ```
 ---
 
-# PHASE 13 — FINAL READINESS REPORT
+# PHASE 13 - FINAL READINESS REPORT
 
 Return exactly this structure:
 

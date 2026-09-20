@@ -137,5 +137,40 @@ class TestCauseRanker(unittest.TestCase):
         self.assertNotEqual(total_score, 100.0)
 
 
+    def test_opencv_image_analysis_effects_cause_ranking(self):
+        """Verify that calibrated OpenCV image observations deterministically alter cause ranking."""
+        # Baseline: operator reports generic equipment condition
+        obs_baseline = [
+            Observation(
+                observation_type=ObservationType.EQUIPMENT_CONDITION,
+                value="intermittent_dispense",
+                source=EvidenceSource.USER,
+            )
+        ]
+        res_baseline = self.ranker.rank(obs_baseline, self.defect_code)
+        baseline_top = res_baseline.ranked_causes[0]
+        self.assertNotEqual(baseline_top.cause_id, "nozzle_restriction")
+
+        # Attach calibrated OpenCV optical measurement: deposit_size=undersized
+        obs_opencv = Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+            metadata={
+                "roi_id": "roi_1",
+                "coverage_ratio": 0.118,
+                "calibrated_diameter_mm": 0.41,
+                "deposit_area_px": 380,
+            },
+        )
+        res_with_image = self.ranker.rank(obs_baseline + [obs_opencv], self.defect_code)
+        image_top = res_with_image.ranked_causes[0]
+
+        # OpenCV evidence triggers Rule R002 (deposit_size: undersized -> nozzle_restriction, STRONG +20)
+        # propelling nozzle_restriction to top rank
+        self.assertEqual(image_top.cause_id, "nozzle_restriction")
+        self.assertGreater(image_top.score, baseline_top.score)
+
+
 if __name__ == "__main__":
     unittest.main()

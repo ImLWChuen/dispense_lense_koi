@@ -1,4 +1,4 @@
-"""Reporting package for DispenseIQ case report and export services."""
+"""Reporting package for Dispense Lens case report and export services."""
 
 from __future__ import annotations
 

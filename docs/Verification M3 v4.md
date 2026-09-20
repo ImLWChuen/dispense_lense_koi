@@ -1,4 +1,4 @@
-# DLK-M3-013 — REQUIRED MEMBER 2 SEMANTIC CORRECTION AND VERIFICATION
+# DLK-M3-013 - REQUIRED MEMBER 2 SEMANTIC CORRECTION AND VERIFICATION
 
 ## IMPORTANT
 
@@ -80,7 +80,7 @@ DLK-M3-013 can be released
 
 ---
 
-# PHASE 1 — INSPECT THE CURRENT IMPLEMENTATION
+# PHASE 1 - INSPECT THE CURRENT IMPLEMENTATION
 
 Before making changes, inspect the repository thoroughly.
 
@@ -165,7 +165,7 @@ These transitions must not be accepted without checking the project semantics.
 
 ---
 
-# PHASE 2 — CHECK AUTOMATIC CAUSE CONFIRMATION
+# PHASE 2 - CHECK AUTOMATIC CAUSE CONFIRMATION
 
 ## Requirement
 
@@ -197,7 +197,7 @@ or any equivalent automatic transition.
 
 If automatic cause confirmation exists:
 
-### Option A — Remove it
+### Option A - Remove it
 
 This is the preferred fix unless the knowledge contract explicitly defines a check/result as confirmatory.
 
@@ -215,7 +215,7 @@ Cause support updated
 Cause remains suspected/unconfirmed
 ```
 
-### Option B — Explicitly approve it
+### Option B - Explicitly approve it
 
 Only retain automatic cause confirmation if there is a clearly defined knowledge rule saying:
 
@@ -231,7 +231,7 @@ Do not infer confirmation merely because the result supports a cause.
 
 ---
 
-# PHASE 3 — ESTABLISH TECHNICIAN CONFIRMATION SEMANTICS
+# PHASE 3 - ESTABLISH TECHNICIAN CONFIRMATION SEMANTICS
 
 ## Requirement
 
@@ -295,7 +295,7 @@ Do not create a second competing confirmation mechanism.
 
 ---
 
-# PHASE 4 — AUDIT `_ACTION_OUTCOME_TO_OBSERVATION`
+# PHASE 4 - AUDIT `_ACTION_OUTCOME_TO_OBSERVATION`
 
 ## Requirement
 
@@ -328,7 +328,7 @@ effect on cause ranking
 
 ---
 
-# PHASE 5 — VERIFY THAT EACH MAPPING REPRESENTS ONLY WHAT THE RESULT PROVES
+# PHASE 5 - VERIFY THAT EACH MAPPING REPRESENTS ONLY WHAT THE RESULT PROVES
 
 ## Requirement
 
@@ -434,7 +434,7 @@ Every supported result must be checked.
 
 ---
 
-# PHASE 6 — VERIFY UNKNOWN / INCONCLUSIVE RESULTS
+# PHASE 6 - VERIFY UNKNOWN / INCONCLUSIVE RESULTS
 
 ## Step 8. Check UNKNOWN
 
@@ -520,7 +520,7 @@ check could not be completed
 
 ---
 
-# PHASE 7 — CHECK EXECUTION STATE VS FINDING
+# PHASE 7 - CHECK EXECUTION STATE VS FINDING
 
 ## Step 11. Verify the two concepts are separate
 
@@ -567,7 +567,7 @@ unless a specific contract explicitly defines another behaviour.
 
 ---
 
-# PHASE 8 — CHECK CAUSE CONFIRMATION
+# PHASE 8 - CHECK CAUSE CONFIRMATION
 
 ## Step 12. Search every cause-confirmation transition
 
@@ -639,7 +639,7 @@ This is the safe default unless the existing project specification explicitly sa
 
 ---
 
-# PHASE 9 — CHECK ISSUE RESOLUTION
+# PHASE 9 - CHECK ISSUE RESOLUTION
 
 ## Step 14. Search every issue-resolution transition
 
@@ -679,7 +679,7 @@ A valid resolution path should require explicit evidence that acceptable dispens
 
 ---
 
-# PHASE 10 — ADD REGRESSION TESTS FOR CORRECTED MAPPINGS
+# PHASE 10 - ADD REGRESSION TESTS FOR CORRECTED MAPPINGS
 
 ## Requirement
 
@@ -799,7 +799,7 @@ This must be a separate operation from the check-result handler.
 
 ---
 
-# PHASE 11 — RERUN PHASE 9–11 / CHECK-RESULT TESTS
+# PHASE 11 - RERUN PHASE 9–11 / CHECK-RESULT TESTS
 
 ## Requirement
 
@@ -844,7 +844,7 @@ Retest result:
 
 ---
 
-# PHASE 12 — RUN THE COMPLETE CHECK-RESULT INTEGRATION FLOW
+# PHASE 12 - RUN THE COMPLETE CHECK-RESULT INTEGRATION FLOW
 
 After the unit tests pass, run one complete real case.
 
@@ -887,7 +887,7 @@ unless explicitly justified.
 
 ---
 
-# PHASE 13 — CHECK REVISION INTEGRITY
+# PHASE 13 - CHECK REVISION INTEGRITY
 
 Verify:
 
@@ -919,7 +919,7 @@ Do not mutate Revision N.
 
 ---
 
-# PHASE 14 — PREVENT DUPLICATE EVIDENCE INFLATION
+# PHASE 14 - PREVENT DUPLICATE EVIDENCE INFLATION
 
 Submit the exact same troubleshooting result twice.
 
@@ -946,7 +946,7 @@ The system may retain the repeated execution record, but the cause ranking must 
 
 ---
 
-# PHASE 15 — FINAL SEMANTIC AUDIT
+# PHASE 15 - FINAL SEMANTIC AUDIT
 
 After all code and tests pass, produce this exact table:
 
@@ -962,7 +962,7 @@ After all code and tests pass, produce this exact table:
 
 ---
 
-# PHASE 16 — GIT / MERGE REQUIREMENT
+# PHASE 16 - GIT / MERGE REQUIREMENT
 
 ## Requirement
 
@@ -972,7 +972,7 @@ After all code and tests pass, produce this exact table:
 
 ---
 
-# PHASE 17 — FINAL REPORT TO USER
+# PHASE 17 - FINAL REPORT TO USER
 
 ```text
 DLK-M3-013 MEMBER 2 READINESS REPORT

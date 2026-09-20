@@ -1,5 +1,5 @@
 """
-DispenseIQ — Teammate Integration & Zero-Hardcoding Contracts Tests
+Dispense Lens - Teammate Integration & Zero-Hardcoding Contracts Tests
 
 Verifies:
 1. CORS headers allowing Next.js frontend on http://localhost:3000

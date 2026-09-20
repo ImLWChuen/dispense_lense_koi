@@ -1,4 +1,4 @@
-# DispenseLens API Specification
+# Dispense Lens API Specification
 
 ## Overview
 
@@ -57,8 +57,8 @@ The DispenseLens Backend provides REST APIs for automated troubleshooting and di
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `id` | `string` | No | Auto-generated UUIDv4 | Unique identifier for this observation. If omitted by the caller, the server generates a UUIDv4. |
-| `observation_type` | `string` | **Yes** | — | Category of observation. Valid values: `deposit_size`, `deposit_count`, `deposit_shape`, `deposit_presence`, `time_pattern`, `runtime_pattern`, `location_pattern`, `frequency_pattern`, `material_state`, `temperature`, `pressure`, `nozzle_condition`, `equipment_condition`, `process_parameter`, `visual_appearance`, `bubble_presence`, `spreading_behaviour`, `other`. |
-| `value` | `string` | **Yes** | — | Observed descriptor or state (e.g. `"undersized"`, `"worsens_over_time"`). |
+| `observation_type` | `string` | **Yes** | - | Category of observation. Valid values: `deposit_size`, `deposit_count`, `deposit_shape`, `deposit_presence`, `time_pattern`, `runtime_pattern`, `location_pattern`, `frequency_pattern`, `material_state`, `temperature`, `pressure`, `nozzle_condition`, `equipment_condition`, `process_parameter`, `visual_appearance`, `bubble_presence`, `spreading_behaviour`, `other`. |
+| `value` | `string` | **Yes** | - | Observed descriptor or state (e.g. `"undersized"`, `"worsens_over_time"`). |
 | `original_text` | `string` \| `null` | No | `null` | Original text snippet from which observation was derived. |
 | `statement_type` | `string` | No | `"USER_OBSERVATION"` | Nature of statement: `USER_OBSERVATION`, `USER_INTERPRETATION`, or `AI_INFERENCE`. |
 | `source` | `string` | No | `"USER"` | Evidence provenance: `USER`, `MEASUREMENT`, `IMAGE`, `SYSTEM`, `HISTORICAL_CASE`. |
@@ -1696,9 +1696,9 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `question_id` | `string` | **Yes** | — | Identifier of the diagnostic question being answered (e.g. `"Q01"`). Must match a supported question. |
-| `answer` | `string` | **Yes** | — | Technician answer value or key (e.g. `"after_prolonged_operation"`, `"UNKNOWN"`, `"NOT_APPLICABLE"`). Alias `"answer_value"` is accepted. |
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `question_id` | `string` | **Yes** | - | Identifier of the diagnostic question being answered (e.g. `"Q01"`). Must match a supported question. |
+| `answer` | `string` | **Yes** | - | Technician answer value or key (e.g. `"after_prolonged_operation"`, `"UNKNOWN"`, `"NOT_APPLICABLE"`). Alias `"answer_value"` is accepted. |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching the current persisted revision number (must be >= 1). |
 | `answer_text` | `string` \| `null` | No | `null` | Optional technician description or supplemental statement. |
 
 #### Input Validation Rules (HTTP 422)
@@ -1711,11 +1711,11 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 #### Status and Error Codes
 
-- `200 OK` — Answer accepted and revision N+1 committed.
-- `404 Not Found` — Case ID does not exist in the database.
-- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
-- `422 Unprocessable Entity` — Invalid input schema, unsupported question ID, or invalid answer value.
-- `500 Internal Server Error` — Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+- `200 OK` - Answer accepted and revision N+1 committed.
+- `404 Not Found` - Case ID does not exist in the database.
+- `409 Conflict` - `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` - Invalid input schema, unsupported question ID, or invalid answer value.
+- `500 Internal Server Error` - Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
 
 #### Representative Execution Example
 
@@ -1911,10 +1911,10 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `check_id` | `string` | **Yes** | — | Identifier of the troubleshooting check (e.g. `"ACT01"`, `"ACT02"`). Must match a supported action in `actions.json`. |
-| `execution_status` | `string` | **Yes** | — | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. Note: `PENDING` and `IN_PROGRESS` are rejected with `422`. |
-| `finding` | `string` | **Yes** | — | Finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `check_id` | `string` | **Yes** | - | Identifier of the troubleshooting check (e.g. `"ACT01"`, `"ACT02"`). Must match a supported action in `actions.json`. |
+| `execution_status` | `string` | **Yes** | - | Execution status: `COMPLETED`, `BLOCKED`, `FAILED`, `UNKNOWN`, `NOT_APPLICABLE`, `SKIPPED`. Note: `PENDING` and `IN_PROGRESS` are rejected with `422`. |
+| `finding` | `string` | **Yes** | - | Finding: `SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`, `NOT_APPLICABLE`. |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching the current persisted revision number (must be >= 1). |
 | `outcome` | `string` \| `null` | No | `null` | Optional action outcome key (e.g. `"no_blockage"`, `"air_bubbles_found"`). Validated against action evidence mapping. |
 | `finding_details` | `string` \| `null` | No | `null` | Optional technician description, equipment readings, or inspection notes. |
 
@@ -1929,11 +1929,11 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 #### Status and Error Codes
 
-- `200 OK` — Check result accepted and revision N+1 committed.
-- `404 Not Found` — Case ID does not exist in the database.
-- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
-- `422 Unprocessable Entity` — Invalid input schema, unsupported check ID, or invalid outcome key.
-- `500 Internal Server Error` — Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
+- `200 OK` - Check result accepted and revision N+1 committed.
+- `404 Not Found` - Case ID does not exist in the database.
+- `409 Conflict` - `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` - Invalid input schema, unsupported check ID, or invalid outcome key.
+- `500 Internal Server Error` - Persistence or diagnostic engine failure; internal error details and credentials are sanitized.
 
 #### Representative Execution Example
 
@@ -2058,8 +2058,8 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `cause_id` | `string` | **Yes** | — | Identifier of the candidate cause being confirmed as root cause (e.g. `"nozzle_restriction"`, `"pressure_instability"`). |
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching the current persisted revision number (must be >= 1). |
+| `cause_id` | `string` | **Yes** | - | Identifier of the candidate cause being confirmed as root cause (e.g. `"nozzle_restriction"`, `"pressure_instability"`). |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching the current persisted revision number (must be >= 1). |
 | `confirmed_by` | `string` | No | `"technician"` | Identifier or role of the user confirming the cause (maximum length 64 characters). |
 | `notes` | `string` \| `null` | No | `null` | Optional technician notes or observations explaining the confirmation. |
 
@@ -2074,11 +2074,11 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 #### Status and Error Codes
 
-- `200 OK` — Cause confirmation accepted and revision N+1 committed.
-- `404 Not Found` — Case ID does not exist in the database.
-- `409 Conflict` — `expected_revision` is stale or does not match the current persisted revision.
-- `422 Unprocessable Entity` — Invalid input schema, empty cause, invalid/unrecognized cause ID, or `confirmed_by` exceeding 64 characters.
-- `500 Internal Server Error` — Unexpected internal diagnostic engine or database failure. Error responses are sanitized and do not echo internal exception details, stack traces, paths, or credentials.
+- `200 OK` - Cause confirmation accepted and revision N+1 committed.
+- `404 Not Found` - Case ID does not exist in the database.
+- `409 Conflict` - `expected_revision` is stale or does not match the current persisted revision.
+- `422 Unprocessable Entity` - Invalid input schema, empty cause, invalid/unrecognized cause ID, or `confirmed_by` exceeding 64 characters.
+- `500 Internal Server Error` - Unexpected internal diagnostic engine or database failure. Error responses are sanitized and do not echo internal exception details, stack traces, paths, or credentials.
 
 #### Representative Execution Example
 
@@ -2189,16 +2189,16 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
-| `recovery_details` | `string` | **Yes** | — | Description of corrective action applied (unrestricted text). |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching current revision (must be >= 1). |
+| `recovery_details` | `string` | **Yes** | - | Description of corrective action applied (unrestricted text). |
 | `performed_by` | `string` | No | `"technician"` | Identifier or role of actor performing the recovery (max length 64 characters). |
 
 ##### Status and Error Codes
-- `200 OK` — Recovery action accepted and committed.
-- `404 Not Found` — Case ID does not exist.
-- `409 Conflict` — `expected_revision` is stale or does not match current persisted revision.
-- `422 Unprocessable Entity` — Illegal transition (e.g. attempting recovery action from `RESOLVED`), empty details, `performed_by` exceeding 64 characters, or malformed UUID.
-- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal transition or persistence failure); raw exception details or internal paths are never reflected.
+- `200 OK` - Recovery action accepted and committed.
+- `404 Not Found` - Case ID does not exist.
+- `409 Conflict` - `expected_revision` is stale or does not match current persisted revision.
+- `422 Unprocessable Entity` - Illegal transition (e.g. attempting recovery action from `RESOLVED`), empty details, `performed_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` - Sanitized unexpected error (e.g. unexpected internal transition or persistence failure); raw exception details or internal paths are never reflected.
 
 ##### Representative Request Example
 ```json
@@ -2253,17 +2253,17 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
-| `verification_passed` | `boolean` | **Yes** | — | Outcome: `true` transitions to `RESOLVED`, `false` transitions to `UNRESOLVED`. |
-| `verification_details` | `string` | **Yes** | — | Verification test results, observations, or measurement details (unrestricted text). |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching current revision (must be >= 1). |
+| `verification_passed` | `boolean` | **Yes** | - | Outcome: `true` transitions to `RESOLVED`, `false` transitions to `UNRESOLVED`. |
+| `verification_details` | `string` | **Yes** | - | Verification test results, observations, or measurement details (unrestricted text). |
 | `verified_by` | `string` | No | `"technician"` | Identifier or role of actor verifying the recovery (max length 64 characters). |
 
 ##### Status and Error Codes
-- `200 OK` — Verification accepted and committed.
-- `404 Not Found` — Case ID does not exist.
-- `409 Conflict` — `expected_revision` is stale or replayed.
-- `422 Unprocessable Entity` — Precondition or illegal transition failure (verification requested when current condition is not `RECOVERY_PENDING_VERIFICATION`, such as from `UNRESOLVED` or `RESOLVED`), empty details, `verified_by` exceeding 64 characters, or malformed UUID.
-- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
+- `200 OK` - Verification accepted and committed.
+- `404 Not Found` - Case ID does not exist.
+- `409 Conflict` - `expected_revision` is stale or replayed.
+- `422 Unprocessable Entity` - Precondition or illegal transition failure (verification requested when current condition is not `RECOVERY_PENDING_VERIFICATION`, such as from `UNRESOLVED` or `RESOLVED`), empty details, `verified_by` exceeding 64 characters, or malformed UUID.
+- `500 Internal Server Error` - Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
 
 ##### Representative Request Example
 ```json
@@ -2321,16 +2321,16 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `expected_revision` | `integer` | **Yes** | — | Optimistic locking token matching current revision (must be >= 1). |
-| `recurrence_details` | `string` | **Yes** | — | Description of recurred defect observations or symptoms (unrestricted non-empty text). |
+| `expected_revision` | `integer` | **Yes** | - | Optimistic locking token matching current revision (must be >= 1). |
+| `recurrence_details` | `string` | **Yes** | - | Description of recurred defect observations or symptoms (unrestricted non-empty text). |
 | `reported_by` | `string` | No | `"technician"` | Identifier or role of actor reporting the recurrence (max length 64 characters). |
 
 ##### Status and Error Codes
-- `200 OK` — Recurrence accepted and revision N+1 committed.
-- `404 Not Found` — Case ID does not exist.
-- `409 Conflict` — `expected_revision` is stale or replayed.
-- `422 Unprocessable Entity` — Precondition or validation failure (issue condition not `RESOLVED`, e.g. `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED`; empty details; `reported_by` exceeding 64 characters; or malformed UUID).
-- `500 Internal Server Error` — Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
+- `200 OK` - Recurrence accepted and revision N+1 committed.
+- `404 Not Found` - Case ID does not exist.
+- `409 Conflict` - `expected_revision` is stale or replayed.
+- `422 Unprocessable Entity` - Precondition or validation failure (issue condition not `RESOLVED`, e.g. `UNRESOLVED`, `RECOVERY_PENDING_VERIFICATION`, or `RECURRED`; empty details; `reported_by` exceeding 64 characters; or malformed UUID).
+- `500 Internal Server Error` - Sanitized unexpected error (e.g. unexpected internal state manager or persistence failure); raw internal exception details or paths are never reflected.
 
 ##### Representative Request Example
 ```json
@@ -2433,10 +2433,10 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 | `resolved` | `boolean` | **Yes** | Alias for `is_resolved`. |
 
 ##### Status and Error Codes
-- `200 OK` — Complete report assembled and returned.
-- `404 Not Found` — Case ID does not exist in database.
-- `422 Unprocessable Entity` — Invalid case ID format (not a valid UUID).
-- `500 Internal Server Error` — Sanitized unexpected error during report assembly; raw internal details and paths are never exposed.
+- `200 OK` - Complete report assembled and returned.
+- `404 Not Found` - Case ID does not exist in database.
+- `422 Unprocessable Entity` - Invalid case ID format (not a valid UUID).
+- `500 Internal Server Error` - Sanitized unexpected error during report assembly; raw internal details and paths are never exposed.
 
 ##### Representative Request Example
 ```http
@@ -2651,13 +2651,13 @@ Accept: application/pdf
 #### Response
 ##### Headers
 - `Content-Type: application/pdf`
-- `Content-Disposition: attachment; filename="dispenseiq-case-514614df-ea4c-4855-be1e-98ea73135a8d-r6.pdf"`
+- `Content-Disposition: attachment; filename="dispenselens-case-514614df-ea4c-4855-be1e-98ea73135a8d-r6.pdf"`
 
 ##### Status and Error Codes
-- `200 OK` — Complete PDF document rendered and streamed.
-- `404 Not Found` — Case ID does not exist in persistent storage.
-- `422 Unprocessable Entity` — Case ID is not a valid UUID format.
-- `500 Internal Server Error` — Unexpected rendering failure; returns sanitized JSON without leaking internal traces or credentials.
+- `200 OK` - Complete PDF document rendered and streamed.
+- `404 Not Found` - Case ID does not exist in persistent storage.
+- `422 Unprocessable Entity` - Case ID is not a valid UUID format.
+- `500 Internal Server Error` - Unexpected rendering failure; returns sanitized JSON without leaking internal traces or credentials.
 
 ##### Rendered Document Structure
 1. **Document Header**: Title, Case Identifier, Report Revision, Case Created Timestamp.

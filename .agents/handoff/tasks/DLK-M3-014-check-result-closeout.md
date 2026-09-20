@@ -28,11 +28,11 @@ DLK-M3-013 was reviewed at commit:
 
 The review returned `changes_requested`.
 
-### R1 — unfinished checks can generate evidence
+### R1 - unfinished checks can generate evidence
 
 `PENDING` and `IN_PROGRESS` currently pass request validation. An evidence-producing payload can therefore reach `CheckResultHandler`, produce observations, and potentially persist a new revision even though the check is unfinished.
 
-### R2 — rollback is not proven after actual writes
+### R2 - rollback is not proven after actual writes
 
 Existing failure tests inject exceptions before real pending writes exist or manually roll back the transaction being tested. They therefore do not prove atomic rollback after flushed check/observation/revision writes.
 
@@ -43,7 +43,7 @@ The review also asks the correction report to:
 
 ## Requirements
 
-### R1 — reject unfinished results
+### R1 - reject unfinished results
 
 `POST /api/v1/cases/{case_id}/check-results` is a result-submission endpoint.
 
@@ -83,7 +83,7 @@ Each must prove:
 
 Use an otherwise-valid adversarial payload that would create evidence if it reached the handler, so the test proves unfinished-state rejection rather than failing for an unrelated reason.
 
-### R2 — rollback after real pending writes
+### R2 - rollback after real pending writes
 
 Exercise the real production write path and prove rollback after writes have actually been flushed/pending in the transaction.
 

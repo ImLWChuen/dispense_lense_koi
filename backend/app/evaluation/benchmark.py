@@ -1,5 +1,5 @@
 """
-DispenseIQ — Diagnostic Evaluation Benchmark Runner (Phase 15)
+Dispense Lens - Diagnostic Evaluation Benchmark Runner (Phase 15)
 
 Runs the controlled evaluation scenarios through the DiagnosticEngine,
 computes all 8 evaluation metrics defined in Section 22 of the implementation plan:
@@ -161,7 +161,7 @@ def run_benchmark() -> MetricSummary:
 if __name__ == "__main__":
     summary = run_benchmark()
     print("=" * 65)
-    print("DispenseIQ Diagnostic Evaluation Benchmark Results (Phase 15)")
+    print("Dispense Lens Diagnostic Evaluation Benchmark Results (Phase 15)")
     print("=" * 65)
     print(f"Total Scenarios Evaluated:      {summary.total_scenarios}")
     print(f"Metric 1 - Defect Accuracy:      {summary.defect_classification_accuracy:.1f}%")

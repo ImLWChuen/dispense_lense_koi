@@ -20,7 +20,7 @@ Changes requested for the remaining verification gap below. DLK-M3-013 R1 is res
 
 ## Findings
 
-### R1 — P2: Make rollback proof assertions observable outside the handled request
+### R1 - P2: Make rollback proof assertions observable outside the handled request
 
 In backend/tests/integration/test_check_result_api.py, fail_after_flush_before_commit sets hook_called=True before asserting the pending rows. If a subsequent assertion fails, the endpoint catches AssertionError in its generic exception handler and returns the same sanitized 500 that this test expects. hook_called remains true, the synthetic path is absent, and the post-request assertions can all pass. The test therefore does not reliably prove that all required pending rows were observed before the deliberate fault.
 

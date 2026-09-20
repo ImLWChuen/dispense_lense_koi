@@ -1,5 +1,5 @@
 /**
- * DispenseLens — Calibrated Image Upload State & Validation Transitions (DLK-M3-027)
+ * Dispense Lens - Calibrated Image Upload State & Validation Transitions (DLK-M3-027)
  *
  * Pure configuration validation and atomic upload request-state transitions.
  * Shared between ImageUpload.tsx and regression harnesses.

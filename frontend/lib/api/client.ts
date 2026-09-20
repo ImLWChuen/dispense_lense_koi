@@ -25,12 +25,37 @@ export const apiClient = {
         });
     },
 
+    async patch<T>(path: string, data?: unknown, options: RequestInit = {}): Promise<T> {
+        const isFormData = data instanceof FormData;
+        return this.request<T>(path, {
+            ...options,
+            method: "PATCH",
+            body: isFormData ? data : (data !== undefined ? JSON.stringify(data) : undefined),
+        });
+    },
+
+    async put<T>(path: string, data?: unknown, options: RequestInit = {}): Promise<T> {
+        const isFormData = data instanceof FormData;
+        return this.request<T>(path, {
+            ...options,
+            method: "PUT",
+            body: isFormData ? data : (data !== undefined ? JSON.stringify(data) : undefined),
+        });
+    },
+
     async request<T>(path: string, options: RequestInit): Promise<T> {
         const url = `${API_BASE_URL}${path}`;
         const headers = new Headers(options.headers);
 
         if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
             headers.set("Content-Type", "application/json");
+        }
+
+        if (typeof window !== "undefined" && !headers.has("Authorization")) {
+            const token = localStorage.getItem("token");
+            if (token) {
+                headers.set("Authorization", `Bearer ${token}`);
+            }
         }
 
         const response = await fetch(url, {

@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, Keyboard } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
 import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import DiagnosticQuestion from "@/components/diagnosis/DiagnosticQuestion";
 import { casesApi } from "@/lib/api/cases";
@@ -17,6 +16,25 @@ import {
     retryWorkflowRefresh,
     RefreshWarningKind,
 } from "@/lib/diagnostic-workflow-state";
+
+function normalizeOptions(options?: string[]) {
+    if (!options || options.length === 0) {
+        return [
+            { value: "YES", label: "Yes" },
+            { value: "NO", label: "No" },
+            { value: "UNKNOWN", label: "Unknown" }
+        ];
+    }
+    return options.map(opt => {
+        if (typeof opt === 'string') {
+            return { 
+                value: opt, 
+                label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, ' ') 
+            };
+        }
+        return opt;
+    });
+}
 
 export default function QuestionsPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
@@ -96,9 +114,13 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         };
     }, [resolvedParams.id]);
 
-    const handleAnswer = async (questionId: string, value: string) => {
-        if (!caseData?.diagnosis?.analysis_revision || isRefreshRequired) return;
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextQuestion = diagnosis?.next_question;
+    const isDone = !nextQuestion && !isLoading;
 
+    const handleAnswer = useCallback(async (questionId: string, value: string) => {
+        if (!caseData?.diagnosis?.analysis_revision) return;
+        
         setIsSubmitting(true);
         try {
             await coordinateWorkflowMutation({
@@ -125,7 +147,44 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         } finally {
             setIsSubmitting(false);
         }
-    };
+    }, [caseData, fetchCase]);
+
+    // Cleanroom Keyboard Shortcuts: Press 1, 2, 3, etc. to submit answers instantly
+    useEffect(() => {
+        if (!nextQuestion || isSubmitting || isLoading) return;
+
+        const currentOptions = normalizeOptions(nextQuestion.options);
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const targetTag = (e.target as HTMLElement)?.tagName;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(targetTag)) {
+                return;
+            }
+
+            const key = e.key.toLowerCase();
+            let optIdx = -1;
+
+            if (key === "1") optIdx = 0;
+            else if (key === "2") optIdx = 1;
+            else if (key === "3") optIdx = 2;
+            else if (key === "4") optIdx = 3;
+            else if (key === "y") {
+                const idx = currentOptions.findIndex((o) => o.value.toLowerCase().includes("yes"));
+                if (idx !== -1) optIdx = idx;
+            } else if (key === "n") {
+                const idx = currentOptions.findIndex((o) => o.value.toLowerCase().includes("no"));
+                if (idx !== -1) optIdx = idx;
+            }
+
+            if (optIdx >= 0 && optIdx < currentOptions.length) {
+                e.preventDefault();
+                handleAnswer(nextQuestion.question_id, currentOptions[optIdx].value);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [nextQuestion, isSubmitting, isLoading, handleAnswer]);
 
     const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
     const nextQuestion = diagnosis?.next_question;
@@ -159,104 +218,48 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     // 1. Initial Loading
     if (derived.showInitialLoading) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading questions...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-64 items-center justify-center">
+                    <p className="text-gray-500">Loading questions...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
-    // 2. Dedicated Error (Initial request failure)
-    if (derived.showDedicatedError) {
-        return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-[#6d5dfc]">
-                                    Diagnostic workflow · {resolvedParams.id.split("-")[0]}
-                                </p>
-                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                    Diagnostic Questions
-                                </h1>
-                            </div>
-                            <Link
-                                href={`/diagnosis/${resolvedParams.id}`}
-                                className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                            >
-                                ← Back to Diagnosis
-                            </Link>
-                        </div>
-
-                        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-                            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
-                            <h3 className="text-lg font-semibold text-red-800">Failed to load questions</h3>
-                            <p className="mt-2 text-sm text-red-700">
-                                {error || "Unable to retrieve diagnostic questions for this case."}
-                            </p>
-                            <div className="mt-5 flex justify-center gap-4">
-                                <button
-                                    onClick={fetchCase}
-                                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
-                                >
-                                    <RefreshCw size={16} />
-                                    Retry
-                                </button>
-                                <Link
-                                    href={`/diagnosis/${resolvedParams.id}`}
-                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                                >
-                                    Return to Diagnosis
-                                </Link>
-                            </div>
-                        </div>
-                    </PageContainer>
-                </div>
-            </div>
-        );
-    }
-
-    // 3. Loaded state (with active question or no next question)
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="questions"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
-
-                <PageContainer>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split("-")[0]}
-                            </p>
-
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Diagnostic Questions
-                            </h1>
-
-                            <p className="mt-2 text-sm text-gray-500">
-                                Answer these questions to refine the cause ranking and improve diagnostic accuracy.
-                            </p>
-                        </div>
-
-                        <Link
-                            href={`/diagnosis/${resolvedParams.id}`}
-                            className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                        >
-                            ← Back to Diagnosis
-                        </Link>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                            Diagnostic Questions
+                        </h1>
+                        {!isDone && (
+                            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-[#eeebff] px-2.5 py-0.5 text-xs font-semibold text-[#5848e8]">
+                                <Keyboard size={13} />
+                                Hotkeys: Press 1, 2, 3
+                            </span>
+                        )}
                     </div>
+
+                    <p className="mt-2 text-sm text-gray-500">
+                        Answer these questions to refine the cause ranking and improve diagnostic accuracy.
+                    </p>
+                </div>
+
+                <Link
+                    href={`/diagnosis/${resolvedParams.id}`}
+                    className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                >
+                    ← Back to Overview
+                </Link>
+            </div>
 
                     {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
                     {refreshWarning && (
@@ -398,7 +401,5 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

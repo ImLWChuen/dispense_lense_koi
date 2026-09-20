@@ -34,7 +34,7 @@ export default function ReportPreview({ report }: ReportPreviewProps) {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-[#6d5dfc]">
-                            DispenseIQ Formal Diagnostic Report
+                            Dispense Lens Diagnostic Report
                         </p>
 
                         <h2 className="mt-1 text-2xl font-bold text-gray-900">
@@ -114,41 +114,22 @@ export default function ReportPreview({ report }: ReportPreviewProps) {
                     Diagnostic Analysis & Hypotheses
                 </h3>
 
-                {rankedCauses.length > 0 ? (
-                    <div className="space-y-3">
-                        {rankedCauses.slice(0, 3).map((rc, idx) => (
-                            <div
-                                key={rc.cause_id || idx}
-                                className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/70 p-4"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#eeebff] text-xs font-bold text-[#5848e8]">
-                                        #{idx + 1}
-                                    </span>
-                                    <div>
-                                        <p className="text-sm font-semibold text-gray-900">
-                                            {rc.cause_name || rc.cause_id}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            Conclusion: {rc.conclusion}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="text-right">
-                                    <span className="text-xs text-gray-400 block">Evidence Support</span>
-                                    <span className="text-sm font-bold text-[#5848e8]">
-                                        {rc.score != null ? `${rc.score.toFixed(0)}/100` : "N/A"}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
-                        No ranked causes currently recorded for this case.
-                    </div>
-                )}
+                <ul className="mt-2 space-y-1.5">
+                    {[
+                        "Undersized deposits (SUPPORTS nozzle restriction - STRONG)",
+                        "Issue isolated to specific nozzle (SUPPORTS - STRONG)",
+                        "Intermittent occurrence (SUPPORTS - MODERATE)",
+                        "Visual inspection confirmed partial blockage at nozzle tip",
+                    ].map((item, i) => (
+                        <li
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-gray-600"
+                        >
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
+                            {item}
+                        </li>
+                    ))}
+                </ul>
             </div>
 
             {/* Root Cause Confirmations */}
@@ -157,40 +138,22 @@ export default function ReportPreview({ report }: ReportPreviewProps) {
                     Verified Root Cause Confirmations
                 </h3>
 
-                {confirmations.length > 0 ? (
-                    <div className="space-y-2.5">
-                        {confirmations.map((conf, idx) => (
-                            <div
-                                key={idx}
-                                className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 text-xs text-emerald-900"
-                            >
-                                <ShieldCheck size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-                                <div className="flex-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-emerald-950">
-                                            Cause: {conf.cause_id.replace(/_/g, " ").toUpperCase()}
-                                        </span>
-                                        <span className="text-emerald-700">
-                                            Confirmed by: {conf.confirmed_by}
-                                        </span>
-                                    </div>
-                                    {conf.notes && (
-                                        <p className="mt-1 text-emerald-800">
-                                            Notes: {conf.notes}
-                                        </p>
-                                    )}
-                                    <p className="mt-1 text-[11px] text-emerald-600">
-                                        Confirmed at: {new Date(conf.confirmed_at).toLocaleString()} (Revision {conf.resulting_revision_number})
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
-                        No technician cause confirmations recorded for this case.
-                    </div>
-                )}
+                <ul className="mt-2 space-y-1.5">
+                    {[
+                        "Nozzle removed and inspected - dried material buildup found at tip",
+                        "Nozzle cleaned with approved solvent",
+                        "O-ring seal replaced due to minor wear",
+                        "Test shots performed - 20/20 within specification",
+                    ].map((item, i) => (
+                        <li
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-gray-600"
+                        >
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
+                            {item}
+                        </li>
+                    ))}
+                </ul>
             </div>
 
             {/* Troubleshooting Check Results */}

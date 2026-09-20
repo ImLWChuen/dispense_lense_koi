@@ -1,5 +1,5 @@
 """
-DispenseIQ — Database Persistence Target Safety Tests
+Dispense Lens - Database Persistence Target Safety Tests
 
 Validates structural URL parsing and destination verification to guarantee that
 test suites and destructive fixture cleanups can NEVER execute against remote

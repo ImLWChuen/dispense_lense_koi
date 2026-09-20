@@ -1,4 +1,4 @@
-"""DispenseIQ — Final Backend MVP Contract and End-to-End Acceptance Tests.
+"""Dispense Lens - Final Backend MVP Contract and End-to-End Acceptance Tests.
 
 DLK-M3-024:
 1. Formal acceptance of existing GET /api/v1/cases list endpoint (empty, multi-case, no recalculation, read-only, sanitized 500);
@@ -125,7 +125,7 @@ def _create_test_case(
 
 
 # ==============================================================================
-# Task 2 — Formal acceptance of GET /api/v1/cases list endpoint
+# Task 2 - Formal acceptance of GET /api/v1/cases list endpoint
 # ==============================================================================
 
 def test_list_cases_openapi_registration():
@@ -278,7 +278,7 @@ def test_list_cases_sanitized_500_on_internal_error(tracked_cases: list[str]):
 
 
 # ==============================================================================
-# Task 3 — Full Public-API Happy-Path Walkthrough
+# Task 3 - Full Public-API Happy-Path Walkthrough
 # ==============================================================================
 
 def test_full_public_api_happy_path_walkthrough(tracked_cases: list[str]):
@@ -437,7 +437,7 @@ def test_full_public_api_happy_path_walkthrough(tracked_cases: list[str]):
     pdf_resp = client.get(f"/api/v1/cases/{cid}/report.pdf")
     assert pdf_resp.status_code == 200
     assert pdf_resp.headers["Content-Type"] == "application/pdf"
-    assert f'filename="dispenseiq-case-{cid}-r7.pdf"' in pdf_resp.headers["Content-Disposition"]
+    assert f'filename="dispenselens-case-{cid}-r7.pdf"' in pdf_resp.headers["Content-Disposition"]
 
     # PDF validation and section isolation
     reader = pypdf.PdfReader(io.BytesIO(pdf_resp.content))
@@ -458,7 +458,7 @@ def test_full_public_api_happy_path_walkthrough(tracked_cases: list[str]):
 
 
 # ==============================================================================
-# Task 4 — Cross-Event Stale-Write Protection
+# Task 4 - Cross-Event Stale-Write Protection
 # ==============================================================================
 
 def test_cross_event_stale_write_protection(tracked_cases: list[str]):
@@ -548,7 +548,7 @@ def test_cross_event_stale_write_protection(tracked_cases: list[str]):
 
 
 # ==============================================================================
-# Task 5 — Report/Export Read-Only Final Proof
+# Task 5 - Report/Export Read-Only Final Proof
 # ==============================================================================
 
 def test_all_public_read_surfaces_read_only_proof(tracked_cases: list[str]):
@@ -648,7 +648,7 @@ def test_all_public_read_surfaces_read_only_proof(tracked_cases: list[str]):
 
 
 # ==============================================================================
-# Task 6 — OpenAPI / Frontend Contract Verification
+# Task 6 - OpenAPI / Frontend Contract Verification
 # ==============================================================================
 
 def test_openapi_contract_verification():
@@ -721,7 +721,7 @@ def test_openapi_contract_verification():
 
 
 # ==============================================================================
-# Task 7 — Six Required Defect Categories Backend Availability Check
+# Task 7 - Six Required Defect Categories Backend Availability Check
 # ==============================================================================
 
 @pytest.mark.parametrize(

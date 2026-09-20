@@ -31,7 +31,7 @@ The exact commit check `git diff --check b953ebf5b9aaee04c3e52cac30b9cb7b9871a42
 
 ## Findings
 
-### R1 — P2: Make the API specification match the executable contract
+### R1 - P2: Make the API specification match the executable contract
 
 `docs/api/api-spec.md` does not currently describe the implemented endpoint precisely enough to satisfy the task's documentation acceptance criterion.
 
@@ -48,7 +48,7 @@ Concrete mismatches:
 
 This is not a request to redesign the transport or engine. Correct the documentation/report to the behavior already implemented, or deliberately change the response text and tests together if the planner chooses the documented wording as canonical.
 
-### R2 — P2: Complete the acceptance tests required by the task packet
+### R2 - P2: Complete the acceptance tests required by the task packet
 
 The current integration suite is useful but does not fully execute the explicit verification requested in DLK-M3-004.
 
