@@ -15,6 +15,7 @@ interface DiagnosticQuestionProps {
     selectedValue?: string | null;
     onAnswer?: (value: string) => void;
     isAnswered?: boolean;
+    disabled?: boolean;
 }
 
 export default function DiagnosticQuestion({
@@ -24,6 +25,7 @@ export default function DiagnosticQuestion({
     selectedValue,
     onAnswer,
     isAnswered = false,
+    disabled = false,
 }: DiagnosticQuestionProps) {
     return (
         <div
@@ -63,6 +65,7 @@ export default function DiagnosticQuestion({
                     <div className="mt-5 flex flex-wrap gap-2.5">
                         {options.map((option, idx) => {
                             const isSelected = selectedValue === option.value;
+                            const isOptionDisabled = isAnswered || disabled;
 
                             return (
                                 <button

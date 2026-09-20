@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
-import { CheckCircle2, ArrowRight } from "lucide-react";
+import { CheckCircle2, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
 import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
@@ -10,21 +10,33 @@ import TroubleshootingChecklist from "@/components/diagnosis/TroubleshootingChec
 import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
+import {
+    buildCheckResultPayload,
+    deriveTroubleshootingView,
+    coordinateWorkflowMutation,
+    retryWorkflowRefresh,
+    RefreshWarningKind,
+} from "@/lib/diagnostic-workflow-state";
 
 export default function TroubleshootingPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
     const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+    const [refreshWarningKind, setRefreshWarningKind] = useState<RefreshWarningKind | null>(null);
+    const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-
 
     const fetchCase = useCallback(async () => {
+        setIsLoading(true);
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
             setError(null);
+            setRefreshWarning(null);
+            setRefreshWarningKind(null);
+            setIsRefreshRequired(false);
         } catch (err: unknown) {
             console.error("Failed to fetch case", err);
             const message = err instanceof Error ? err.message : "Failed to load case data.";
@@ -34,6 +46,27 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
         }
     }, [resolvedParams.id]);
 
+    const handleRetryRefresh = async () => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            await retryWorkflowRefresh({
+                currentCase: caseData,
+                previousWarningKind: refreshWarningKind,
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     useEffect(() => {
         let isCurrent = true;
         casesApi
@@ -42,6 +75,9 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                 if (isCurrent) {
                     setCaseData(data);
                     setError(null);
+                    setRefreshWarning(null);
+                    setRefreshWarningKind(null);
+                    setIsRefreshRequired(false);
                     setIsLoading(false);
                 }
             })
@@ -58,33 +94,59 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
         };
     }, [resolvedParams.id]);
 
-    const handleCheckSubmit = async (checkId: string, status: string, findingDetails: string, outcome: string) => {
-        if (!caseData?.diagnosis?.analysis_revision) return;
-        
+    const handleCheckSubmit = async (params: TroubleshootingCheckSubmitParams) => {
+        if (!caseData?.diagnosis?.analysis_revision || isRefreshRequired) {
+            if (isRefreshRequired) {
+                throw new Error("Further mutations are disabled until case state is refreshed.");
+            }
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            await casesApi.submitCheckResult(
-                caseData.case_id,
-                checkId,
-                status,
-                outcome, // API uses finding for "NORMAL", "CONFIRMED", etc.
-                caseData.diagnosis.analysis_revision.revision_number,
-                undefined, // optional outcome text
-                findingDetails
-            );
-            
-            // Refresh to get the next check or transition to verification
-            await fetchCase();
+            const payload = buildCheckResultPayload({
+                check_id: params.check_id,
+                execution_status: params.execution_status,
+                finding: params.finding,
+                outcome: params.outcome,
+                finding_details: params.finding_details,
+                expected_revision: caseData.diagnosis.analysis_revision.revision_number,
+            });
+
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () => casesApi.submitCheckResult(caseData.case_id, payload),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to submit check result", err);
-            const message = err instanceof Error ? err.message : "Failed to submit check result.";
-            setError(message);
+            // Re-throw so child form knows submission failed and preserves inputs
+            throw err;
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    if (isLoading && !caseData) {
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextCheck = diagnosis?.next_check;
+
+    const derived = deriveTroubleshootingView({
+        isLoading,
+        error,
+        caseData,
+        hasNextCheck: Boolean(nextCheck),
+    });
+
+    // 1. Initial Loading
+    if (derived.showInitialLoading) {
         return (
             <PageContainer>
                 <div className="flex h-64 items-center justify-center">
@@ -94,47 +156,106 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
         );
     }
 
-    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
-    const nextCheck = diagnosis?.next_check;
-    const isDone = !nextCheck && !isLoading;
+    // 2. Dedicated Error (Initial request failure)
+    if (derived.showDedicatedError) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-[#6d5dfc]">
+                                    Diagnostic workflow · {resolvedParams.id.split("-")[0]}
+                                </p>
+                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                                    Troubleshooting Checks
+                                </h1>
+                            </div>
+                            <Link
+                                href={`/diagnosis/${resolvedParams.id}`}
+                                className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                            >
+                                ← Back to Diagnosis
+                            </Link>
+                        </div>
 
-    const checks = caseData?.previous_check_results?.map(c => ({
-        check_id: c.check_id,
-        name: c.name || `Check ${c.check_id}`,
-        description: c.description || `Finding: ${c.finding}`,
-        procedure: c.procedure || "Historical check record.",
-        effort_level: c.effort_level || "low",
-        target_causes: c.target_causes || [],
-        status: (c.execution_status === "COMPLETED" ? "completed" : 
-                 c.execution_status === "BLOCKED" ? "blocked" : 
-                 c.execution_status === "SKIPPED" ? "skipped" : "pending")
-    })) || [];
-    
+                        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+                            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
+                            <h3 className="text-lg font-semibold text-red-800">Failed to load troubleshooting checks</h3>
+                            <p className="mt-2 text-sm text-red-700">
+                                {error || "Unable to retrieve troubleshooting checks for this case."}
+                            </p>
+                            <div className="mt-5 flex justify-center gap-4">
+                                <button
+                                    onClick={fetchCase}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                                >
+                                    <RefreshCw size={16} />
+                                    Retry
+                                </button>
+                                <Link
+                                    href={`/diagnosis/${resolvedParams.id}`}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                    Return to Diagnosis
+                                </Link>
+                            </div>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    // Prepare checklist actions: previous completed/recorded checks + active next check
+    const historicalChecks: TroubleshootingAction[] =
+        caseData?.previous_check_results?.map((c) => {
+            const rawStatus = (c.execution_status || "").toUpperCase();
+            const status: TroubleshootingAction["status"] =
+                rawStatus === "COMPLETED"
+                    ? "completed"
+                    : rawStatus === "BLOCKED"
+                    ? "blocked"
+                    : rawStatus === "SKIPPED"
+                    ? "skipped"
+                    : rawStatus === "FAILED"
+                    ? "failed"
+                    : rawStatus === "UNKNOWN"
+                    ? "unknown"
+                    : rawStatus === "NOT_APPLICABLE"
+                    ? "not_applicable"
+                    : "inconclusive";
+
+            return {
+                id: c.check_id,
+                name: c.name || `Check ${c.check_id}`,
+                description: c.description || `Finding: ${c.finding}`,
+                procedure: c.procedure || "Historical check record.",
+                effortLevel: (c.effort_level === "low" || c.effort_level === "high" ? c.effort_level : "medium") as "low" | "medium" | "high",
+                applicableCauses: c.target_causes || [],
+                status,
+                finding: c.finding,
+                outcome: c.outcome || undefined,
+                findingDetails: c.finding_details || undefined,
+            };
+        }) || [];
+
+    const checklistActions: TroubleshootingAction[] = [...historicalChecks];
+
     if (nextCheck) {
-        checks.push({
-            check_id: nextCheck.check_id,
+        checklistActions.push({
+            id: nextCheck.check_id,
             name: nextCheck.name,
             description: nextCheck.description || "Recommended troubleshooting check.",
             procedure: nextCheck.procedure || "Inspect according to standard operating procedure.",
-            effort_level: nextCheck.effort_level || "medium",
-            target_causes: nextCheck.target_causes || [],
-            status: nextCheck.status || "pending",
+            effortLevel: (nextCheck.effort_level === "low" || nextCheck.effort_level === "high" ? nextCheck.effort_level : "medium") as "low" | "medium" | "high",
+            applicableCauses: nextCheck.target_causes || [],
+            status: "pending",
+            possibleOutcomes: nextCheck.possible_outcomes || [],
         });
     }
-
-    // Deduplicate checks by check_id (keep latest)
-    const uniqueChecks = Array.from(new Map(checks.map(c => [c.check_id, c])).values());
-
-    // Map checks to the UI component format
-    const checklistActions = uniqueChecks.map(c => ({
-        id: c.check_id,
-        name: c.name,
-        description: c.description,
-        procedure: c.procedure,
-        effortLevel: (c.effort_level === "low" || c.effort_level === "high" ? c.effort_level : "medium") as "low" | "medium" | "high",
-        applicableCauses: c.target_causes || [],
-        status: (c.status || "pending") as "pending" | "completed" | "blocked" | "skipped",
-    }));
 
     return (
         <PageContainer>
@@ -163,45 +284,87 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                 </Link>
             </div>
 
-                    {error && (
-                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-                            {error}
+                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
+                    {refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">
+                                    {refreshWarningKind === "state_refresh_required"
+                                        ? "State Refresh Required"
+                                        : "Action Saved"}
+                                </p>
+                                <p className="mt-0.5">{refreshWarning}</p>
+                                {refreshWarningKind === "state_refresh_required" && error && (
+                                    <p className="mt-1 text-xs text-amber-700">Error: {error}</p>
+                                )}
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh Case
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Stale / mutation error banner (POST failed, but GET succeeded) */}
+                    {derived.showStaleBanner && !refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Update Failed</p>
+                                <p className="mt-0.5">{error}. Persisted case data has been re-synchronized.</p>
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh
+                            </button>
                         </div>
                     )}
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="xl:col-span-2 space-y-4">
-                            {checklistActions.length > 0 && (
-                                <TroubleshootingChecklist 
-                                    actions={checklistActions} 
-                                    onSubmit={handleCheckSubmit}
-                                    isSubmitting={isSubmitting}
-                                />
-                            )}
-                            
-                            {isDone && (
-                                <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
-                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
-                                    <h3 className="text-lg font-semibold text-emerald-800">Checks Complete</h3>
-                                    <p className="mt-2 text-sm text-emerald-700">
-                                        The diagnostic engine has gathered sufficient physical evidence.
-                                        You can now proceed to cause verification.
+                            {/* Truthful Neutral Completion: No further checks recommended */}
+                            {derived.showNoNextCheck && (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-[#6d5dfc]" />
+                                    <h3 className="text-lg font-semibold text-gray-900">No Additional Checks Available</h3>
+                                    <p className="mt-2 text-sm text-gray-600">
+                                        No additional physical troubleshooting checks are currently recommended by the diagnostic engine.
+                                        You may review previous recorded findings below or proceed to verification.
                                     </p>
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/verification`}
-                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
                                     >
-                                        Continue to Verification
+                                        Proceed to Verification
                                         <ArrowRight size={16} />
                                     </Link>
                                 </div>
                             )}
 
-                            {!isDone && checklistActions.length > 0 && (
+                            {/* Checklist: renders active form when pending check exists, and historical findings */}
+                            {checklistActions.length > 0 && (
+                                <TroubleshootingChecklist
+                                    actions={checklistActions}
+                                    activeCheckId={nextCheck?.check_id}
+                                    onSubmit={handleCheckSubmit}
+                                    isSubmitting={isSubmitting}
+                                    disabled={isSubmitting || isRefreshRequired}
+                                />
+                            )}
+
+                            {/* Shortcut to verification when active checks remain */}
+                            {derived.showActiveCheck && (
                                 <div className="mt-6 flex justify-end">
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/verification`}
-                                        className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
+                                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                                     >
                                         Skip to Verification →
                                     </Link>
@@ -210,7 +373,10 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
                         </div>
 
                         <div className="space-y-6">
-                            <QuestionProgress current={checks.length - (nextCheck ? 1 : 0)} total={checks.length} />
+                            <QuestionProgress
+                                current={historicalChecks.length}
+                                total={historicalChecks.length + (nextCheck ? 1 : 0)}
+                            />
 
                             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                                 <p className="text-sm font-semibold text-gray-900">

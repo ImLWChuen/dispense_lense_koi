@@ -18,7 +18,7 @@ interface CauseChartProps {
 
 export default function CauseChart({ data }: CauseChartProps) {
     const chartData = data ?? [];
-    const hasData = chartData.length > 0;
+    const hasData = chartData.length > 0 && chartData.some((d) => d.cases > 0);
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -62,7 +62,7 @@ export default function CauseChart({ data }: CauseChartProps) {
                             />
 
                             <Tooltip
-                                formatter={(val) => [`${val} cases`, "Confirmed Cases"]}
+                                formatter={(val: unknown) => [`${val} cases`, "Confirmed Cases"]}
                                 contentStyle={{
                                     backgroundColor: "#ffffff",
                                     borderRadius: "12px",

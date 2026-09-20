@@ -57,6 +57,7 @@ export default function AnalyticsPage() {
     const [selectedPeriod, setSelectedPeriod] = useState("30d");
     const [analytics, setAnalytics] = useState<AnalyticsPerformanceResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<string>("Just now");
 
@@ -118,19 +119,19 @@ export default function AnalyticsPage() {
         const unsubscribe = analyticsApi.subscribeToEvents((event) => {
             console.log("Global real-time sync event received:", event);
             setIsSyncing(true);
-            fetchAnalytics(periodRef.current, false);
+            refreshAnalytics(periodRef.current, false);
             setTimeout(() => setIsSyncing(false), 1500);
         });
 
         const pollInterval = setInterval(() => {
-            fetchAnalytics(periodRef.current, false);
+            refreshAnalytics(periodRef.current, false);
         }, 15000);
 
         return () => {
             unsubscribe();
             clearInterval(pollInterval);
         };
-    }, []);
+    }, [refreshAnalytics]);
 
     const handleManualRefresh = () => {
         setIsSyncing(true);
@@ -170,6 +171,8 @@ export default function AnalyticsPage() {
     };
 
     const kpis = analytics?.kpis;
+    const firstTimeRate = kpis?.first_time_resolution_rate;
+    const confirmationRate = kpis?.cause_confirmation_rate;
 
     return (
         <PageContainer>
@@ -265,14 +268,66 @@ export default function AnalyticsPage() {
                                 </button>
                             ))}
                         </div>
+                    ) : error && !analytics ? (
+                        <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50/50 p-12 text-center">
+                            <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
+                            <h3 className="text-lg font-semibold text-rose-900">Failed to load analytics data</h3>
+                            <p className="mt-1 max-w-md text-sm text-rose-700">{error}</p>
+                            <button
+                                onClick={() => refreshAnalytics(selectedPeriod, true)}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 transition"
+                            >
+                                <RefreshCw size={14} />
+                                Retry
+                            </button>
+                        </div>
+                    ) : analytics ? (
+                        <>
+                            {error && (
+                                <div className="mt-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle size={18} className="text-amber-600" />
+                                        <span>Refresh failed: {error}. Showing last synced data from {lastSyncTime}.</span>
+                                    </div>
+                                    <button
+                                        onClick={() => refreshAnalytics(selectedPeriod, true)}
+                                        className="rounded-lg bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 transition"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            )}
 
-                        {isSyncing && (
-                            <div className="flex items-center gap-1.5 text-xs text-[#6d5dfc] font-medium animate-pulse">
-                                <Loader2 size={13} className="animate-spin" />
-                                Syncing global updates...
+                            {/* Interactive Date Filter Bar */}
+                            <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                                <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+                                    {periods.map((p) => (
+                                        <button
+                                            key={p.value}
+                                            onClick={() => {
+                                                if (selectedPeriod !== p.value) {
+                                                    setIsLoading(true);
+                                                    setSelectedPeriod(p.value);
+                                                }
+                                            }}
+                                            className={`rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${
+                                                selectedPeriod === p.value
+                                                    ? "bg-[#6d5dfc] text-white shadow-sm font-semibold"
+                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                                            }`}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {isSyncing && (
+                                    <div className="flex items-center gap-1.5 text-xs text-[#6d5dfc] font-medium animate-pulse">
+                                        <Loader2 size={13} className="animate-spin" />
+                                        Syncing global updates...
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
 
                     {/* KPIs Grid */}
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -321,47 +376,77 @@ export default function AnalyticsPage() {
                             <ResolutionChart data={analytics?.resolution_time_distribution} />
                         </div>
 
-                        {/* Defect Categories Breakdown Card */}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col justify-between">
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <h2 className="text-base font-semibold text-gray-900">
-                                        Defect Type Breakdown
-                                    </h2>
-                                    <Layers size={18} className="text-gray-400" />
-                                </div>
-                                <p className="text-xs text-gray-500 mb-5">
-                                    Observed defect categories and percentage share
-                                </p>
-
-                                <div className="space-y-4">
-                                    {analytics?.defect_types && analytics.defect_types.length > 0 ? (
-                                        analytics.defect_types.map((dt) => (
-                                            <div key={dt.code} className="space-y-1.5">
-                                                <div className="flex items-center justify-between text-xs font-medium">
-                                                    <span className="text-gray-800 font-semibold">{dt.name}</span>
-                                                    <span className="text-gray-500 font-mono">{dt.percentage}% ({dt.count})</span>
-                                                </div>
-                                                <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                                                    <div
-                                                        className="h-full rounded-full bg-[#6d5dfc] transition-all duration-500"
-                                                        style={{ width: `${Math.min(100, dt.percentage)}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="py-8 text-center text-xs text-gray-400">
-                                            No defect categories recorded in this period.
-                                        </div>
-                                    )}
-                                </div>
+                                <KpiCard
+                                    title="Cause Confirmation Coverage"
+                                    value={
+                                        isLoading
+                                            ? "..."
+                                            : confirmationRate != null
+                                            ? `${confirmationRate}%`
+                                            : "Not available"
+                                    }
+                                    description="cases with confirmed cause"
+                                    trend={kpis?.cause_confirmation_trend}
+                                    icon={<TrendingUp size={20} />}
+                                />
                             </div>
 
-                            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                                <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                                    <ShieldCheck size={14} />
-                                    Continuous Monitoring
+                            {/* Charts Grid */}
+                            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                                <DefectChart data={analytics?.defect_trend} />
+                                <CauseChart data={analytics?.cause_distribution} />
+                            </div>
+
+                            {/* Resolution Distribution & Defect Breakdown */}
+                            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+                                <div className="xl:col-span-2">
+                                    <ResolutionChart data={analytics?.resolution_time_distribution} />
+                                </div>
+
+                                {/* Defect Categories Breakdown Card */}
+                                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h2 className="text-base font-semibold text-gray-900">
+                                                Defect Type Breakdown
+                                            </h2>
+                                            <Layers size={18} className="text-gray-400" />
+                                        </div>
+                                        <p className="text-xs text-gray-500 mb-5">
+                                            Observed defect categories and percentage share
+                                        </p>
+
+                                        <div className="space-y-4">
+                                            {analytics?.defect_types && analytics.defect_types.length > 0 ? (
+                                                analytics.defect_types.map((dt) => (
+                                                    <div key={dt.code || dt.name} className="space-y-1.5">
+                                                        <div className="flex items-center justify-between text-xs font-medium">
+                                                            <span className="text-gray-800 font-semibold">{dt.name}</span>
+                                                            <span className="text-gray-500 font-mono">{dt.percentage}% ({dt.count})</span>
+                                                        </div>
+                                                        <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                                            <div
+                                                                className="h-full rounded-full bg-[#6d5dfc] transition-all duration-500"
+                                                                style={{ width: `${Math.min(100, Math.max(0, dt.percentage))}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="py-8 text-center text-xs text-gray-400">
+                                                    No defect categories recorded in this period.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                                        <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                                            <ShieldCheck size={14} />
+                                            Continuous Monitoring
+                                        </div>
+                                        <span>Synced across all users</span>
+                                    </div>
                                 </div>
                                 <span>Synced across all cleanroom accounts</span>
                             </div>

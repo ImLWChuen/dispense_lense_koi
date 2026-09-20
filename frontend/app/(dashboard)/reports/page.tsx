@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -12,6 +12,7 @@ import {
     Search,
     AlertCircle,
     Loader2,
+    RefreshCw,
     X,
 } from "lucide-react";
 
@@ -32,7 +33,7 @@ interface ReportItem {
 
 function ReportsContent() {
     const searchParams = useSearchParams();
-    const initialSearch = searchParams.get("search") || "";
+    const searchParam = searchParams.get("search") || "";
 
     const [reports, setReports] = useState<ReportItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -40,12 +41,10 @@ function ReportsContent() {
     const [searchQuery, setSearchQuery] = useState(initialSearch);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        const q = searchParams.get("search");
-        if (q !== null) {
-            setSearchQuery(q);
-        }
-    }, [searchParams]);
+    if (searchParam !== prevSearchParam) {
+        setPrevSearchParam(searchParam);
+        setSearchQuery(searchParam);
+    }
 
     const loadReports = async () => {
         try {
@@ -62,13 +61,23 @@ function ReportsContent() {
                         ? "Complete"
                         : c.issue_condition.replace("IssueCondition.", "").replace(/_/g, " ");
 
-                    const dateStr = c.created_at
-                        ? new Date(c.created_at).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                          })
-                        : "Recent";
+    useEffect(() => {
+        let isCurrent = true;
+        reportsApi
+            .listCasesForReports()
+            .then((cases) => {
+                if (isCurrent) {
+                    const mapped = mapCasesToReports((cases || []) as DurableCaseResponse[]);
+                    setState((prev) => reportsLoadSuccess(prev, mapped));
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    console.error("Failed to load reports from cases API:", err);
+                    const msg = err instanceof Error ? err.message : "Failed to load case reports.";
+                    setState((prev) => reportsLoadFailure(prev, msg));
+                }
+            });
 
                     return {
                         id: c.case_id,
@@ -110,6 +119,9 @@ function ReportsContent() {
         }
     };
 
+    const view = deriveReportsView(state);
+    const { reports, isLoading, error } = state;
+
     const filteredReports = reports.filter(
         (r) =>
             r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -134,6 +146,15 @@ function ReportsContent() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={reloadReports}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                        title="Refresh reports"
+                    >
+                        <RefreshCw size={16} className={isLoading ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
+                        <span>Refresh</span>
+                    </button>
                     <Link
                         href="/diagnosis/new"
                         className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5848e8]"
@@ -144,34 +165,69 @@ function ReportsContent() {
                 </div>
             </div>
 
-            {/* Search & Filter Bar */}
-            <div className="mt-6 flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search
-                        size={18}
-                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search reports by title, report ID, or case ref..."
-                        className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-9 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:ring-2 focus:ring-[#6d5dfc]/10"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            title="Clear search"
-                        >
-                            <X size={15} />
-                        </button>
+            {view.showInitialLoading ? (
+                <div className="mt-12 flex flex-col items-center justify-center py-20 text-gray-500">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
+                    <p className="text-sm font-medium">Loading case reports...</p>
+                </div>
+            ) : view.showDedicatedError ? (
+                <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50/50 p-12 text-center">
+                    <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
+                    <h3 className="text-lg font-semibold text-rose-900">Failed to load reports</h3>
+                    <p className="mt-1 max-w-md text-sm text-rose-700">{error}</p>
+                    <button
+                        onClick={reloadReports}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 transition"
+                    >
+                        <RefreshCw size={14} />
+                        Retry
+                    </button>
+                </div>
+            ) : (
+                <>
+                    {view.showStaleBanner && (
+                        <div className="mt-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle size={18} className="text-amber-600" />
+                                <span>Refresh failed: {error}. Showing previously loaded reports.</span>
+                            </div>
+                            <button
+                                onClick={reloadReports}
+                                className="rounded-lg bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 transition"
+                            >
+                                Retry
+                            </button>
+                        </div>
                     )}
-                </div>
-                <div className="text-sm text-gray-500">
-                    Showing <span className="font-semibold text-gray-900">{filteredReports.length}</span> reports
-                </div>
-            </div>
+
+                    {/* Search & Filter Bar */}
+                    <div className="mt-6 flex items-center justify-between gap-4">
+                        <div className="relative flex-1 max-w-md">
+                            <Search
+                                size={18}
+                                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                            />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search reports by title, report ID, or case ref..."
+                                className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-9 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:ring-2 focus:ring-[#6d5dfc]/10"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    title="Clear search"
+                                >
+                                    <X size={15} />
+                                </button>
+                            )}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            Showing <span className="font-semibold text-gray-900">{filteredReports.length}</span> reports
+                        </div>
+                    </div>
 
             {error && (
                 <div className="mt-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -218,17 +274,14 @@ function ReportsContent() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {filteredReports.map((report) => (
-                                            <tr
-                                                key={report.id}
-                                                className="group transition hover:bg-gray-50/70"
-                                            >
-                                                <td className="px-6 py-4">
-                                                    <Link
-                                                        href={`/reports/${report.id}`}
-                                                        className="flex items-center gap-2 text-sm font-semibold text-gray-900 group-hover:text-[#6d5dfc]"
-                                                    >
-                                                        <FileText size={15} className="text-gray-400 group-hover:text-[#6d5dfc]" />
+                                        {filteredReports.map((report) => {
+                                            const statusPresentation = getReportStatusPresentation(report.isResolved);
+                                            return (
+                                                <tr
+                                                    key={report.id}
+                                                    className="border-b border-gray-50 transition hover:bg-gray-50/80"
+                                                >
+                                                    <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900">
                                                         {report.displayId}
                                                     </Link>
                                                 </td>
@@ -314,15 +367,18 @@ function ReportsContent() {
                                                             View
                                                         </Link>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
                         )}
                     </div>
-                </PageContainer>
+                </>
+            )}
+        </PageContainer>
     );
 }
 

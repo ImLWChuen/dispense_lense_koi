@@ -37,7 +37,7 @@ export interface CaseReportResponse {
     description: string;
     material?: string;
     method?: string;
-    machine_context?: Record<string, any>;
+    machine_context?: Record<string, unknown>;
     issue_condition: string;
     created_at: string;
     current_diagnosis: DiagnosisResult;

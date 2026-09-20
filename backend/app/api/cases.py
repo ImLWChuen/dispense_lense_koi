@@ -383,6 +383,43 @@ def get_durable_case(
                 if "analysis_revision" in snapshot_dict and snapshot_dict["analysis_revision"]:
                     analysis_revisions.append(AnalysisRevision.model_validate(snapshot_dict["analysis_revision"]))
 
+        conf_models = repository.get_case_cause_confirmations(canonical_id, max_revision=latest_rev_num)
+        previous_confirmations = [
+            CauseConfirmationRecord(
+                cause_id=cfm.cause_id,
+                confirmed_by=cfm.confirmed_by,
+                notes=cfm.notes,
+                confirmed_at=cfm.confirmed_at,
+                resulting_revision_number=cfm.resulting_revision_number,
+            )
+            for cfm in conf_models
+        ]
+
+        le_models = repository.get_case_lifecycle_events(canonical_id, max_revision=latest_rev_num)
+        lifecycle_events = [
+            LifecycleEventRecord(
+                id=lem.id,
+                case_id=lem.case_id,
+                event_type=lem.event_type,
+                prior_issue_condition=(
+                    IssueCondition(lem.prior_issue_condition)
+                    if lem.prior_issue_condition in IssueCondition._value2member_map_
+                    else lem.prior_issue_condition
+                ),
+                resulting_issue_condition=(
+                    IssueCondition(lem.resulting_issue_condition)
+                    if lem.resulting_issue_condition in IssueCondition._value2member_map_
+                    else lem.resulting_issue_condition
+                ),
+                resulting_revision_number=lem.resulting_revision_number,
+                actor=lem.actor,
+                details=lem.details,
+                verification_passed=lem.verification_passed,
+                created_at=lem.created_at,
+            )
+            for lem in le_models
+        ]
+
         observations = [
             CaseObservationResponse(
                 id=obs.observation_id,
@@ -432,6 +469,8 @@ def get_durable_case(
             observations=observations,
             previous_answers=previous_answers,
             previous_check_results=previous_check_results,
+            previous_confirmations=previous_confirmations,
+            lifecycle_events=lifecycle_events,
             analysis_revisions=analysis_revisions,
             initial_diagnosis=initial_diagnosis,
             diagnosis=latest_diagnosis,

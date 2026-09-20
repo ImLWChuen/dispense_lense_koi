@@ -165,6 +165,27 @@ export interface CheckResultRecord {
     target_causes?: string[];
 }
 
+export interface CauseConfirmationRecord {
+    cause_id: string;
+    confirmed_by: string;
+    notes?: string | null;
+    confirmed_at: string;
+    resulting_revision_number: number;
+}
+
+export interface LifecycleEventRecord {
+    id?: number | null;
+    case_id: string;
+    event_type: string;
+    prior_issue_condition: string;
+    resulting_issue_condition: string;
+    resulting_revision_number: number;
+    actor: string;
+    details: string;
+    verification_passed?: boolean | null;
+    created_at: string;
+}
+
 export interface AnalysisRevision {
     revision_number: number;
     timestamp: string;
@@ -187,7 +208,102 @@ export interface DurableCaseResponse {
     observations: CaseObservationResponse[];
     previous_answers: QuestionAnswerRecord[];
     previous_check_results: CheckResultRecord[];
+    previous_confirmations: CauseConfirmationRecord[];
+    lifecycle_events: LifecycleEventRecord[];
     analysis_revisions: AnalysisRevision[];
     initial_diagnosis: DiagnosisResult;
     diagnosis: DiagnosisResult;
+    current_revision?: number;
+}
+
+export interface CaseAnswerResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_answer: QuestionAnswerRecord;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface CaseCheckResultResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_check_result: CheckResultRecord;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface CaseCauseConfirmationResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_confirmation: CauseConfirmationRecord;
+    confirmed_cause?: string | null;
+    selected_cause_conclusion?: string;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface CaseRecoveryActionResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_recovery_action: LifecycleEventRecord;
+    submitted_event: LifecycleEventRecord;
+    confirmed_cause?: string | null;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface CaseRecoveryVerificationResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_verification: LifecycleEventRecord;
+    submitted_event: LifecycleEventRecord;
+    confirmed_cause?: string | null;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface CaseRecurrenceResponse extends DurableCaseResponse {
+    current_revision: number;
+    submitted_recurrence: LifecycleEventRecord;
+    submitted_event: LifecycleEventRecord;
+    confirmed_cause?: string | null;
+    next_question?: DiagnosticQuestion | null;
+    next_check?: DiagnosticCheck | null;
+}
+
+export interface SubmitAnswerPayload {
+    question_id: string;
+    answer: string;
+    expected_revision: number;
+    answer_text?: string;
+}
+
+export interface SubmitCheckResultPayload {
+    check_id: string;
+    execution_status: string;
+    finding: string;
+    expected_revision: number;
+    outcome?: string | null;
+    finding_details?: string | null;
+}
+
+export interface SubmitCauseConfirmationPayload {
+    cause_id: string;
+    expected_revision: number;
+    confirmed_by?: string;
+    notes?: string | null;
+}
+
+export interface SubmitRecoveryActionPayload {
+    expected_revision: number;
+    recovery_details: string;
+    performed_by?: string;
+}
+
+export interface SubmitRecoveryVerificationPayload {
+    expected_revision: number;
+    verification_passed: boolean;
+    verification_details?: string;
+    verified_by?: string;
+}
+
+export interface SubmitRecurrencePayload {
+    expected_revision: number;
+    recurrence_details: string;
+    reported_by?: string;
 }

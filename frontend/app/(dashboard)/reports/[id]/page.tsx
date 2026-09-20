@@ -9,8 +9,6 @@ import {
     Download,
     FileText,
     Calendar,
-    Settings,
-    Activity,
     AlertTriangle,
     Sparkles,
     Loader2,
@@ -65,17 +63,44 @@ function ReportDetailContent({
                     setAiSummary(data.current_diagnosis.explanation);
                     setAiSource("deterministic");
                 }
-            } catch (err: any) {
-                console.warn("Failed to load real case report, displaying sample/fallback view:", err);
-                setError(err.message || "Failed to load case report.");
-            } finally {
+                setError(null);
+            })
+            .catch((err: unknown) => {
+                console.error("Failed to load real case report:", err);
+                setError(err instanceof Error ? err.message : "Failed to load case report.");
+            })
+            .finally(() => {
                 setIsLoading(false);
-            }
-        };
+            });
+    }, [id]);
 
-        if (id) {
-            fetchReportData();
-        }
+    useEffect(() => {
+        if (!id) return;
+        let isCurrent = true;
+        reportsApi
+            .getCaseReport(id)
+            .then((data) => {
+                if (isCurrent) {
+                    setReport(data);
+                    if (data.current_diagnosis?.explanation) {
+                        setAiSummary(data.current_diagnosis.explanation);
+                        setAiSource("deterministic");
+                    }
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    console.error("Failed to load real case report:", err);
+                    setError(err instanceof Error ? err.message : "Failed to load case report.");
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
     }, [id]);
 
     const fetch8DData = async () => {
@@ -124,9 +149,9 @@ function ReportDetailContent({
             const res = await reportsApi.generateAiSummary(id);
             setAiSummary(res.summary);
             setAiSource(res.source);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error generating AI summary:", err);
-            alert("Unable to generate AI summary: " + (err.message || "Unknown error"));
+            alert("Unable to generate AI summary: " + (err instanceof Error ? err.message : "Unknown error"));
         } finally {
             setIsGeneratingAi(false);
         }
@@ -140,9 +165,6 @@ function ReportDetailContent({
         report?.outcome_summary?.is_resolved ||
         report?.issue_condition === "RESOLVED" ||
         report?.issue_condition === "IssueCondition.RESOLVED";
-
-    const topCause = report?.current_diagnosis?.ranked_causes?.[0];
-    const confirmedCauses = report?.outcome_summary?.confirmed_causes || [];
 
     return (
         <PageContainer>
@@ -267,36 +289,38 @@ function ReportDetailContent({
                                 </div>
                             </div>
                         </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex flex-wrap items-center gap-3">
+                    ) : error || !report ? (
+                        <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
+                            <AlertCircle className="h-10 w-10 text-rose-500 mx-auto mb-3" />
+                            <h2 className="text-base font-bold text-gray-900">Report Unavailable</h2>
+                            <p className="mt-1 text-sm text-gray-600 mb-4">{error || "The requested case report could not be found."}</p>
                             <button
-                                onClick={handleGenerateAiSummary}
-                                disabled={isGeneratingAi}
-                                className="inline-flex items-center gap-2 rounded-xl border border-[#6d5dfc]/30 bg-[#eeebff] px-4 py-2.5 text-sm font-semibold text-[#5848e8] shadow-sm transition hover:bg-[#e4e0ff] disabled:opacity-50"
+                                onClick={reloadReport}
+                                className="rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5848e8] transition"
                             >
-                                {isGeneratingAi ? (
-                                    <Loader2 size={16} className="animate-spin text-[#6d5dfc]" />
-                                ) : (
-                                    <Sparkles size={16} className="text-[#6d5dfc]" />
-                                )}
-                                {aiSummary ? "Regenerate AI Summary" : "Generate AI Summary"}
-                            </button>
-
-                            <button
-                                onClick={handleDownloadPdf}
-                                disabled={isDownloadingPdf}
-                                className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5848e8] disabled:opacity-70"
-                            >
-                                {isDownloadingPdf ? (
-                                    <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                    <Download size={16} />
-                                )}
-                                Download PDF
+                                Try Again
                             </button>
                         </div>
-                    </div>
+                    ) : (
+                        <>
+                            {/* Report Header */}
+                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-8 pb-6 border-b border-gray-200">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2.5 mb-2">
+                                        <span
+                                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-semibold ${
+                                                isResolved
+                                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                            }`}
+                                        >
+                                            {isResolved ? (
+                                                <CheckCircle2 size={13} />
+                                            ) : (
+                                                <AlertTriangle size={13} />
+                                            )}
+                                            {isResolved ? "Complete / Resolved" : "Under Investigation"}
+                                        </span>
 
                     {/* Main Content Grid */}
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -323,8 +347,6 @@ function ReportDetailContent({
                                         <span className="text-xs font-mono font-medium text-[#6d5dfc] bg-[#6d5dfc]/10 px-2 py-0.5 rounded-full">
                                             {aiSource === "llm" ? "AI Generated" : "Deterministic Summary"}
                                         </span>
-                                    )}
-                                </div>
 
                                 <div className="text-sm leading-relaxed text-gray-700 bg-white/80 p-4 rounded-xl border border-gray-100 shadow-inner">
                                     {aiSummary ? (
@@ -346,6 +368,7 @@ function ReportDetailContent({
                                             Root Cause Analysis
                                         </h2>
                                     </div>
+                                </div>
 
                                     {topCause && (
                                         <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
@@ -470,37 +493,11 @@ function ReportDetailContent({
                                         </dd>
                                     </div>
 
-                                    {report?.machine_context && (
-                                        <div>
-                                            <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                                Machine Context
-                                            </dt>
-                                            <dd className="mt-1 font-mono text-xs text-gray-600 bg-gray-50 p-2 rounded-lg break-all">
-                                                {JSON.stringify(report.machine_context)}
-                                            </dd>
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            PDF Export Status
-                                        </dt>
-                                        <dd className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                                            <CheckCircle2 size={13} />
-                                            Ready for download
-                                        </dd>
+                                    <div className="rounded-xl bg-white/80 p-4 border border-[#6d5dfc]/10 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
+                                        {aiSummary}
                                     </div>
-                                </dl>
-                            </div>
-
-                            {/* Preventative Recommendations */}
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Settings size={18} className="text-[#6d5dfc]" />
-                                    <h3 className="text-sm font-bold text-gray-900">
-                                        Recommendations
-                                    </h3>
                                 </div>
+                            )}
 
                                 <ul className="space-y-3 text-xs sm:text-sm text-gray-600">
                                     <li className="flex items-start gap-2">

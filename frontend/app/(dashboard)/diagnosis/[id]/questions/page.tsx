@@ -10,6 +10,12 @@ import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import DiagnosticQuestion from "@/components/diagnosis/DiagnosticQuestion";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
+import {
+    deriveQuestionsView,
+    coordinateWorkflowMutation,
+    retryWorkflowRefresh,
+    RefreshWarningKind,
+} from "@/lib/diagnostic-workflow-state";
 
 function normalizeOptions(options?: string[]) {
     if (!options || options.length === 0) {
@@ -35,16 +41,22 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+    const [refreshWarningKind, setRefreshWarningKind] = useState<RefreshWarningKind | null>(null);
+    const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Track previously answered questions to display them in the history
     const history = caseData?.previous_answers || [];
 
     const fetchCase = useCallback(async () => {
+        setIsLoading(true);
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
             setError(null);
+            setRefreshWarning(null);
+            setRefreshWarningKind(null);
+            setIsRefreshRequired(false);
         } catch (err: unknown) {
             console.error("Failed to fetch case", err);
             const message = err instanceof Error ? err.message : "Failed to load case data.";
@@ -54,6 +66,27 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         }
     }, [resolvedParams.id]);
 
+    const handleRetryRefresh = async () => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            await retryWorkflowRefresh({
+                currentCase: caseData,
+                previousWarningKind: refreshWarningKind,
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     useEffect(() => {
         let isCurrent = true;
         casesApi
@@ -62,6 +95,9 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                 if (isCurrent) {
                     setCaseData(data);
                     setError(null);
+                    setRefreshWarning(null);
+                    setRefreshWarningKind(null);
+                    setIsRefreshRequired(false);
                     setIsLoading(false);
                 }
             })
@@ -87,19 +123,27 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         
         setIsSubmitting(true);
         try {
-            await casesApi.submitAnswer(
-                caseData.case_id, 
-                questionId, 
-                value, 
-                caseData.diagnosis.analysis_revision.revision_number
-            );
-            
-            // Refresh to get the next question
-            await fetchCase();
+            await coordinateWorkflowMutation({
+                currentCase: caseData,
+                isRefreshRequired,
+                performMutation: () =>
+                    casesApi.submitAnswer(
+                        caseData.case_id,
+                        questionId,
+                        value,
+                        caseData.diagnosis!.analysis_revision!.revision_number
+                    ),
+                performRefresh: () => casesApi.getCase(caseData.case_id),
+                onStateChange: (state) => {
+                    setCaseData(state.caseData);
+                    setError(state.mutationError);
+                    setRefreshWarning(state.refreshWarning);
+                    setRefreshWarningKind(state.refreshWarningKind || null);
+                    setIsRefreshRequired(state.isRefreshRequired);
+                },
+            });
         } catch (err: unknown) {
             console.error("Failed to submit answer", err);
-            const message = err instanceof Error ? err.message : "Failed to submit answer.";
-            setError(message);
         } finally {
             setIsSubmitting(false);
         }
@@ -142,7 +186,37 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [nextQuestion, isSubmitting, isLoading, handleAnswer]);
 
-    if (isLoading && !caseData) {
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextQuestion = diagnosis?.next_question;
+
+    const derived = deriveQuestionsView({
+        isLoading,
+        error,
+        caseData,
+        hasNextQuestion: Boolean(nextQuestion),
+    });
+
+    const normalizeOptions = (options?: string[]) => {
+        if (!options || options.length === 0) {
+            return [
+                { value: "YES", label: "Yes" },
+                { value: "NO", label: "No" },
+                { value: "UNKNOWN", label: "Unknown" },
+            ];
+        }
+        return options.map((opt) => {
+            if (typeof opt === "string") {
+                return {
+                    value: opt,
+                    label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, " "),
+                };
+            }
+            return opt;
+        });
+    };
+
+    // 1. Initial Loading
+    if (derived.showInitialLoading) {
         return (
             <PageContainer>
                 <div className="flex h-64 items-center justify-center">
@@ -187,28 +261,78 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                 </Link>
             </div>
 
-                    {error && (
-                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-                            {error}
+                    {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
+                    {refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">
+                                    {refreshWarningKind === "state_refresh_required"
+                                        ? "State Refresh Required"
+                                        : "Action Saved"}
+                                </p>
+                                <p className="mt-0.5">{refreshWarning}</p>
+                                {refreshWarningKind === "state_refresh_required" && error && (
+                                    <p className="mt-1 text-xs text-amber-700">Error: {error}</p>
+                                )}
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh Case
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Stale / mutation error banner (POST failed, but GET succeeded) */}
+                    {derived.showStaleBanner && !refreshWarning && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Update Failed</p>
+                                <p className="mt-0.5">{error}. Persisted case data has been re-synchronized.</p>
+                            </div>
+                            <button
+                                onClick={handleRetryRefresh}
+                                disabled={isSubmitting}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSubmitting ? "animate-spin" : ""} />
+                                Refresh
+                            </button>
                         </div>
                     )}
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="space-y-4 xl:col-span-2">
+                            {/* Question history */}
                             {history.map((q, index) => (
                                 <DiagnosticQuestion
                                     key={`hist-${q.question_id}-${index}`}
                                     questionId={q.question_id}
                                     text={q.text || q.answer_text || `Question ${q.question_id}`}
                                     purpose={q.reasoning || "Historical answer retrieved from diagnostic engine."}
-                                    options={q.options ? normalizeOptions(q.options) : [{ value: q.answer_value, label: q.answer_value.charAt(0).toUpperCase() + q.answer_value.slice(1).toLowerCase().replace(/_/g, ' ') }]}
+                                    options={
+                                        q.options
+                                            ? normalizeOptions(q.options)
+                                            : [
+                                                  {
+                                                      value: q.answer_value,
+                                                      label:
+                                                          q.answer_value.charAt(0).toUpperCase() +
+                                                          q.answer_value.slice(1).toLowerCase().replace(/_/g, " "),
+                                                  },
+                                              ]
+                                    }
                                     selectedValue={q.answer_value}
                                     onAnswer={() => {}}
                                     isAnswered={true}
                                 />
                             ))}
 
-                            {nextQuestion && (
+                            {/* Active Next Question */}
+                            {derived.showActiveQuestion && nextQuestion && (
                                 <DiagnosticQuestion
                                     key={nextQuestion.question_id}
                                     questionId={nextQuestion.question_id}
@@ -217,35 +341,38 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                                     options={normalizeOptions(nextQuestion.options)}
                                     selectedValue={null}
                                     onAnswer={(value) => handleAnswer(nextQuestion.question_id, value)}
-                                    isAnswered={isSubmitting}
+                                    isAnswered={false}
+                                    disabled={isSubmitting || isRefreshRequired}
                                 />
                             )}
 
-                            {isDone && (
-                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
-                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
-                                    <h3 className="text-lg font-semibold text-emerald-800">No more questions</h3>
-                                    <p className="mt-2 text-sm text-emerald-700">
-                                        The diagnostic engine has gathered enough evidence from questions.
-                                        You should now proceed to physical troubleshooting checks.
+                            {/* Truthful Neutral Completion: No more questions available */}
+                            {derived.showNoNextQuestion && (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-[#6d5dfc]" />
+                                    <h3 className="text-lg font-semibold text-gray-900">No Additional Questions</h3>
+                                    <p className="mt-2 text-sm text-gray-600">
+                                        No additional questions are currently recommended by the diagnostic engine.
+                                        Proceeding to physical troubleshooting checks is a technician choice.
                                     </p>
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/troubleshooting`}
-                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
                                     >
-                                        Continue to Troubleshooting
+                                        Proceed to Troubleshooting Checks
                                         <ArrowRight size={16} />
                                     </Link>
                                 </div>
                             )}
 
-                            {history.length > 0 && !isDone && (
+                            {/* Option to skip remaining questions if active question is present */}
+                            {derived.showActiveQuestion && (
                                 <div className="flex justify-end pt-4">
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/troubleshooting`}
                                         className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                                     >
-                                        Skip remaining questions
+                                        Proceed to Troubleshooting Checks
                                         <ArrowRight size={16} />
                                     </Link>
                                 </div>
@@ -253,7 +380,6 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         </div>
 
                         <div>
-                            {/* In a real app we'd track total questions vs answered, but engine provides dynamically */}
                             <QuestionProgress
                                 current={history.length}
                                 total={history.length + (nextQuestion ? 1 : 0)}

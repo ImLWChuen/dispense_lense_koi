@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
+Phase 3B: restart-safe technician troubleshooting and lifecycle workflow
 
 ## Active task
 

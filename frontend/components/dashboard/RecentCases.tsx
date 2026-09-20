@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ComponentType } from "react";
 import {
     ArrowRight,
     CheckCircle2,
@@ -12,7 +13,7 @@ function StatusBadge({
 }: {
     status: string;
 }) {
-    const config: Record<string, { icon: any; className: string }> = {
+    const config: Record<string, { icon: ComponentType<{ size?: number }>; className: string }> = {
         Resolved: {
             icon: CheckCircle2,
             className: "bg-green-50 text-green-700",
@@ -86,11 +87,11 @@ export default function RecentCases({ cases = [] }: RecentCasesProps) {
                         </th>
 
                         <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                            Probable Cause
+                            Identified Cause
                         </th>
 
                         <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                            Confidence
+                            Evidence Support
                         </th>
 
                         <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -112,7 +113,7 @@ export default function RecentCases({ cases = [] }: RecentCasesProps) {
                             >
                                 <td className="px-6 py-4">
                                     <Link
-                                        href={`/cases/${item.id}`}
+                                        href={`/diagnosis/${item.id}`}
                                         className="text-sm font-semibold text-gray-900 hover:text-[#5848e8]"
                                     >
                                         {item.case_number}
@@ -138,20 +139,24 @@ export default function RecentCases({ cases = [] }: RecentCasesProps) {
                                 </td>
 
                                 <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
-                                            <div
-                                                className="h-full rounded-full bg-[#6d5dfc]"
-                                                style={{
-                                                    width: `${item.confidence}%`,
-                                                }}
-                                            />
-                                        </div>
+                                    {item.evidence_support != null ? (
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                                                <div
+                                                    className="h-full rounded-full bg-[#6d5dfc]"
+                                                    style={{
+                                                        width: `${Math.max(0, Math.min(100, item.evidence_support))}%`,
+                                                    }}
+                                                />
+                                            </div>
 
-                                        <span className="text-xs font-semibold text-gray-700">
-                                            {item.confidence}%
-                                        </span>
-                                    </div>
+                                            <span className="text-xs font-semibold text-gray-700">
+                                                {item.evidence_support}/100
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-gray-400">N/A</span>
+                                    )}
                                 </td>
 
                                 <td className="px-6 py-4">

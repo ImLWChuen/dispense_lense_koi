@@ -18,16 +18,16 @@ interface DefectChartProps {
 
 export default function DefectChart({ data }: DefectChartProps) {
     const chartData = data ?? [];
-    const hasData = chartData.length > 0;
+    const hasData = chartData.length > 0 && chartData.some((d) => d.defects > 0);
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-base font-semibold text-gray-900">
-                Monthly Defect Trend
+                Monthly Defect Trend (Last 6 Months)
             </h2>
 
             <p className="mt-1 text-xs text-gray-500">
-                Total defects recorded per month
+                Total defect-classified cases recorded per calendar month (independent 6-month view)
             </p>
 
             <div className="mt-6 h-[280px]">
@@ -51,7 +51,7 @@ export default function DefectChart({ data }: DefectChartProps) {
                                 domain={[0, "auto"]}
                             />
                             <Tooltip
-                                formatter={(val) => [`${val} defects`, "Defects"]}
+                                formatter={(val: unknown) => [`${val} defects`, "Defects"]}
                                 contentStyle={{
                                     backgroundColor: "#ffffff",
                                     borderRadius: "12px",
