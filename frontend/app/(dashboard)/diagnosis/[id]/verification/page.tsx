@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
 import EngineerVerification from "@/components/diagnosis/EngineerVerification";
 import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import { casesApi } from "@/lib/api/cases";
@@ -266,104 +265,88 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
     // 1. Initial Loading
     if (isLoading && !caseData && !error) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading case lifecycle data...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-64 items-center justify-center">
+                    <p className="text-gray-500">Loading case data...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     // 2. Dedicated Error (Initial request failure)
     if (!isLoading && error && !caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-[#6d5dfc]">
-                                    Diagnostic workflow · {resolvedParams.id.split("-")[0]}
-                                </p>
-                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                    Lifecycle Verification
-                                </h1>
-                            </div>
-                            <Link
-                                href={`/diagnosis/${resolvedParams.id}`}
-                                className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                            >
-                                ← Back to Diagnosis
-                            </Link>
-                        </div>
-
-                        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-                            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
-                            <h3 className="text-lg font-semibold text-red-800">Failed to load case data</h3>
-                            <p className="mt-2 text-sm text-red-700">
-                                {error || "Unable to retrieve case lifecycle details."}
-                            </p>
-                            <div className="mt-5 flex justify-center gap-4">
-                                <button
-                                    onClick={fetchCase}
-                                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
-                                >
-                                    <RefreshCw size={16} />
-                                    Retry
-                                </button>
-                                <Link
-                                    href={`/diagnosis/${resolvedParams.id}`}
-                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                                >
-                                    Return to Diagnosis
-                                </Link>
-                            </div>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-medium text-[#6d5dfc]">
+                            Diagnostic workflow · {resolvedParams.id.split("-")[0]}
+                        </p>
+                        <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                            Lifecycle Verification
+                        </h1>
+                    </div>
+                    <Link
+                        href={`/diagnosis/${resolvedParams.id}`}
+                        className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                    >
+                        ← Back to Diagnosis
+                    </Link>
                 </div>
-            </div>
+
+                <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+                    <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
+                    <h3 className="text-lg font-semibold text-red-800">Failed to load case data</h3>
+                    <p className="mt-2 text-sm text-red-700">
+                        {error || "Unable to retrieve case lifecycle details."}
+                    </p>
+                    <div className="mt-5 flex justify-center gap-4">
+                        <button
+                            onClick={fetchCase}
+                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                        >
+                            <RefreshCw size={16} />
+                            Retry
+                        </button>
+                        <Link
+                            href={`/diagnosis/${resolvedParams.id}`}
+                            className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                        >
+                            Return to Diagnosis
+                        </Link>
+                    </div>
+                </div>
+            </PageContainer>
         );
     }
 
     // 3. Loaded state
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="verification"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                        Engineer Verification
+                    </h1>
 
-                <PageContainer>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split("-")[0]}
-                            </p>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Review the diagnostic conclusion and provide your engineering verification.
+                    </p>
+                </div>
 
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Lifecycle Verification
-                            </h1>
-
-                            <p className="mt-2 text-sm text-gray-500">
-                                Review candidate cause support, record recovery actions, and verify case lifecycle state.
-                            </p>
-                        </div>
-
-                        <Link
-                            href={`/diagnosis/${resolvedParams.id}`}
-                            className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                        >
-                            ← Back to Diagnosis
-                        </Link>
-                    </div>
+                <Link
+                    href={`/diagnosis/${resolvedParams.id}`}
+                    className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                >
+                    ← Back to Overview
+                </Link>
+            </div>
 
                     {/* Distinct Refresh Warning Banner (POST succeeded, but GET failed, OR both failed) */}
                     {refreshWarning && (
@@ -428,7 +411,5 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

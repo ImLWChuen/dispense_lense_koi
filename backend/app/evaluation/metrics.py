@@ -1,5 +1,5 @@
 """
-DispenseIQ — Evaluation Metrics (Phase 15)
+Dispense Lens - Evaluation Metrics (Phase 15)
 
 Implements the 8 diagnostic evaluation metrics defined in Section 22 of the
 implementation plan:

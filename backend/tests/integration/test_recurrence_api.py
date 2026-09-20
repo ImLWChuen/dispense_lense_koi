@@ -1,5 +1,5 @@
 """
-DispenseIQ — Resolved-Issue Recurrence Reporting Integration Tests
+Dispense Lens - Resolved-Issue Recurrence Reporting Integration Tests
 
 Tests DLK-M3-021:
 1. OpenAPI routes and schemas for recurrence reporting (200, 404, 409, 422, 500);

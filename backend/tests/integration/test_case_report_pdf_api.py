@@ -1,4 +1,4 @@
-"""DispenseIQ — Deterministic Downloadable PDF Case Report Integration Tests.
+"""Dispense Lens - Deterministic Downloadable PDF Case Report Integration Tests.
 
 Tests DLK-M3-023:
 1. OpenAPI route registration for GET /api/v1/cases/{case_id}/report.pdf (200, 404, 422, 500);
@@ -386,14 +386,14 @@ def test_pdf_report_empty_history_case(tracked_cases: list[str]):
     resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
     assert resp.status_code == 200, f"Expected 200 but got: {resp.text}"
     assert resp.headers["Content-Type"] == "application/pdf"
-    assert f'filename="dispenseiq-case-{case_id}-r1.pdf"' in resp.headers["Content-Disposition"]
+    assert f'filename="dispenselens-case-{case_id}-r1.pdf"' in resp.headers["Content-Disposition"]
 
     # Parse and extract text with pypdf
     reader = pypdf.PdfReader(io.BytesIO(resp.content))
     assert len(reader.pages) >= 1
 
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    assert "DispenseIQ Diagnostic Case Report" in extracted_text
+    assert "Dispense Lens Diagnostic Case Report" in extracted_text
     assert case_id in extracted_text
     assert "Revision 1" in extracted_text or "Report Revision: 1" in extracted_text
     assert "D03_INCONSISTENT_SIZE" in extracted_text
@@ -408,7 +408,7 @@ def test_pdf_report_rich_history_content(tracked_cases: list[str]):
     resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
     assert resp.status_code == 200
     assert resp.headers["Content-Type"] == "application/pdf"
-    assert f'filename="dispenseiq-case-{case_id}-r7.pdf"' in resp.headers["Content-Disposition"]
+    assert f'filename="dispenselens-case-{case_id}-r7.pdf"' in resp.headers["Content-Disposition"]
 
     reader = pypdf.PdfReader(io.BytesIO(resp.content))
     assert len(reader.pages) >= 1
@@ -416,7 +416,7 @@ def test_pdf_report_rich_history_content(tracked_cases: list[str]):
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
 
     # Header and identity
-    assert "DispenseIQ Diagnostic Case Report" in extracted_text
+    assert "Dispense Lens Diagnostic Case Report" in extracted_text
     assert case_id in extracted_text
     assert "Report Revision: 7" in extracted_text or "Revision 7" in extracted_text
     assert "D03_INCONSISTENT_SIZE" in extracted_text
@@ -473,7 +473,7 @@ def test_pdf_report_same_basis_as_json_report(tracked_cases: list[str]):
     assert pdf_resp.headers["Content-Type"] == "application/pdf"
 
     # Verify filename basis
-    expected_filename = f'dispenseiq-case-{case_id}-r{json_data["current_revision"]}.pdf'
+    expected_filename = f'dispenselens-case-{case_id}-r{json_data["current_revision"]}.pdf'
     assert f'filename="{expected_filename}"' in pdf_resp.headers["Content-Disposition"]
 
     # Verify PDF text matches JSON basis
@@ -611,7 +611,7 @@ def test_pdf_report_consistency_under_concurrent_update(tracked_cases: list[str]
     assert update_committed is True, "Concurrent writer hook was not triggered during PDF assembly"
 
     # PDF filename must reflect revision 6
-    assert f'filename="dispenseiq-case-{case_id}-r6.pdf"' in resp.headers["Content-Disposition"]
+    assert f'filename="dispenselens-case-{case_id}-r6.pdf"' in resp.headers["Content-Disposition"]
 
     reader = pypdf.PdfReader(io.BytesIO(resp.content))
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)

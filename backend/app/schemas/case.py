@@ -1,5 +1,5 @@
 """
-DispenseIQ — Durable Case Schemas
+Dispense Lens - Durable Case Schemas
 
 Defines request and response schemas for persistent diagnostic case lifecycle
 operations under /api/v1/cases.

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Deterministic Durable Case Report Assembler
+Dispense Lens - Deterministic Durable Case Report Assembler
 
 Assembles a deterministic read-only report for a durable case from persisted state
 and audit history without recalculating diagnosis, mutating workflow state, or

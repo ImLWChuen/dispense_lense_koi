@@ -1,4 +1,4 @@
-# Whole-project audit — 18 September 2026
+# Whole-project audit - 18 September 2026
 
 Reviewed checkout: `c26bb21938b7f1d2b6531161b8ba7ad790bf06e2`, branch `backend-database`.
 
@@ -22,7 +22,7 @@ Priority: P1 = core workflow/data-trust blocker; P2 = material correctness or re
 
 ## Confirmed findings
 
-### A01 — P1 — Completed checks cannot submit informative findings
+### A01 - P1 - Completed checks cannot submit informative findings
 
 Owner: Member 1, with Member 2 defining outcome choices.
 
@@ -32,7 +32,7 @@ Executable proof: CheckResultHandler given ACT01, COMPLETED, INCONCLUSIVE and no
 
 Correction: expose check-specific outcomes from the knowledge contract, submit outcome and finding separately from execution status, and verify actual score/evidence changes through the UI. Do not map recovery success directly to CONTRADICTS; successful recovery does not establish absence of the suspected cause.
 
-### A02 — P1 — Cause confirmation automatically claims successful recovery
+### A02 - P1 - Cause confirmation automatically claims successful recovery
 
 Owner: Member 1.
 
@@ -40,7 +40,7 @@ Owner: Member 1.
 
 Correction: independent controls for cause confirmation, recovery action, and observed recovery verification. Preserve genuine technician evidence; refresh state after each accepted mutation and on conflicts. Allow confirming a cause while leaving the issue unresolved and resolving an issue without fabricating cause certainty.
 
-### A03 — P1 — Negated and hypothetical text becomes positive observed evidence
+### A03 - P1 - Negated and hypothetical text becomes positive observed evidence
 
 Owner: Member 2.
 
@@ -53,7 +53,7 @@ Reproduced outputs:
 
 Correction: preserve statement scope, polarity and uncertainty. Hypotheses must not become measured facts; uncertain extraction should ask for confirmation. Add realistic negation, mixed-sentence and hypothesis tests.
 
-### A04 — P1 — Duplicate detection suppresses contradictory evidence
+### A04 - P1 - Duplicate detection suppresses contradictory evidence
 
 Owner: Member 2.
 
@@ -61,7 +61,7 @@ Owner: Member 2.
 
 Correction: compare normalized meaning and polarity before similarity; opposing values must remain contradictions or time-qualified new observations. Test the actual score contribution, not just duplicate flags.
 
-### A05 — P1 — Case retrieval discards stored outcome and provenance
+### A05 - P1 - Case retrieval discards stored outcome and provenance
 
 Owner: Member 3, coordinated with Member 2 integration.
 
@@ -69,7 +69,7 @@ The latest integration changes `backend/app/api/cases.py:305,346-347,535,598-599
 
 Correction: hydrate canonical check-result history, or losslessly join the projection. Verify exact semantic parity across submission, GET, answer response and JSON/PDF report, including nonempty outcome and provenance. This is a newly identified integration regression, not proof of physical database deletion.
 
-### A06 — P1 — Real analysis screens display invented fallback evidence
+### A06 - P1 - Real analysis screens display invented fallback evidence
 
 Owner: Member 1.
 
@@ -77,7 +77,7 @@ Owner: Member 1.
 
 Correction: render explicit unavailable/empty/error states and preserve zero values. Show measurements only when tied to actual image evidence. Clearly isolate any sample mode from real cases.
 
-### A07 — P2 — Structured form labels do not match engine observation values
+### A07 - P2 - Structured form labels do not match engine observation values
 
 Owner: Members 1 and 2.
 
@@ -87,7 +87,7 @@ Furthermore `backend/app/services/diagnosis/engine.py:704` extracts description 
 
 Correction: use separate display labels and canonical values/types; merge valid structured and text evidence with provenance/deduplication. Test form submissions against meaningful rule contributions.
 
-### A08 — P2 — Rejecting a cause silently records nothing
+### A08 - P2 - Rejecting a cause silently records nothing
 
 Owner: Member 1; Member 2 defines rejection semantics.
 
@@ -95,7 +95,7 @@ Owner: Member 1; Member 2 defines rejection semantics.
 
 Correction: implement an agreed rejection/contradictory-evidence flow, or disable the control with an explicit explanation until supported. Do not reuse a cause-confirmation endpoint to represent rejection.
 
-### A09 — P2 — UI completion state is not tied to successful persistence or sufficient evidence
+### A09 - P2 - UI completion state is not tied to successful persistence or sufficient evidence
 
 Owner: Member 1.
 
@@ -103,7 +103,7 @@ TroubleshootingChecklist changes local status before awaiting a server result an
 
 Correction: adopt persisted response state after success; preserve retryable state after failure; distinguish loading, error, exhausted checks, blocked progress and sufficient evidence using explicit engine state.
 
-### A10 — P2 — Explanation UI does not match the scoring contract
+### A10 - P2 - Explanation UI does not match the scoring contract
 
 Owner: Members 1 and 2.
 
@@ -111,7 +111,7 @@ Owner: Members 1 and 2.
 
 Correction: display the actual component breakdown and evidence links; retain a numeric 0–100 score with accurate evidence-support wording and explain missing/contradictory evidence. Calibrated probability requires separate validation.
 
-### A11 — P2 — LLM boundary does not enforce its stated narrative constraints
+### A11 - P2 - LLM boundary does not enforce its stated narrative constraints
 
 Owner: Member 2.
 
@@ -119,7 +119,7 @@ Owner: Member 2.
 
 Correction: restrict generation to structured, validated fields and render critical state/score/procedure claims from trusted data. Preserve AI provenance and require confirmation where needed. Keep deterministic fallback until the enabled LLM path has adversarial and failure-mode coverage. This probe demonstrates a validation weakness, not a claim that a live model produced that text.
 
-### A12 — P2 — Runtime dependency is declared only for development
+### A12 - P2 - Runtime dependency is declared only for development
 
 Owner: Member 3.
 
@@ -127,7 +127,7 @@ Owner: Member 3.
 
 Correction: declare httpx as a runtime dependency or make the optional feature genuinely lazy with a documented extra; verify clean non-dev installation and startup.
 
-### A13 — P2 — Reports and image upload are not complete user features
+### A13 - P2 - Reports and image upload are not complete user features
 
 Owner: Member 1; Member 3 only if optional CV is brought back into scope.
 
@@ -135,7 +135,7 @@ Reports list contains mockReports; report detail contains static content; fronte
 
 Correction: wire real case report retrieval/download; label or remove placeholder routes. CV remains explicitly deferred in the accepted MVP; its absence alone is not a regression, but implying real visual analysis is a product defect.
 
-### A14 — P2 — Evaluation overstates what is measured
+### A14 - P2 - Evaluation overstates what is measured
 
 Owner: Member 2.
 
@@ -143,7 +143,7 @@ Owner: Member 2.
 
 Correction: label current metrics as initial-diagnosis synthetic evaluation; calculate provenance coverage, replay multi-step scenarios, include negative/unknown/blocked/contradictory evidence, and report measured failures. Keep engineer validation and time-saving claims separate from code tests.
 
-### A15 — P2 — Frontend quality gate remains failing
+### A15 - P2 - Frontend quality gate remains failing
 
 Owner: Member 1.
 

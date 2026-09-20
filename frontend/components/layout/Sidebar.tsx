@@ -10,14 +10,28 @@ import {
     FileText,
     LayoutDashboard,
     Settings,
+    Shield,
     Stethoscope,
+    Radio,
+    X,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/AuthContext";
+
+interface SidebarProps {
+    isMobileOpen?: boolean;
+    onCloseMobile?: () => void;
+}
 
 const navigation = [
     {
         name: "Dashboard",
         href: "/dashboard",
         icon: LayoutDashboard,
+    },
+    {
+        name: "Telemetry",
+        href: "/telemetry",
+        icon: Radio,
     },
     {
         name: "New Diagnosis",
@@ -46,32 +60,56 @@ const navigation = [
     },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ isMobileOpen = false, onCloseMobile }: SidebarProps) {
     const pathname = usePathname();
+    const { user, isAdmin } = useAuth();
+
+    const handleLinkClick = () => {
+        if (onCloseMobile) {
+            onCloseMobile();
+        }
+    };
 
     return (
-        <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
+        <aside
+            className={`fixed left-0 top-0 z-50 flex h-screen w-72 lg:w-64 flex-col border-r border-gray-200 bg-white shadow-xl lg:shadow-none transition-transform duration-200 ease-in-out ${
+                isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+            }`}
+        >
             {/* Brand */}
-            <div className="flex h-20 items-center border-b border-gray-100 px-6">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6d5dfc] text-white">
+            <div className="flex h-20 items-center justify-between border-b border-gray-100 px-6">
+                <Link
+                    href="/dashboard"
+                    onClick={handleLinkClick}
+                    className="flex items-center gap-3"
+                >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6d5dfc] text-white shadow-sm shadow-indigo-200">
                         <Activity size={21} />
                     </div>
 
                     <div>
-                        <h1 className="text-lg font-bold tracking-tight">
-                            DispenseIQ
+                        <h1 className="text-lg font-bold tracking-tight text-gray-900">
+                            Dispense Lens
                         </h1>
 
-                        <p className="text-[11px] text-gray-500">
+                        <p className="text-[11px] text-gray-500 font-medium">
                             Defect Intelligence
                         </p>
                     </div>
-                </div>
+                </Link>
+
+                {/* Mobile close button */}
+                <button
+                    onClick={onCloseMobile}
+                    aria-label="Close navigation menu"
+                    className="flex lg:hidden h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                >
+                    <X size={18} />
+                </button>
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 space-y-1 px-3 py-5">
+            <nav className="flex-1 space-y-1 px-3 py-5 overflow-y-auto">
                 <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                     Workspace
                 </p>
@@ -87,6 +125,7 @@ export default function Sidebar() {
                         <Link
                             key={item.name}
                             href={item.href}
+                            onClick={handleLinkClick}
                             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                                 isActive
                                     ? "bg-[#eeebff] text-[#5848e8]"
@@ -98,13 +137,48 @@ export default function Sidebar() {
                         </Link>
                     );
                 })}
+
+                {/* Administration section - shown for Admins */}
+                {(isAdmin || user?.role === "admin") && (
+                    <div className="pt-4 mt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between px-3 pb-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6d5dfc]">
+                                Management
+                            </p>
+                            <span className="rounded bg-[#eeebff] px-1.5 py-0.5 text-[10px] font-bold text-[#5848e8]">
+                                ADMIN
+                            </span>
+                        </div>
+                        <Link
+                            href="/admin"
+                            onClick={handleLinkClick}
+                            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                                pathname === "/admin" || pathname.startsWith("/admin/")
+                                    ? "bg-[#5848e8] text-white shadow-sm shadow-indigo-200"
+                                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
+                        >
+                            <Shield
+                                size={18}
+                                strokeWidth={1.8}
+                                className={pathname.startsWith("/admin") ? "text-white" : "text-[#6d5dfc]"}
+                            />
+                            Admin Console
+                        </Link>
+                    </div>
+                )}
             </nav>
 
             {/* Bottom */}
             <div className="border-t border-gray-100 p-3">
                 <Link
                     href="/settings"
-                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                    onClick={handleLinkClick}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                        pathname === "/settings"
+                            ? "bg-[#eeebff] text-[#5848e8]"
+                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    }`}
                 >
                     <Settings size={18} strokeWidth={1.8} />
                     Settings

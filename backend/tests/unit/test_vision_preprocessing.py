@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Preprocessing Unit Tests
+Dispense Lens - Vision Preprocessing Unit Tests
 
 Verifies:
 - Decoding and validation of JPEG/PNG image bytes (magic bytes and OpenCV decode).

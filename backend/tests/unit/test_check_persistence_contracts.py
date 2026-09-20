@@ -1,5 +1,5 @@
 """
-DispenseIQ — Check Persistence & API Contracts Unit Tests (Phase 14 Verification)
+Dispense Lens - Check Persistence & API Contracts Unit Tests (Phase 14 Verification)
 
 Verifies:
 1. SubmitCheckRequest payload schema validation and error cases.

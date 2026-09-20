@@ -1,1 +1,1 @@
-"""DispenseIQ — Evaluation package."""
+"""Dispense Lens - Evaluation package."""

@@ -1,4 +1,4 @@
--- DispenseLens / DispenseIQ Schema Notice
+-- DispenseLens / Dispense Lens Schema Notice
 --
 -- Authoritative schema evolution is managed strictly through Alembic migrations
 -- located in backend/alembic/versions/.

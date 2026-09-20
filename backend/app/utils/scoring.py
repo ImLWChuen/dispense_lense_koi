@@ -1,5 +1,5 @@
 """
-DispenseIQ — Centralized Scoring Configuration
+Dispense Lens - Centralized Scoring Configuration
 
 All score weights and thresholds used by the cause ranker.
 Kept in one place so the team can review and tune without

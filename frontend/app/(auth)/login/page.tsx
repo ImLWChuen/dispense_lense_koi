@@ -50,8 +50,8 @@ export default function LoginPage() {
             
             login(data.access_token, userData);
             router.push("/dashboard");
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "An unexpected error occurred.");
+        } catch (err: any) {
+            setError(err.message || "An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -67,7 +67,7 @@ export default function LoginPage() {
                     Welcome back
                 </h1>
                 <p className="mt-1 text-sm text-gray-500">
-                    Sign in to your DispenseIQ account
+                    Sign in to your Dispense Lens account
                 </p>
             </div>
 
@@ -132,7 +132,46 @@ export default function LoginPage() {
                 </button>
             </form>
 
-            <div className="mt-8 text-center text-sm text-gray-500">
+            {/* Quick Demo Credentials */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 text-center mb-2.5">
+                    Demo One-Click Credentials
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("admin@example.com");
+                            setPassword("password");
+                        }}
+                        className="rounded-xl border border-purple-200 bg-purple-50/70 py-1.5 px-2 text-center text-xs font-semibold text-purple-700 hover:bg-purple-100 transition"
+                    >
+                        Admin
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("tech@example.com");
+                            setPassword("password");
+                        }}
+                        className="rounded-xl border border-emerald-200 bg-emerald-50/70 py-1.5 px-2 text-center text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition"
+                    >
+                        Technician
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("sarah.mitchell@example.com");
+                            setPassword("password");
+                        }}
+                        className="rounded-xl border border-blue-200 bg-blue-50/70 py-1.5 px-2 text-center text-xs font-semibold text-blue-700 hover:bg-blue-100 transition"
+                    >
+                        Engineer
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-6 text-center text-sm text-gray-500">
                 Don&apos;t have an account?{" "}
                 <Link href="/register" className="font-semibold text-[#6d5dfc] hover:text-[#5848e8]">
                     Register here

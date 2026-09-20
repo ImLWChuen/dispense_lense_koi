@@ -1,5 +1,5 @@
 """
-DispenseIQ — Image Diagnosis Integration Tests
+Dispense Lens - Image Diagnosis Integration Tests
 
 Verifies:
 - Uncalibrated / features-only image analysis produces no score-bearing observations,

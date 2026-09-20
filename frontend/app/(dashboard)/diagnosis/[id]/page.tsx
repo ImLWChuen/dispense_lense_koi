@@ -8,16 +8,17 @@ import {
     ClipboardCheck,
     UserCheck,
     BarChart3,
+    AlertTriangle,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
 import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import CauseRanking from "@/components/diagnosis/CauseRanking";
 import EvidencePanel from "@/components/diagnosis/EvidencePanel";
+import SimilarCases from "@/components/cases/SimilarCases";
 import { casesApi } from "@/lib/api/cases";
-import { DurableCaseResponse, CauseEvidence } from "@/types/api";
+import { DurableCaseResponse } from "@/types/api";
 
 const workflowSteps = [
     {
@@ -58,9 +59,14 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                 setIsLoading(true);
                 const data = await casesApi.getCase(resolvedParams.id);
                 setCaseData(data);
-            } catch (err: unknown) {
-                console.error("Failed to fetch case", err);
-                setError(err instanceof Error ? err.message : "Failed to load case data.");
+            } catch (err: any) {
+                if (err?.status === 404) {
+                    console.warn(`Case '${resolvedParams.id}' not found in database.`);
+                    setError(`Case '${resolvedParams.id}' was not found in the database. It may have been removed or archived.`);
+                } else {
+                    console.error("Failed to fetch case", err);
+                    setError(err.message || "Failed to load case data.");
+                }
             } finally {
                 setIsLoading(false);
             }
@@ -70,68 +76,61 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
 
     if (isLoading) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading case details...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-64 items-center justify-center">
+                    <p className="text-gray-500">Loading case details...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     if (error || !caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-64 flex-col items-center justify-center">
-                            <p className="text-red-500">{error || "Case not found."}</p>
-                            <Link href="/cases" className="mt-4 text-[#5848e8] hover:underline">
-                                Return to Cases
-                            </Link>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="mx-auto max-w-lg py-16 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 shadow-sm mb-4">
+                        <AlertTriangle size={28} />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 tracking-tight">
+                        Diagnostic Case Not Found
+                    </h2>
+                    <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+                        {error || `Case '${resolvedParams.id}' was not found.`}
+                    </p>
+                    <div className="mt-6 flex items-center justify-center gap-3">
+                        <Link
+                            href="/cases"
+                            className="rounded-xl bg-[#6d5dfc] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#5848e8] transition"
+                        >
+                            Browse All Cases
+                        </Link>
+                        <Link
+                            href="/diagnosis/new"
+                            className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition"
+                        >
+                            New Diagnosis
+                        </Link>
+                    </div>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     const diagnosis = caseData.diagnosis || caseData.initial_diagnosis;
     const topCause = diagnosis?.ranked_causes?.[0];
     
-    interface DisplayEvidenceItem {
-        observation: string;
-        value: string;
-        relation: "SUPPORTS" | "CONTRADICTS" | "NEUTRAL";
-        strength: "STRONG" | "MODERATE" | "WEAK";
-        explanation: string;
-    }
-
     // Construct evidence for the top cause
-    const evidenceList: DisplayEvidenceItem[] = [];
+    const evidenceList: any[] = [];
     if (topCause) {
-        const addEvidence = (
-            list: CauseEvidence[] | undefined,
-            relation: "SUPPORTS" | "CONTRADICTS" | "NEUTRAL"
-        ) => {
+        const addEvidence = (list: any[], relation: string) => {
             if (!list) return;
             list.forEach(item => {
                 const obs = caseData.observations.find(o => o.observation_id === item.observation_id || o.id === item.observation_id);
-                const str = (item.strength || "MODERATE").toUpperCase();
-                const validStrength: "STRONG" | "MODERATE" | "WEAK" =
-                    str === "STRONG" || str === "WEAK" ? str : "MODERATE";
                 evidenceList.push({
                     observation: obs ? obs.observation_type : item.observation_id,
-                    value: obs ? String(obs.value) : "unknown",
+                    value: obs ? obs.value : "unknown",
                     relation,
-                    strength: validStrength,
+                    strength: item.strength || "MODERATE",
                     explanation: item.explanation || "No explanation provided.",
                 });
             });
@@ -142,14 +141,14 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
     }
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="overview"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
-
-                <PageContainer>
-                    <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
                                 Diagnostic workflow
@@ -233,10 +232,11 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                                     })}
                                 </div>
                             </div>
+
+                            {/* Similar Historical Case Benchmarks */}
+                            <SimilarCases caseId={resolvedParams.id} />
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

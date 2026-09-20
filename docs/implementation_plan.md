@@ -1,9 +1,9 @@
-# Member 2 — AI + Diagnostic Intelligence
-## DispenseIQ / AI Dispensing Defect Detective
+# Member 2 - AI + Diagnostic Intelligence
+## Dispense Lens / AI Dispensing Defect Detective
 
 ## 1. Role Objective
 
-The responsibility of Member 2 is to implement the **Diagnostic Intelligence Layer** that makes DispenseIQ an evidence-based troubleshooting engine rather than a generic chatbot.
+The responsibility of Member 2 is to implement the **Diagnostic Intelligence Layer** that makes Dispense Lens an evidence-based troubleshooting engine rather than a generic chatbot.
 
 The engine must support this cycle:
 
@@ -369,7 +369,7 @@ The planning package uses the same progression: specification → first connecte
 
 ---
 
-# 5. PHASE 1 — Define the Data Contracts
+# 5. PHASE 1 - Define the Data Contracts
 
 Before implementing algorithms, define the data objects.
 
@@ -421,7 +421,7 @@ The current first-prototype scope explicitly supports plain-language input, proc
 
 ---
 
-# 6. PHASE 2 — Define the Knowledge Model
+# 6. PHASE 2 - Define the Knowledge Model
 
 Initially support these six mandatory defects:
 
@@ -488,9 +488,9 @@ The planning package also explicitly recommends one canonical authored knowledge
 
 ---
 
-# 7. PHASE 3 — Implement Symptom Extraction
+# 7. PHASE 3 - Implement Symptom Extraction
 
-## Step 3.1 — Normalize text
+## Step 3.1 - Normalize text
 
 Input:
 
@@ -516,7 +516,7 @@ extracted_observations
 
 ---
 
-## Step 3.2 — Use an LLM only when appropriate
+## Step 3.2 - Use an LLM only when appropriate
 
 The LLM should return structured JSON.
 
@@ -543,7 +543,7 @@ Do not ask the LLM to return root-cause probabilities.
 
 ---
 
-## Step 3.3 — Validate the response
+## Step 3.3 - Validate the response
 
 If the LLM returns:
 
@@ -565,7 +565,7 @@ The requirements specifically require model failures and invalid outputs to be h
 
 ---
 
-# 8. PHASE 4 — Defect Identification
+# 8. PHASE 4 - Defect Identification
 
 Create a deterministic defect mapper first.
 
@@ -604,11 +604,11 @@ Deposit size varies across dispensing shots.
 
 ---
 
-# 9. PHASE 5 — Evidence Engine
+# 9. PHASE 5 - Evidence Engine
 
 This is the core reasoning layer.
 
-## Step 5.1 — Retrieve candidate causes
+## Step 5.1 - Retrieve candidate causes
 
 For the identified defect:
 
@@ -631,7 +631,7 @@ Only retrieve causes applicable to the selected process/material scope.
 
 ---
 
-## Step 5.2 — Evaluate every observation
+## Step 5.2 - Evaluate every observation
 
 For every:
 
@@ -676,7 +676,7 @@ CONTRADICTS / WEAKENS
 
 ---
 
-## Step 5.3 — Preserve provenance
+## Step 5.3 - Preserve provenance
 
 Every evidence item should record:
 
@@ -694,7 +694,7 @@ The project requires provenance to remain distinguishable between user observati
 
 ---
 
-## Step 5.4 — Prevent duplicate evidence
+## Step 5.4 - Prevent duplicate evidence
 
 Example:
 
@@ -717,7 +717,7 @@ The requirements explicitly warn against inflating support with repeated or corr
 
 ---
 
-# 10. PHASE 6 — Cause Ranking Algorithm
+# 10. PHASE 6 - Cause Ranking Algorithm
 
 The Team KOI files explicitly contain:
 
@@ -901,13 +901,13 @@ Missing Information
 
 ---
 
-# 11. PHASE 7 — Diagnostic Question Engine
+# 11. PHASE 7 - Diagnostic Question Engine
 
 The Question Engine should not simply generate five generic questions.
 
 It should select questions that distinguish the **current competing hypotheses**.
 
-## Step 7.1 — Identify missing evidence
+## Step 7.1 - Identify missing evidence
 
 Example:
 
@@ -926,7 +926,7 @@ or across all dispensing points?
 
 ---
 
-## Step 7.2 — Find candidate questions
+## Step 7.2 - Find candidate questions
 
 Retrieve questions associated with those causes.
 
@@ -948,7 +948,7 @@ Does purging change the result?
 
 ---
 
-## Step 7.3 — Rank questions
+## Step 7.3 - Rank questions
 
 Use a simple information-usefulness approach.
 
@@ -969,7 +969,7 @@ You do not need a sophisticated information-theory model for Version 1.
 
 ---
 
-## Step 7.4 — Stop asking questions
+## Step 7.4 - Stop asking questions
 
 The engine must stop when:
 
@@ -987,7 +987,7 @@ The project explicitly requires a stopping condition and no endless questioning.
 
 ---
 
-# 12. PHASE 8 — Action Planner
+# 12. PHASE 8 - Action Planner
 
 When enough information is available, choose a troubleshooting check.
 
@@ -1026,7 +1026,7 @@ A high-ranked cause does not automatically mean its associated check must happen
 
 ---
 
-# 13. PHASE 9 — Check Result Handling
+# 13. PHASE 9 - Check Result Handling
 
 The technician must be able to return:
 
@@ -1070,7 +1070,7 @@ The project specifically requires blocked checks to remain unknown.
 
 ---
 
-# 14. PHASE 10 — Re-ranking After New Evidence
+# 14. PHASE 10 - Re-ranking After New Evidence
 
 This is essential.
 
@@ -1112,7 +1112,7 @@ The project requires the analysis to be updated when new evidence arrives while 
 
 ---
 
-# 15. PHASE 11 — State Management
+# 15. PHASE 11 - State Management
 
 Keep these four state dimensions separate.
 
@@ -1157,11 +1157,11 @@ The project requires cause confirmation and issue resolution to remain independe
 
 ---
 
-# 16. PHASE 12 — LLM Integration
+# 16. PHASE 12 - LLM Integration
 
 Only after the deterministic diagnosis pipeline works should the LLM be integrated.
 
-## LLM responsibility #1 — Symptom extraction
+## LLM responsibility #1 - Symptom extraction
 
 ```text
 Technician:
@@ -1176,7 +1176,7 @@ LLM:
 
 ---
 
-## LLM responsibility #2 — Explanation
+## LLM responsibility #2 - Explanation
 
 Input:
 
@@ -1208,7 +1208,7 @@ has not been directly checked.
 
 ---
 
-## LLM responsibility #3 — Summary
+## LLM responsibility #3 - Summary
 
 At the end of the case:
 
@@ -1257,7 +1257,7 @@ The planning task explicitly requires validated output, honest handling of model
 
 ---
 
-# 18. PHASE 13 — Diagnosis Engine Orchestrator
+# 18. PHASE 13 - Diagnosis Engine Orchestrator
 
 `engine.py` should eventually expose something conceptually like:
 
@@ -1318,7 +1318,7 @@ The important design principle is that `engine.py` coordinates; individual modul
 
 ---
 
-# 19. PHASE 14 — SQL Database Integration
+# 19. PHASE 14 - SQL Database Integration
 
 Member 2 owns the intelligence, while Member 2 and Member 3/B need a clear interface.
 
@@ -1382,7 +1382,7 @@ Do not make `engine.py` perform raw SQL persistence.
 
 ---
 
-# 20. PHASE 15 — Evaluation Framework
+# 20. PHASE 15 - Evaluation Framework
 
 Create:
 
@@ -1455,7 +1455,7 @@ Do not force one cause to be "correct" when multiple causes are legitimately sup
 
 # 22. Evaluation Metrics
 
-## Metric 1 — Defect Classification Accuracy
+## Metric 1 - Defect Classification Accuracy
 
 ```text
 correct defect classifications
@@ -1465,7 +1465,7 @@ total scenarios
 
 ---
 
-## Metric 2 — Top-1 Cause Accuracy
+## Metric 2 - Top-1 Cause Accuracy
 
 ```text
 scenario where accepted cause is ranked #1
@@ -1477,7 +1477,7 @@ Use only where the test scenario has a sufficiently defined expected top cause.
 
 ---
 
-## Metric 3 — Top-3 Cause Coverage
+## Metric 3 - Top-3 Cause Coverage
 
 More appropriate for ambiguous diagnosis.
 
@@ -1490,7 +1490,7 @@ total applicable scenarios
 
 ---
 
-## Metric 4 — Average Number of Questions
+## Metric 4 - Average Number of Questions
 
 Measure:
 
@@ -1504,7 +1504,7 @@ This helps determine whether the engine is asking too many questions.
 
 ---
 
-## Metric 5 — Evidence Traceability
+## Metric 5 - Evidence Traceability
 
 For each ranked cause:
 
@@ -1515,13 +1515,13 @@ map to an evidence item?
 
 ---
 
-## Metric 6 — Contradiction Handling
+## Metric 6 - Contradiction Handling
 
 Test whether a contradictory observation reduces or changes the applicable cause support according to the scoring design.
 
 ---
 
-## Metric 7 — Duplicate Evidence Handling
+## Metric 7 - Duplicate Evidence Handling
 
 Submit the same observation multiple times.
 
@@ -1529,7 +1529,7 @@ The score should not keep increasing simply because the evidence was duplicated.
 
 ---
 
-## Metric 8 — Model Failure Handling
+## Metric 8 - Model Failure Handling
 
 Force the LLM service to fail.
 
@@ -1920,7 +1920,7 @@ Use the following as the implementation instruction to another coding agent:
 
 ## CODING AGENT TASK
 
-You are implementing **Member 2 — AI + Diagnostic Intelligence** for the DispenseIQ project.
+You are implementing **Member 2 - AI + Diagnostic Intelligence** for the Dispense Lens project.
 
 The objective is to build an explainable AI troubleshooting engine for fluid-dispensing defects.
 
@@ -2196,6 +2196,6 @@ Do not claim production accuracy or calibrated probabilities unless they have ac
 
 The resulting system should therefore be presented as:
 
-> **A structured diagnostic engine with bounded AI assistance — not an LLM chatbot.**
+> **A structured diagnostic engine with bounded AI assistance - not an LLM chatbot.**
 
 That positioning is consistent with the project requirements: the system should identify and rank possible causes, explain its reasoning, ask useful questions, recommend logical troubleshooting actions, and update the investigation when new evidence appears.

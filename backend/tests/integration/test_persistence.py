@@ -1,5 +1,5 @@
 """
-DispenseIQ — PostgreSQL Persistence Foundation Integration Tests
+Dispense Lens - PostgreSQL Persistence Foundation Integration Tests
 
 Tests minimal atomic persistence for:
 1. Diagnostic cases;
@@ -1269,11 +1269,12 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             s2_finished = threading.Event()
             s2_errors: list[Exception] = []
 
+            c2_copy = copy.deepcopy(case_v1)
+            c2_updated, res2 = engine.submit_question_answer(c2_copy, ans1)
+
             def session_2_append_worker():
                 with factory() as session_2:
                     repo_2 = CaseRepository(session=session_2)
-                    c2_copy = copy.deepcopy(case_v1)
-                    c2_updated, res2 = engine.submit_question_answer(c2_copy, ans1)
                     s2_started.set()
                     try:
                         # This should block on SELECT ... FOR UPDATE because Session 1 holds FOR SHARE
@@ -1293,7 +1294,7 @@ def test_load_structured_case_consistency_under_interleaved_writes():
             t2.start()
 
             # Wait for thread 2 to start and attempt append
-            assert s2_started.wait(timeout=2.0)
+            assert s2_started.wait(timeout=5.0)
             # Sleep briefly to ensure thread 2 has executed up to the row lock
             time.sleep(0.3)
 

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Preprocessing Service
+Dispense Lens - Vision Preprocessing Service
 
 Handles image payload verification, decode, dimensional validation,
 and normalized-to-pixel coordinate projection.

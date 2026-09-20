@@ -1,5 +1,5 @@
 """
-DispenseIQ — Bounded LLM Service
+Dispense Lens - Bounded LLM Service
 
 Handles external LLM communication using OpenAI API.
 The LLM is strictly a supporting component, not the diagnostic authority.

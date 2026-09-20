@@ -1,5 +1,5 @@
 """
-DispenseIQ — Action Planner
+Dispense Lens - Action Planner
 
 Selects the next most useful troubleshooting check when enough
 diagnostic information is available.
@@ -10,7 +10,7 @@ Design rules:
 - The planner independently considers applicability, information gain,
   effort, and prior attempts.
 - Scoring weights come from the centralized ScoringConfig.
-- The planner does NOT duplicate knowledge — it consumes it.
+- The planner does NOT duplicate knowledge - it consumes it.
 """
 
 from __future__ import annotations
@@ -68,10 +68,10 @@ class ActionPlanner:
     """Selects the next troubleshooting check to perform.
 
     The planner ranks actions by a composite score:
-    1. Cause coverage — how many top-ranked causes does this check address?
-    2. Information gain — how many distinct evidence outcomes does it have?
-    3. Effort penalty — higher-effort checks are penalized.
-    4. Already-attempted penalty — completed checks are heavily penalized.
+    1. Cause coverage - how many top-ranked causes does this check address?
+    2. Information gain - how many distinct evidence outcomes does it have?
+    3. Effort penalty - higher-effort checks are penalized.
+    4. Already-attempted penalty - completed checks are heavily penalized.
     """
 
     def select_next_action(
@@ -136,7 +136,7 @@ class ActionPlanner:
                 set(act_def.applicable_causes) & set(cause_ids)
             )
 
-            # Bonus: weight by cause score — addressing top-scored causes is more valuable
+            # Bonus: weight by cause score - addressing top-scored causes is more valuable
             weighted_coverage = 0.0
             for cause in ranked_causes:
                 if cause.cause_id in act_def.applicable_causes:
@@ -242,7 +242,7 @@ def _estimate_information_gain(action_def: Any) -> float:
     """
     evidence_mapping = getattr(action_def, "evidence_mapping", None)
     if not evidence_mapping or not isinstance(evidence_mapping, dict):
-        return 1.0  # minimal default — at least some information
+        return 1.0  # minimal default - at least some information
 
     # Count distinct outcomes
     return float(len(evidence_mapping))

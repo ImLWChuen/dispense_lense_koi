@@ -29,6 +29,19 @@
   --info-light: #dbeafe;
 }
 
+html.dark {
+  --background: #0b0f19;
+  --foreground: #f3f4f6;
+
+  --card: #111827;
+  --card-foreground: #f9fafb;
+
+  --muted: #1f2937;
+  --muted-foreground: #9ca3af;
+
+  --border: #374151;
+}
+
 * {
   box-sizing: border-box;
 }

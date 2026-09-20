@@ -28,7 +28,7 @@
       "id": "ACT02",
       "name": "Check Material Supply Condition",
       "description": "Inspect the dispensing material syringe or reservoir for air bubbles, separation, contamination, or depletion.",
-      "procedure": "1. Visually inspect the syringe/reservoir for trapped air bubbles.\n2. Check material level — note if nearly depleted.\n3. Look for phase separation or settling.\n4. Verify the material is within its specified pot life.\n5. Check for contamination or discoloration.\n6. Document findings.",
+      "procedure": "1. Visually inspect the syringe/reservoir for trapped air bubbles.\n2. Check material level - note if nearly depleted.\n3. Look for phase separation or settling.\n4. Verify the material is within its specified pot life.\n5. Check for contamination or discoloration.\n6. Document findings.",
       "applicable_causes": ["material_condition", "air_supply_issue"],
       "applicable_defects": ["D01_TOO_LITTLE", "D02_TOO_MUCH", "D03_INCONSISTENT_SIZE", "D05_SPREADING", "D06_BUBBLES_ABNORMAL_SHAPE"],
       "required_access": "material_supply",

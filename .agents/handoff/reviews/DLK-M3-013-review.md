@@ -20,13 +20,13 @@ Changes requested. The durable check-result workflow needs the two corrections b
 
 ## Findings
 
-### R1 — P1: Reject unfinished checks before they can generate evidence
+### R1 - P1: Reject unfinished checks before they can generate evidence
 
 `backend/app/schemas/case.py:225` accepts every CheckExecutionStatus, including PENDING and IN_PROGRESS. The new route at `backend/app/api/cases.py:551` passes these states to a handler that excludes neither state from evidence generation. A reviewer reproduction with ACT01, IN_PROGRESS, SUPPORTS, blockage_found passed request validation and generated both check_result=ACT01:blockage_found and nozzle_condition=blocked; the summary incorrectly described the check as COMPLETED. The endpoint can therefore persist evidence from an unfinished check.
 
 For this result-submission endpoint, reject PENDING and IN_PROGRESS with 422 before engine execution or persistence. Add API regressions for both states proving no answer/check/observation/revision mutation. If the planner instead chooses to persist unfinished execution states, obtain an explicit semantic scope extension and ensure they generate no evidence; do not silently broaden the existing one-mapping exception.
 
-### R2 — P2: Prove rollback after actual pending writes
+### R2 - P2: Prove rollback after actual pending writes
 
 `backend/tests/integration/test_check_result_api.py:500` replaces the entire append operation with an immediate exception. `backend/tests/integration/test_persistence.py:1940` removes analysis_revision, triggering validation before a session is acquired or writes begin; the test then explicitly rolls back itself. Neither scenario proves the required rollback after partial writes. This is a verification gap, not a claim that the production rollback implementation is broken.
 

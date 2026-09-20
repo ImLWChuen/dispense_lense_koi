@@ -21,13 +21,13 @@ Changes requested for the two bounded verification gaps below. The swallowed-ass
 
 ## Findings
 
-### R1 — P2: Exercise preservation of an existing check history
+### R1 - P2: Exercise preservation of an existing check history
 
 The rollback targets in backend/tests/integration/test_check_result_api.py:550 and backend/tests/integration/test_persistence.py:1981 are advanced only through a question answer. Their check_results baselines remain empty. The packet explicitly requires nonempty prior question/check histories for the rollback target. These tests establish removal of a failed first check but cannot detect corruption of a previously stored check event during a later failed submission.
 
 In each rollback test, persist a valid prior check through existing operations before capturing the baseline. Assert both question_answers and check_results are nonempty, derive the next revision dynamically, then fail a subsequent evidence-producing check and compare the complete prior state. Keep the full control-case comparison and fault marker.
 
-### R2 — P2: Preserve exact stored values in the snapshot helper
+### R2 - P2: Preserve exact stored values in the snapshot helper
 
 backend/tests/case_snapshot_helper.py:45 and similar expressions for method, defect fields, original_text, answer_text, finding_details, and outcome normalize empty strings to None. A stored value changing from an empty string to SQL NULL therefore produces identical snapshots, contradicting the task's exact preservation contract. Return stored scalar values unchanged (with deep copies only where needed); do not use truthiness to normalize optional text. Add a focused helper-level check showing an empty string and None produce different captured snapshots for a supported field. Also capture the complete pending result_snapshot in both rollback hooks as required by the packet; has_snapshot and snapshot_keys currently retain only presence/shape, not the snapshot contents.
 

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Symptom Extractor
+Dispense Lens - Symptom Extractor
 
 Converts natural-language problem descriptions into structured observations.
 Uses deterministic keyword matching first; LLM extraction is deferred to
@@ -132,7 +132,7 @@ _add_rule(r"\b(leak(ing)?|drip(ping)?|oozing)\b",
 
 
 # ---------------------------------------------------------------------------
-# Hypothesis detection — user statements like "I think the nozzle is blocked"
+# Hypothesis detection - user statements like "I think the nozzle is blocked"
 # ---------------------------------------------------------------------------
 
 _HYPOTHESIS_PATTERNS: list[tuple[re.Pattern, str]] = [

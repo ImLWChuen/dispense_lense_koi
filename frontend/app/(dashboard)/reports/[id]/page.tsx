@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, use, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
     ArrowLeft,
     CheckCircle2,
@@ -11,16 +12,16 @@ import {
     AlertTriangle,
     Sparkles,
     Loader2,
+    ShieldCheck,
     AlertCircle,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import { reportsApi, CaseReportResponse, EightDReportResponse } from "@/lib/api/reports";
+import EightDReportView from "@/components/reports/EightDReportView";
 import ReportPreview from "@/components/reports/ReportPreview";
-import { reportsApi, CaseReportResponse } from "@/lib/api/reports";
 
-export default function ReportDetailPage({
+function ReportDetailContent({
     params,
 }: {
     params: Promise<{ id: string }>;
@@ -28,6 +29,13 @@ export default function ReportDetailPage({
     const resolvedParams = use(params);
     const { id } = resolvedParams;
 
+    const searchParams = useSearchParams();
+    const initialFormat = searchParams.get("format") === "8d" ? "8d" : "standard";
+
+    // View format: Standard vs 8D
+    const [reportFormat, setReportFormat] = useState<"standard" | "8d">(initialFormat);
+
+    // Standard Report State
     const [report, setReport] = useState<CaseReportResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -35,6 +43,11 @@ export default function ReportDetailPage({
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [aiSource, setAiSource] = useState<"llm" | "deterministic" | null>(null);
+
+    // 8D Report State
+    const [eightDReport, setEightDReport] = useState<EightDReportResponse | null>(null);
+    const [isLoading8D, setIsLoading8D] = useState(false);
+    const [isDownloading8D, setIsDownloading8D] = useState(false);
 
     const reloadReport = useCallback(() => {
         if (!id) return;
@@ -88,15 +101,43 @@ export default function ReportDetailPage({
         };
     }, [id]);
 
+    const fetch8DData = async () => {
+        try {
+            setIsLoading8D(true);
+            const data = await reportsApi.get8DReport(id);
+            setEightDReport(data);
+        } catch (err: unknown) {
+            console.warn("Failed to load 8D report:", err);
+        } finally {
+            setIsLoading8D(false);
+        }
+    };
+
+    useEffect(() => {
+        if (reportFormat === "8d" && !eightDReport) {
+            fetch8DData();
+        }
+    }, [reportFormat, id, eightDReport]);
+
     const handleDownloadPdf = () => {
         setIsDownloadingPdf(true);
         try {
             const filename = report
-                ? `dispenseiq-case-${report.case_id}-r${report.current_revision}.pdf`
+                ? `dispenselens-case-${report.case_id}-r${report.current_revision}.pdf`
                 : `case-${id}-report.pdf`;
             reportsApi.downloadPdf(id, filename);
         } finally {
             setTimeout(() => setIsDownloadingPdf(false), 1500);
+        }
+    };
+
+    const handleDownload8DPdf = () => {
+        setIsDownloading8D(true);
+        try {
+            const filename = `dispenselens-8d-${id}-r${report?.current_revision || 1}.pdf`;
+            reportsApi.download8DPdf(id, filename);
+        } finally {
+            setTimeout(() => setIsDownloading8D(false), 1500);
         }
     };
 
@@ -124,28 +165,69 @@ export default function ReportDetailPage({
         report?.issue_condition === "IssueCondition.RESOLVED";
 
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-            <Sidebar />
+        <PageContainer>
+            {/* Top Bar with Back Link and Format Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <Link
+                    href="/reports"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition"
+                >
+                    <ArrowLeft size={16} />
+                    Back to Reports
+                </Link>
 
-            <div className="ml-64">
-                <Header />
+                {/* Report Format Switcher */}
+                <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 shadow-sm">
+                    <button
+                        onClick={() => setReportFormat("standard")}
+                        className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                            reportFormat === "standard"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                        }`}
+                    >
+                        <FileText size={14} className={reportFormat === "standard" ? "text-[#6d5dfc]" : ""} />
+                        Diagnostic Report
+                    </button>
+                    <button
+                        onClick={() => setReportFormat("8d")}
+                        className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                            reportFormat === "8d"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                        }`}
+                    >
+                        <ShieldCheck size={14} className={reportFormat === "8d" ? "text-[#6d5dfc]" : ""} />
+                        8D Quality & CAPA Report (AIAG / VDA)
+                    </button>
+                </div>
+            </div>
 
-                <PageContainer>
-                    {/* Back Link */}
-                    <div className="mb-6">
-                        <Link
-                            href="/reports"
-                            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition"
-                        >
-                            <ArrowLeft size={16} />
-                            Back to Reports
-                        </Link>
+            {/* 8D Report View Mode */}
+            {reportFormat === "8d" ? (
+                isLoading8D ? (
+                    <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+                        <Loader2 size={32} className="animate-spin text-[#6d5dfc] mb-3" />
+                        <p className="text-sm font-medium">Assembling AIAG / VDA 8D Quality Compliance Report...</p>
                     </div>
-
+                ) : eightDReport ? (
+                    <EightDReportView
+                        report={eightDReport}
+                        onDownloadPdf={handleDownload8DPdf}
+                        isDownloadingPdf={isDownloading8D}
+                    />
+                ) : (
+                    <div className="text-center py-16 text-gray-500">
+                        Unable to load 8D report data.
+                    </div>
+                )
+            ) : (
+                /* Standard Diagnostic Report View Mode */
+                <>
                     {isLoading ? (
-                        <div className="flex flex-col items-center justify-center py-24 text-gray-500">
-                            <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
-                            <p className="text-sm font-medium">Loading report data...</p>
+                        <div className="flex min-h-[400px] flex-col items-center justify-center">
+                            <Loader2 size={32} className="animate-spin text-[#6d5dfc] mb-3" />
+                            <p className="text-sm font-medium text-gray-500">Loading diagnostic case report...</p>
                         </div>
                     ) : error || !report ? (
                         <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
@@ -286,8 +368,26 @@ export default function ReportDetailPage({
                             <ReportPreview report={report} />
                         </>
                     )}
-                </PageContainer>
-            </div>
-        </div>
+                </>
+            )}
+        </PageContainer>
+    );
+}
+
+export default function ReportDetailPage({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}) {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex min-h-[400px] items-center justify-center">
+                    <Loader2 size={32} className="animate-spin text-[#6d5dfc]" />
+                </div>
+            }
+        >
+            <ReportDetailContent params={params} />
+        </Suspense>
     );
 }

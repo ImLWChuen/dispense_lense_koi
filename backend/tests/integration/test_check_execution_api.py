@@ -1,5 +1,5 @@
 """
-DispenseIQ — Troubleshooting Check Execution API Integration Tests (/checks)
+Dispense Lens - Troubleshooting Check Execution API Integration Tests (/checks)
 
 Verifies:
 1. Successful POST /api/v1/cases/{case_id}/checks submission through real PostgreSQL.

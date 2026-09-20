@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import { Clock3, AlertCircle, ArrowLeft, RefreshCw, Loader2 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
+import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
 import EvidenceGraph from "@/components/diagnosis/EvidenceGraph";
 import ImageAnalysis from "@/components/diagnosis/ImageAnalysis";
 import { casesApi } from "@/lib/api/cases";
@@ -68,80 +67,62 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
     // Loading State
     if (isLoading && !caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex h-72 flex-col items-center justify-center gap-3">
-                            <Loader2 size={24} className="animate-spin text-[#6d5dfc]" />
-                            <p className="text-sm text-gray-500">Loading analysis data...</p>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex h-72 flex-col items-center justify-center gap-3">
+                    <Loader2 size={24} className="animate-spin text-[#6d5dfc]" />
+                    <p className="text-sm text-gray-500">Loading analysis data...</p>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     // API Error State
     if (error && !caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex flex-col items-center justify-center rounded-2xl border border-red-200 bg-red-50/50 p-10 text-center">
-                            <AlertCircle size={36} className="text-red-500" />
-                            <h2 className="mt-3 text-lg font-semibold text-gray-900">
-                                Failed to Load Case Analysis
-                            </h2>
-                            <p className="mt-1 max-w-md text-xs text-red-700">{error}</p>
-                            <div className="mt-5 flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={handleRetry}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#5848e8]"
-                                >
-                                    <RefreshCw size={13} />
-                                    Retry
-                                </button>
-                                <Link
-                                    href="/cases"
-                                    className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                                >
-                                    View All Cases
-                                </Link>
-                            </div>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-red-200 bg-red-50/50 p-10 text-center">
+                    <AlertCircle size={36} className="text-red-500" />
+                    <h2 className="mt-3 text-lg font-semibold text-gray-900">
+                        Failed to Load Case Analysis
+                    </h2>
+                    <p className="mt-1 max-w-md text-xs text-red-700">{error}</p>
+                    <div className="mt-5 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={handleRetry}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#5848e8]"
+                        >
+                            <RefreshCw size={13} />
+                            Retry
+                        </button>
+                        <Link
+                            href="/cases"
+                            className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                            View All Cases
+                        </Link>
+                    </div>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     // No Case Data State
     if (!caseData) {
         return (
-            <div className="min-h-screen">
-                <Sidebar />
-                <div className="ml-64">
-                    <Header />
-                    <PageContainer>
-                        <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-10 text-center">
-                            <p className="text-sm font-medium text-gray-700">
-                                Case not found ({resolvedParams.id})
-                            </p>
-                            <Link
-                                href="/cases"
-                                className="mt-4 text-xs font-semibold text-[#5848e8] hover:underline"
-                            >
-                                &larr; Return to Cases
-                            </Link>
-                        </div>
-                    </PageContainer>
+            <PageContainer>
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-10 text-center">
+                    <p className="text-sm font-medium text-gray-700">
+                        Case not found ({resolvedParams.id})
+                    </p>
+                    <Link
+                        href="/cases"
+                        className="mt-4 text-xs font-semibold text-[#5848e8] hover:underline"
+                    >
+                        &larr; Return to Cases
+                    </Link>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
@@ -157,36 +138,31 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
     );
 
     return (
-        <div className="min-h-screen">
-            <Sidebar />
+        <PageContainer>
+            <DiagnosticStepper
+                caseId={resolvedParams.id}
+                activeStep="analysis"
+                caseData={caseData}
+            />
 
-            <div className="ml-64">
-                <Header />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                        Analysis & Scoring Detail
+                    </h1>
 
-                <PageContainer>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow &middot; Case {caseData.case_id}
-                            </p>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Detailed scoring breakdown and revision history for this diagnosis.
+                    </p>
+                </div>
 
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Analysis Detail
-                            </h1>
-
-                            <p className="mt-2 text-sm text-gray-500">
-                                Detailed scoring breakdown and revision history for this diagnosis.
-                            </p>
-                        </div>
-
-                        <Link
-                            href={`/diagnosis/${caseData.case_id}`}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
-                        >
-                            <ArrowLeft size={14} />
-                            Back to Diagnosis
-                        </Link>
-                    </div>
+                <Link
+                    href={`/diagnosis/${caseData.case_id}`}
+                    className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                >
+                    ← Back to Overview
+                </Link>
+            </div>
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="space-y-6 xl:col-span-2">
@@ -254,7 +230,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                                                                         ? val >= 0
                                                                             ? `+${val.toFixed(2)}`
                                                                             : val.toFixed(2)
-                                                                        : "—"}
+                                                                        : "-"}
                                                                 </td>
                                                             );
                                                         })}
@@ -361,7 +337,5 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
                         </div>
                     </div>
                 </PageContainer>
-            </div>
-        </div>
     );
 }

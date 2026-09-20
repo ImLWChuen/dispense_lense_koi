@@ -31,7 +31,7 @@ DLK-M3-019 was reviewed at commit:
 
 The review returned `changes_requested`.
 
-### R1 — verification can be submitted without pending recovery
+### R1 - verification can be submitted without pending recovery
 
 The existing general transition map permits self-transitions such as:
 
@@ -40,19 +40,19 @@ The existing general transition map permits self-transitions such as:
 
 The recovery-verification endpoint currently relies only on that general map. This incorrectly allows failed verification on a fresh unresolved case and repeated successful verification on an already resolved case when the caller uses the current revision.
 
-### R2 — unexpected state-manager ValueErrors can leak
+### R2 - unexpected state-manager ValueErrors can leak
 
 Both recovery endpoints currently convert any `ValueError` raised by `transition_issue_condition(...)` into HTTP `422` and expose the raw exception text.
 
 Known illegal requests should remain controlled `422`. Unexpected internal failures during an otherwise legal transition must become sanitized `500`.
 
-### R3 — rollback comparisons omit confirmation/lifecycle audit history
+### R3 - rollback comparisons omit confirmation/lifecycle audit history
 
 Current rollback snapshots do not prove preservation of prior cause-confirmation records or lifecycle events. Verification rollback also does not fully compare the already-persisted recovery-action event that created the pending-verification state.
 
 ## Requirements
 
-### R1 — require pending recovery before verification
+### R1 - require pending recovery before verification
 
 `POST /api/v1/cases/{case_id}/recovery-verifications` must accept a verification request only when the current persisted issue condition is:
 
@@ -96,7 +96,7 @@ Retain:
 - `RECOVERY_PENDING_VERIFICATION` + pass -> `RESOLVED`
 - `RECOVERY_PENDING_VERIFICATION` + fail -> `UNRESOLVED`
 
-### R2 — sanitize unexpected state-manager failures
+### R2 - sanitize unexpected state-manager failures
 
 ### Known client errors
 
@@ -146,7 +146,7 @@ For recovery verification:
 
 Retain known-illegal-transition `422` coverage.
 
-### R3 — complete rollback preservation proof
+### R3 - complete rollback preservation proof
 
 For both rollback targets, establish meaningful prior durable history before the failing operation.
 

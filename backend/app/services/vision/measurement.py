@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Measurement Service
+Dispense Lens - Vision Measurement Service
 
 Calculates resolution-independent geometric features and aggregate metrics
 from segmented dispensing deposit regions.

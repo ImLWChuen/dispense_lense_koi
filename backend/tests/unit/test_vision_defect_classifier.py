@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Defect Classifier Unit Tests
+Dispense Lens - Vision Defect Classifier Unit Tests
 
 Verifies:
 - Mode FEATURES_ONLY returns UNCALIBRATED and no score-bearing observations.

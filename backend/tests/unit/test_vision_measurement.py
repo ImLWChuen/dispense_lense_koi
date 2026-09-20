@@ -1,5 +1,5 @@
 """
-DispenseIQ — Vision Measurement Unit Tests
+Dispense Lens - Vision Measurement Unit Tests
 
 Verifies:
 - Resolution-independent coverage calculation:

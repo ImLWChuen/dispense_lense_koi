@@ -1,5 +1,5 @@
 """
-DispenseIQ — Core Backend Configuration
+Dispense Lens - Core Backend Configuration
 
 Provides centralized, configurable access to application settings,
 environment variables, and database connections with zero-dependency .env support.
@@ -76,7 +76,7 @@ _load_env_file()
 class Settings:
     """Application settings resolved from environment variables."""
 
-    project_name: str = "DispenseLens API"
+    project_name: str = "Dispense Lens API"
     project_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
     cors_origins: list[str] = field(default_factory=lambda: list(DEFAULT_CORS_ORIGINS))
@@ -143,7 +143,7 @@ def get_database_url() -> str:
     if not any(lower_url.startswith(scheme) for scheme in POSTGRES_SCHEMES):
         raise ValueError(
             f"Unsupported database scheme in DATABASE_URL: '{url}'. "
-            "Only PostgreSQL is authorized for DispenseLens persistence. "
+            "Only PostgreSQL is authorized for Dispense Lens persistence. "
             "SQLite or in-memory databases are strictly prohibited."
         )
 

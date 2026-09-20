@@ -1,5 +1,5 @@
 """
-DispenseIQ — Case Persistence Repository
+Dispense Lens - Case Persistence Repository
 
 Provides atomic persistence operations for cases, structured observations,
 and append-only immutable analysis revisions in PostgreSQL.

@@ -21,7 +21,7 @@ Changes requested for the required atomic-failure verification. The inspected cr
 
 ## Findings
 
-### R1 — P2: Exercise rollback after actual writes
+### R1 - P2: Exercise rollback after actual writes
 
 backend/tests/integration/test_case_api.py:379 replaces save_initial_case entirely with an immediate RuntimeError. No case, observation or revision is ever inserted, so finding no case afterwards does not demonstrate the required rollback of partial writes. The generated failing_case_id is unused, and the final query checks only cases by description. This test would also pass if the route stopped rolling back a partially completed transaction.
 

@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-    FileText,
     CheckCircle2,
     Clock3,
     Plus,
@@ -16,8 +15,6 @@ import {
     X,
 } from "lucide-react";
 
-import Header from "@/components/layout/Header";
-import Sidebar from "@/components/layout/Sidebar";
 import PageContainer from "@/components/layout/PageContainer";
 import { reportsApi } from "@/lib/api/reports";
 import { DurableCaseResponse } from "@/types/api";
@@ -208,7 +205,7 @@ function ReportsContent() {
 
                     {/* Reports Table */}
                     <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                        {view.showEmpty || filteredReports.length === 0 ? (
+                        {filteredReports.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <AlertCircle className="h-10 w-10 text-gray-300 mb-3" />
                                 <p className="text-base font-semibold text-gray-900">No reports found</p>
@@ -242,59 +239,77 @@ function ReportsContent() {
                                                         {report.displayId}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <FileText size={15} className="text-[#6d5dfc]" />
-                                                            <span className="text-sm font-medium text-gray-900">
-                                                                {report.title}
-                                                            </span>
-                                                        </div>
+                                                        <Link
+                                                            href={`/reports/${report.id}`}
+                                                            className="text-sm font-medium text-gray-800 hover:underline block max-w-xs truncate"
+                                                            title={report.title}
+                                                        >
+                                                            {report.title}
+                                                        </Link>
                                                     </td>
-                                                    <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                                                    <td className="px-6 py-4 font-mono text-xs text-gray-600">
                                                         {report.caseRef}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
-                                                            {report.type}
-                                                        </span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                                                                {report.type}
+                                                            </span>
+                                                            <Link
+                                                                href={`/reports/${report.id}?format=8d`}
+                                                                className="rounded-md bg-[#6d5dfc]/10 text-[#6d5dfc] px-2 py-0.5 text-[11px] font-semibold hover:bg-[#6d5dfc]/20 transition"
+                                                                title="View 8D Quality & CAPA Report"
+                                                            >
+                                                                8D Ready
+                                                            </Link>
+                                                        </div>
                                                     </td>
-                                                    <td className="px-6 py-4 text-xs text-gray-500">
+                                                    <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
                                                         {report.date}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <span
-                                                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPresentation.badgeClass}`}
+                                                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusPresentation.badgeClass}`}
                                                         >
                                                             {statusPresentation.icon === "check" ? (
-                                                                <CheckCircle2 size={12} />
+                                                                <CheckCircle2 size={13} />
                                                             ) : (
-                                                                <Clock3 size={12} />
+                                                                <Clock3 size={13} />
                                                             )}
                                                             {report.status}
                                                         </span>
                                                     </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={(e) => handleDownloadPdf(e, report.id)}
-                                                            disabled={downloadingId === report.id}
-                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
-                                                            title="Download PDF"
-                                                        >
-                                                            {downloadingId === report.id ? (
-                                                                <Loader2 size={13} className="animate-spin text-[#6d5dfc]" />
-                                                            ) : (
-                                                                <Download size={13} className="text-gray-500" />
-                                                            )}
-                                                            PDF
-                                                        </button>
+                                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <button
+                                                                onClick={(e) => handleDownloadPdf(e, report.id)}
+                                                                disabled={downloadingId === report.id}
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
+                                                                title="Download Case PDF"
+                                                            >
+                                                                {downloadingId === report.id ? (
+                                                                    <Loader2 size={13} className="animate-spin text-[#6d5dfc]" />
+                                                                ) : (
+                                                                    <Download size={13} className="text-gray-500" />
+                                                                )}
+                                                                PDF
+                                                            </button>
 
-                                                        <Link
-                                                            href={`/reports/${report.id}`}
-                                                            className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-[#6d5dfc] hover:text-white"
-                                                        >
-                                                            View
-                                                        </Link>
-                                                    </div>
+                                                            <Link
+                                                                href={`/reports/${report.id}?format=8d`}
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-[#6d5dfc]/30 bg-[#6d5dfc]/5 px-2.5 py-1.5 text-xs font-semibold text-[#5848e8] transition hover:bg-[#6d5dfc]/15"
+                                                                title="Open 8D Quality Report"
+                                                            >
+                                                                8D Audit
+                                                            </Link>
+
+                                                            <Link
+                                                                href={`/reports/${report.id}`}
+                                                                className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-[#6d5dfc] hover:text-white"
+                                                            >
+                                                                View
+                                                            </Link>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -312,14 +327,8 @@ function ReportsContent() {
 
 export default function ReportsPage() {
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-            <Sidebar />
-            <div className="ml-64">
-                <Header />
-                <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading reports...</div>}>
-                    <ReportsContent />
-                </Suspense>
-            </div>
-        </div>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading reports...</div>}>
+            <ReportsContent />
+        </Suspense>
     );
 }

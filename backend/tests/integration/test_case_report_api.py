@@ -1,5 +1,5 @@
 """
-DispenseIQ — Deterministic Durable Case Report Export Integration Tests
+Dispense Lens - Deterministic Durable Case Report Export Integration Tests
 
 Tests DLK-M3-022:
 1. OpenAPI route registration for GET /api/v1/cases/{case_id}/report (200, 404, 422, 500);

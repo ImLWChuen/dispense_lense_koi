@@ -1,1 +1,1 @@
-"""DispenseIQ — Utilities package."""
+"""Dispense Lens - Utilities package."""

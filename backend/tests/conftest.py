@@ -1,5 +1,5 @@
 """
-DispenseIQ — Centralized Pytest Test Database Bootstrap
+Dispense Lens - Centralized Pytest Test Database Bootstrap
 
 Provides safe, centralized configuration of the PostgreSQL test database target
 using TEST_DATABASE_URL. Binds DATABASE_URL within the test runner to the validated

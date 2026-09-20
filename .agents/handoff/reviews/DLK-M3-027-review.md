@@ -25,7 +25,7 @@ Accepted after reviewing final correction commit `ebeacc7d0bb65e42dd4da3c154f43a
 
 ## Second correction review finding
 
-### R8 — P2: Exercise shared production transitions instead of a parallel implementation
+### R8 - P2: Exercise shared production transitions instead of a parallel implementation
 
 `frontend/scripts/test-image-upload-state.mjs:18-220` defines its own `validateAnalysisConfiguration`, `startAnalysis`, `commitSuccess`, `commitError`, `handleReconfigure`, `handleRemove`, and `cleanupController` functions. `frontend/components/diagnosis/ImageUpload.tsx` does not import or call those transition functions. The script can therefore pass while production behavior is broken. It has already drifted: the script accepts ROI boundary sums up to `1.0001`, while production uses `1.00001`, and their validation branches and messages differ.
 
@@ -45,7 +45,7 @@ Extract the pure configuration validation and request-state transitions into one
 
 ## Correction review findings
 
-### R1 — P1: Do not delete the request identity before React commits the result
+### R1 - P1: Do not delete the request identity before React commits the result
 
 `frontend/components/diagnosis/ImageUpload.tsx:399-453` schedules a functional `setUploads` update whose callback checks `requestStateRef.current[uploadId]`, then immediately reaches `finally` and deletes that request entry. React may defer the updater callback; when it runs after `finally`, `active?.token` is absent and the valid result or error is silently discarded. The current logic prevents stale commits but does not guarantee that a current analysis can commit.
 
@@ -53,17 +53,17 @@ Store the active request token in the upload state (or otherwise make the state 
 
 The task report says a deterministic state-machine harness passed, but no harness or test is present in the commit. Add a small committed, runnable regression around the extracted request-state transition logic, without introducing a test framework, covering current success, current error, removal, reconfiguration, supersession, and old-finally-versus-new-controller behavior.
 
-### R5 — P2: Use the real image observation identifier in the contract document
+### R5 - P2: Use the real image observation identifier in the contract document
 
 `docs/api/frontend-backend-contract.md:89` still says image API `Observation` objects contain `observation_id`. `backend/app/schemas/diagnosis.py:161-171` serializes this field as `id`; `observation_id` is added only by the durable case response projection. Document `id` for `POST /images/analyze` and reserve `observation_id` for `CaseObservationResponse`.
 
-### R6 — P2: Mirror backend-guaranteed response fields as required properties
+### R6 - P2: Mirror backend-guaranteed response fields as required properties
 
 `frontend/types/api.ts:43-113` and `frontend/types/image.ts:45-81` still mark backend-guaranteed response properties optional. Examples include `CauseEvidence.explanation`, `CandidateCause.missing_evidence` and `score_breakdown`, all `Question` defaults, all `TroubleshootingCheck` defaults, `DiagnosisResult.defect`/`defect_name` property presence, `next_question`, `next_check`, `explanation`, `analysis_revision`, and `warnings`; image response fields such as `channels`, `calibrated_diameter_mm`, `is_missing`, and every aggregate field are also always serialized by the accepted Pydantic response.
 
 Separate request/input types from response types where their optionality differs. Make accepted backend response properties required, using nullable types only where the backend value may be null. Keep truly frontend-only compatibility fields optional and clearly separate.
 
-### R7 — P2: Make the verification report reproducible and accurate
+### R7 - P2: Make the verification report reproducible and accurate
 
 The correction commit adds `questions/page.tsx` and `troubleshooting/page.tsx` to the allowed and changed paths, but the reported focused ESLint command omits both. Running ESLint across every changed frontend source produces 8 errors in those two files. The report's claim that every task-owned file is clean is therefore false. It also reports a deterministic regression harness that is absent from the commit and supplies no runnable command or artifact.
 
@@ -86,37 +86,37 @@ Either keep those integration edits and make both changed files lint-clean, or r
 
 ## Original review findings (historical)
 
-### R1 — P1: Make stale-response rejection synchronous and request-specific
+### R1 - P1: Make stale-response rejection synchronous and request-specific
 
 `frontend/components/diagnosis/ImageUpload.tsx:160-185, 301-358` checks a completed request against `uploadsRef`, but that ref is updated only in an effect after React commits. A response that settles after removal or reconfiguration but before that effect may still see the old upload and revision, then attach its old calibrated result to the new configuration or recreate a removed entry. The implementation also has no request token, and every request's `finally` unconditionally deletes the controller stored under the upload ID, which can delete a newer request's controller.
 
 Keep a request token/controller identity per upload outside delayed effects. Invalidate it synchronously before aborting on removal or configuration change. Commit a result or error only inside a functional state update that confirms the upload still exists and both its configuration revision and request token match. In `finally`, delete the controller only if the stored controller/token still belongs to that request. Add a deterministic regression or small extracted-state test for reconfigure/remove followed by a late resolution.
 
-### R2 — P1: Plot signed evidence contributions, not the positive penalty summary
+### R2 - P1: Plot signed evidence contributions, not the positive penalty summary
 
 `frontend/components/diagnosis/EvidenceGraph.tsx:38-71` prefers `score_breakdown.positive_evidence` and `score_breakdown.contradiction_penalty`. The backend stores `contradiction_penalty` as a positive absolute magnitude, while each contradicting `CauseEvidence.score_contribution` is signed. As a result, contradictory bars point in the positive direction and the chart violates the task requirement to derive both series only from evidence-item contributions with their real signs.
 
 Sum `supporting_evidence[].score_contribution` and `contradicting_evidence[].score_contribution` directly. Do not use `score_breakdown` as the chart source or reverse/absolute the contradictory values. Keep the dynamic score-breakdown table separate.
 
-### R3 — P2: Validate every numeric limit before sending the request
+### R3 - P2: Validate every numeric limit before sending the request
 
 `frontend/components/diagnosis/ImageUpload.tsx:205-299` checks only presence and min/max ordering. The numeric inputs in `ImageCalibrationPanel.tsx` accept state values outside the backend contract because HTML `min`/`max` attributes do not validate this button-driven request. Values such as coverage `1.5`, overflow `-0.1`, reference tolerance `2`, reference minimum `0`, or negative size CV can be sent and rejected only by the backend.
 
 Before calling `imagesApi.analyze`, validate finite numbers and the exact schema ranges: coverage/overflow/presence/tolerance in `[0,1]`, size CV `>= 0`, reference min/max `> 0`, and optional scale `> 0`, in addition to both min/max relationships. Keep the upload ready and show the local per-upload validation message when invalid.
 
-### R4 — P2: Render the persisted image metadata keys that the backend actually stores
+### R4 - P2: Render the persisted image metadata keys that the backend actually stores
 
 `frontend/components/diagnosis/ImageAnalysis.tsx:40-55` reads `reference_ratio`, although reference observations persist `coverage_ratio_to_reference`. It never reads or renders `status`, and therefore misses required persisted status presentation. The component also omits the available reference current/reference coverage basis.
 
 Read and render `status`, `coverage_ratio_to_reference`, `current_coverage`, and `reference_coverage` when present and finite. Continue rendering only proven metadata, with no inferred values.
 
-### R5 — P2: Correct the image contract documentation
+### R5 - P2: Correct the image contract documentation
 
 `docs/api/frontend-backend-contract.md:69-102` documents an impossible `PROCESSING_FAILED` status and omits the real `UNCALIBRATED` status. It also lists response fields that do not exist, including `roi_index`, `label`, `bounding_box`, `area_pixels`, `deposit_count`, and `DiagnosticObservation.evidence_type/category`; the accepted API returns the names in `backend/app/schemas/image.py`, such as `roi_id`, `deposit_area_px`, `coverage_ratio`, `overflow_ratio`, and ordinary `Observation` fields `source` and `statement_type`.
 
 Rewrite this section directly from the accepted Pydantic schemas and keep the calibrated-evidence rule keyed to `CALIBRATED`, `UNCALIBRATED`, and `UNRELIABLE`.
 
-### R6 — P2: Align touched diagnosis types with backend names and optionality
+### R6 - P2: Align touched diagnosis types with backend names and optionality
 
 `frontend/types/api.ts:55-103` still declares fields the backend does not return (`CandidateCause.description`, `base_probability`, candidate `explanation`, question `reasoning`, check `status`, and `defect_confidence`) while requiring `DiagnosisResult.defect` and `defect_name` even though both are nullable. It also omits real check fields such as `priority_score`, `reasoning`, and `possible_outcomes`.
 

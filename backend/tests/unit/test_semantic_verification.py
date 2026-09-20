@@ -1,11 +1,11 @@
 """
-DLK-M3-013 — Semantic Verification Tests
+DLK-M3-013 - Semantic Verification Tests
 
 Verifies the **semantic correctness** of troubleshooting outcome handling,
 specifically:
 
-1. Direct outcome mapping — each check+outcome maps ONLY to the fact demonstrated
-2. No automatic cause confirmation — SUPPORTS + high score ≠ CONFIRMED
+1. Direct outcome mapping - each check+outcome maps ONLY to the fact demonstrated
+2. No automatic cause confirmation - SUPPORTS + high score ≠ CONFIRMED
 3. UNKNOWN does not create evidence
 4. INCONCLUSIVE does not confirm cause
 5. BLOCKED does not create negative evidence

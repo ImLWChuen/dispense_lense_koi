@@ -1,5 +1,5 @@
 """
-DispenseIQ — Recovery Action & Post-Correction Verification Integration Tests
+Dispense Lens - Recovery Action & Post-Correction Verification Integration Tests
 
 Tests:
 1. OpenAPI routes and schemas for recovery action and recovery verification;

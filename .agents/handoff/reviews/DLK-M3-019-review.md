@@ -21,19 +21,19 @@ Changes requested for the bounded findings below. Preserve existing domain seman
 
 ## Findings
 
-### R1 — P2: Require pending recovery before accepting verification
+### R1 - P2: Require pending recovery before accepting verification
 
 backend/app/api/cases.py:1391-1401 checks only whether the target is in the general state-manager transition map. That map allows UNRESOLVED -> UNRESOLVED and RESOLVED -> RESOLVED. Consequently a fresh unresolved case with verification_passed=false is accepted without a recovery action, and a resolved case with a fresh expected_revision and verification_passed=true appends another verification despite having no pending recovery. This contradicts the documented requirement that verification requires RECOVERY_PENDING_VERIFICATION. The stale-replay check cannot reject requests carrying the current revision.
 
 Add the operation-specific pending-state precondition, returning safe 422 before mutation, and still invoke the existing state manager for the actual legal transition. Do not change its general transition map. Test both outcomes from UNRESOLVED and RESOLVED with current revision numbers, and verify no lifecycle event, revision, or case/history mutation. Keep pending-state pass/fail behavior working.
 
-### R2 — P2: Sanitize unexpected state-manager ValueErrors
+### R2 - P2: Sanitize unexpected state-manager ValueErrors
 
 backend/app/api/cases.py:1094-1098 and 1410-1414 catch every ValueError from transition_issue_condition and interpolate its message into HTTP 422. Both paths already prevalidate the target transition, so an unexpected internal ValueError from a legal transition is incorrectly exposed to the client. A synthetic private-path exception from that method would leak verbatim. The packet explicitly requires unexpected internal/domain failures to remain sanitized.
 
 Keep known illegal transitions as controlled 422 responses, but let unexpected state-manager failures reach the logged sanitized 500 handler. Add bounded tests for both operations injecting a ValueError with a sensitive marker during an otherwise legal transition; assert 500, no marker/raw details, and no durable mutation. Preserve the existing state-manager semantics.
 
-### R3 — P2: Verify preservation of confirmation and lifecycle audit history on rollback
+### R3 - P2: Verify preservation of confirmation and lifecycle audit history on rollback
 
 backend/tests/integration/test_recovery_verification_api.py:582-776 compares capture_complete_case_state before and after failed action/verification submissions. That helper contains no confirmation or lifecycle records (backend/tests/case_snapshot_helper.py return mapping). The API rollback baselines contain only prior answers/checks, so the comparisons cannot prove the task's required preservation of confirmation history. The verification rollback checks only absence of the attempted event, leaving its already persisted recovery-action record outside the comparison. Repository rollback tests use the same incomplete helper.
 

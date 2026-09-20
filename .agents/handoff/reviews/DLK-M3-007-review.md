@@ -21,7 +21,7 @@ Changes requested. The schema compatibility correction and forward migration mee
 
 ## Findings
 
-### R1 — P1: Validate or reject PostgreSQL query parameters that override the destination
+### R1 - P1: Validate or reject PostgreSQL query parameters that override the destination
 
 `backend/tests/unit/test_persistence_safety.py:61` validates only `parsed.host`, and the database check similarly uses the URL path. PostgreSQL connection query parameters can replace those fields after this guard succeeds. A connection-free reviewer reproduction passed `postgresql+psycopg://user:pass@localhost:5432/test_db?host=production.example.com` through `assert_safe_test_database`; SQLAlchemy/Psycopg then produced effective connection arguments with host `production.example.com`. The same guard also accepted `?hostaddr=203.0.113.10` and a query-level port override.
 

@@ -1,5 +1,5 @@
 """
-DispenseIQ — Phases 1–5 Verification Test
+Dispense Lens - Phases 1–5 Verification Test
 
 Runs the primary scenario from the implementation plan:
   "The dispensing dots become smaller after the machine has been running

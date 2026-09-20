@@ -1,5 +1,5 @@
 """
-DispenseIQ — Defect Classifier / Identifier Unit Tests (Section 23)
+Dispense Lens - Defect Classifier / Identifier Unit Tests (Section 23)
 
 Verifies deterministic mapping from structured observations to the six mandatory defects:
 - D01_TOO_LITTLE

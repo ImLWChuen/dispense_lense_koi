@@ -17,6 +17,10 @@ import {
     ArrowRight,
     FileText,
     BookOpen,
+    ExternalLink,
+    Shield,
+    Menu,
+    Command,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthContext";
 import { casesApi } from "@/lib/api/cases";
@@ -24,7 +28,12 @@ import { analyticsApi } from "@/lib/api/analytics";
 import { DurableCaseResponse } from "@/types/api";
 import { notificationService, AppNotification } from "@/lib/notifications";
 
-// Reference knowledge base items for global search
+interface HeaderProps {
+    onOpenMobileMenu?: () => void;
+    onOpenCommandPalette?: () => void;
+}
+
+// Reference knowledge base items for global search fallback
 const KB_ITEMS = [
     { type: "Defect", tab: "Defects", code: "D01", name: "Too Little Material", desc: "Dispensed volume consistently less than target amount." },
     { type: "Defect", tab: "Defects", code: "D02", name: "Too Much Material", desc: "Dispensed volume consistently more than target amount." },
@@ -49,7 +58,7 @@ function formatTimeAgo(dateString: string): string {
     return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function Header() {
+export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: HeaderProps) {
     const { user, logout } = useAuth();
     const router = useRouter();
 
@@ -57,7 +66,8 @@ export default function Header() {
     const firstName = user?.first_name || "Guest";
     const lastName = user?.last_name || "";
     const initials = (firstName[0] || "") + (lastName[0] || "");
-    const role = user ? "User" : "";
+    const role = user?.role ? user.role.toUpperCase() : (user ? "TECHNICIAN" : "");
+    const isAdmin = user?.role === "admin";
 
     // Search state
     const [searchQuery, setSearchQuery] = useState("");
@@ -88,7 +98,7 @@ export default function Header() {
             loadNotifs();
         };
 
-        window.addEventListener("dispenseiq_notifications_updated", handleNotifUpdate);
+        window.addEventListener("dispenselens_notifications_updated", handleNotifUpdate);
 
         // Subscribe to live SSE events from backend
         const unsubscribe = analyticsApi.subscribeToEvents((event) => {
@@ -125,17 +135,14 @@ export default function Header() {
         });
 
         return () => {
-            window.removeEventListener("dispenseiq_notifications_updated", handleNotifUpdate);
+            window.removeEventListener("dispenselens_notifications_updated", handleNotifUpdate);
             unsubscribe();
         };
     }, []);
 
-    // Click outside listener for search and notifications dropdowns
+    // Click outside listener for notifications dropdown
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-                setIsSearchOpen(false);
-            }
             if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
                 setIsNotifOpen(false);
             }
@@ -145,46 +152,6 @@ export default function Header() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Search matches calculation
-    const query = searchQuery.trim().toLowerCase();
-    const matchingCases = query
-        ? cases.filter((c) =>
-              c.case_id.toLowerCase().includes(query) ||
-              (c.defect_name && c.defect_name.toLowerCase().includes(query)) ||
-              (c.defect_code && c.defect_code.toLowerCase().includes(query)) ||
-              (c.machine_context?.equipment != null && String(c.machine_context.equipment).toLowerCase().includes(query)) ||
-              c.issue_condition.toLowerCase().includes(query)
-          ).slice(0, 4)
-        : [];
-
-    const matchingKB = query
-        ? KB_ITEMS.filter((item) =>
-              item.name.toLowerCase().includes(query) ||
-              item.code.toLowerCase().includes(query) ||
-              item.desc.toLowerCase().includes(query)
-          ).slice(0, 3)
-        : [];
-
-    const hasSearchResults = matchingCases.length > 0 || matchingKB.length > 0;
-
-    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
-            setIsSearchOpen(false);
-            if (matchingCases.length === 1) {
-                router.push(`/diagnosis/${matchingCases[0].case_id}`);
-            } else {
-                router.push(`/cases?search=${encodeURIComponent(searchQuery)}`);
-            }
-        } else if (e.key === "Escape") {
-            setIsSearchOpen(false);
-        }
-    };
-
-    const handleClearSearch = () => {
-        setSearchQuery("");
-        setIsSearchOpen(false);
-    };
-
     // Notification actions
     const unreadCount = notifications.filter((n) => !n.read).length;
     const filteredNotifications = notifFilter === "unread" ? notifications.filter((n) => !n.read) : notifications;
@@ -193,6 +160,16 @@ export default function Header() {
         notificationService.markAsRead(notif.id);
         setIsNotifOpen(false);
         if (notif.link) {
+            if (notif.link.startsWith("/diagnosis/")) {
+                const targetCaseId = notif.link.replace("/diagnosis/", "").split("/")[0];
+                if (cases.length > 0) {
+                    const exists = cases.some((c) => c.case_id === targetCaseId);
+                    if (!exists) {
+                        router.push(`/cases?search=${targetCaseId.slice(0, 8)}`);
+                        return;
+                    }
+                }
+            }
             router.push(notif.link);
         }
     };
@@ -224,210 +201,99 @@ export default function Header() {
     };
 
     return (
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-200 bg-white/90 px-8 backdrop-blur">
-            {/* Global Search Bar */}
-            <div ref={searchRef} className="relative w-[380px]">
-                <Search
-                    size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-200 bg-white/90 px-4 sm:px-6 lg:px-8 backdrop-blur">
+            {/* Left side: Hamburger (mobile) + Global Search Trigger */}
+            <div className="flex items-center gap-3">
+                {/* Mobile Drawer Trigger */}
+                <button
+                    onClick={onOpenMobileMenu}
+                    aria-label="Open navigation menu"
+                    className="flex lg:hidden h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition"
+                >
+                    <Menu size={20} />
+                </button>
 
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setIsSearchOpen(true);
-                    }}
-                    onFocus={() => setIsSearchOpen(true)}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder="Search cases, diagnoses, defects..."
-                    className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-9 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white focus:ring-2 focus:ring-[#6d5dfc]/10"
-                />
-
-                {searchQuery && (
-                    <button
-                        onClick={handleClearSearch}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                        <X size={15} />
-                    </button>
-                )}
-
-                {/* Search Autocomplete Dropdown */}
-                {isSearchOpen && query && (
-                    <div className="absolute left-0 top-12 w-full max-h-[440px] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-xl animate-in fade-in-50 zoom-in-95 z-50">
-                        {hasSearchResults ? (
-                            <>
-                                {/* Matching Cases */}
-                                {matchingCases.length > 0 && (
-                                    <div className="mb-2">
-                                        <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Cases
-                                        </p>
-                                        {matchingCases.map((c) => (
-                                            <button
-                                                key={c.case_id}
-                                                onClick={() => {
-                                                    setIsSearchOpen(false);
-                                                    router.push(`/diagnosis/${c.case_id}`);
-                                                }}
-                                                className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left transition hover:bg-gray-50 group"
-                                            >
-                                                <div className="flex items-center gap-2.5 truncate">
-                                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#eeebff] text-[#5848e8]">
-                                                        <FileText size={14} />
-                                                    </div>
-                                                    <div className="truncate">
-                                                        <p className="text-xs font-semibold text-gray-900 group-hover:text-[#6d5dfc] truncate">
-                                                            {c.defect_name || c.defect_code || "Unknown Defect"}
-                                                        </p>
-                                                        <p className="text-[11px] text-gray-500 font-mono">
-                                                            #{c.case_id.split("-")[0]} • {c.machine_context?.equipment || "Line"}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <span className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">
-                                                    {c.issue_condition === "RESOLVED" ? "Resolved" : "Active"}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Matching Knowledge Base */}
-                                {matchingKB.length > 0 && (
-                                    <div className="mb-2 border-t border-gray-100 pt-2">
-                                        <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                                            Knowledge Base
-                                        </p>
-                                        {matchingKB.map((kb) => (
-                                            <button
-                                                key={kb.code}
-                                                onClick={() => {
-                                                    setIsSearchOpen(false);
-                                                    router.push(`/knowledge-base?tab=${kb.tab}&search=${encodeURIComponent(kb.name)}`);
-                                                }}
-                                                className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left transition hover:bg-gray-50 group"
-                                            >
-                                                <div className="flex items-center gap-2.5 truncate">
-                                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                                                        <BookOpen size={14} />
-                                                    </div>
-                                                    <div className="truncate">
-                                                        <p className="text-xs font-semibold text-gray-900 group-hover:text-[#6d5dfc] truncate">
-                                                            {kb.name}
-                                                        </p>
-                                                        <p className="text-[11px] text-gray-500 truncate">
-                                                            {kb.desc}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-                                                    {kb.type}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Quick Action Link */}
-                                <div className="border-t border-gray-100 pt-2 px-1">
-                                    <button
-                                        onClick={() => {
-                                            setIsSearchOpen(false);
-                                            router.push(`/cases?search=${encodeURIComponent(searchQuery)}`);
-                                        }}
-                                        className="w-full flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-xs font-medium text-[#6d5dfc] hover:bg-[#eeebff] transition"
-                                    >
-                                        <span>View all matching cases for &quot;{searchQuery}&quot;</span>
-                                        <ArrowRight size={13} />
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="py-6 text-center">
-                                <p className="text-xs font-medium text-gray-600">No results found for &quot;{searchQuery}&quot;</p>
-                                <p className="text-[11px] text-gray-400 mt-1">Try searching by defect type, case ID, or equipment line.</p>
-                                <button
-                                    onClick={() => {
-                                        setIsSearchOpen(false);
-                                        router.push(`/cases?search=${encodeURIComponent(searchQuery)}`);
-                                    }}
-                                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#6d5dfc] hover:underline"
-                                >
-                                    Search in Cases list <ArrowRight size={12} />
-                                </button>
-                            </div>
-                        )}
+                {/* Global Command Palette Trigger Button */}
+                <button
+                    onClick={onOpenCommandPalette}
+                    className="group relative flex h-10 w-52 sm:w-72 md:w-80 lg:w-96 items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm text-gray-400 transition hover:border-[#6d5dfc]/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#6d5dfc]/15"
+                >
+                    <div className="flex items-center gap-2.5 truncate">
+                        <Search size={17} className="text-gray-400 group-hover:text-[#6d5dfc] transition-colors" />
+                        <span className="truncate text-gray-400 group-hover:text-gray-600">
+                            Search cases, defects, SOPs...
+                        </span>
                     </div>
-                )}
+
+                    <div className="hidden sm:flex items-center gap-1 shrink-0">
+                        <kbd className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-400 shadow-2xs">
+                            <span className="text-[11px]">⌘</span>K
+                        </kbd>
+                    </div>
+                </button>
             </div>
 
-            {/* Right side: Notifications & User Profile */}
-            <div className="flex items-center gap-5">
-                {/* Notification Bell with Dropdown */}
+            {/* Right side: Notifications + User Profile */}
+            <div className="flex items-center gap-3 sm:gap-4">
+                {/* Notification Dropdown Container */}
                 <div ref={notifRef} className="relative">
                     <button
                         onClick={() => setIsNotifOpen(!isNotifOpen)}
-                        className={`relative rounded-xl p-2.5 transition ${
-                            isNotifOpen ? "bg-gray-100 text-[#6d5dfc]" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                        className={`relative flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition ${
+                            isNotifOpen ? "bg-gray-100 text-[#6d5dfc]" : "hover:bg-gray-100 hover:text-gray-700"
                         }`}
-                        title="Notifications"
-                        aria-label="Open notifications"
+                        aria-label="View notifications"
                     >
                         <Bell size={19} />
                         {unreadCount > 0 && (
-                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                                {unreadCount > 9 ? "9+" : unreadCount}
+                            <span className="absolute right-2 top-2 flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
                             </span>
                         )}
                     </button>
 
-                    {/* Notification Dropdown Panel */}
+                    {/* Notification Panel */}
                     {isNotifOpen && (
-                        <div className="absolute right-0 top-12 w-[360px] rounded-2xl border border-gray-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95 z-50 overflow-hidden">
+                        <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95">
                             {/* Panel Header */}
-                            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 bg-gray-50/70">
+                            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                    <h3 className="text-sm font-bold text-gray-900">Notifications</h3>
+                                    <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
                                     {unreadCount > 0 && (
-                                        <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[11px] font-semibold text-[#5848e8]">
+                                        <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[11px] font-bold text-[#5848e8]">
                                             {unreadCount} new
                                         </span>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-1">
+
+                                <div className="flex items-center gap-2">
                                     {unreadCount > 0 && (
                                         <button
                                             onClick={() => notificationService.markAllAsRead()}
-                                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"
+                                            className="text-xs text-gray-500 hover:text-[#6d5dfc] transition"
                                             title="Mark all as read"
                                         >
-                                            <Check size={12} />
-                                            Mark read
+                                            Mark all read
                                         </button>
                                     )}
-                                    {notifications.length > 0 && (
-                                        <button
-                                            onClick={() => notificationService.clearAll()}
-                                            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-red-500 transition"
-                                            title="Clear all notifications"
-                                        >
-                                            <Trash2 size={13} />
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={() => setIsNotifOpen(false)}
+                                        className="text-gray-400 hover:text-gray-600 rounded-lg p-1"
+                                    >
+                                        <X size={16} />
+                                    </button>
                                 </div>
                             </div>
 
                             {/* Filter Tabs */}
-                            <div className="flex border-b border-gray-100 px-4 pt-2 gap-3 text-xs font-medium">
+                            <div className="flex border-b border-gray-100 px-4 pt-2 gap-4 text-xs font-medium">
                                 <button
                                     onClick={() => setNotifFilter("all")}
                                     className={`pb-2 border-b-2 transition ${
                                         notifFilter === "all"
-                                            ? "border-[#6d5dfc] text-[#6d5dfc]"
-                                            : "border-transparent text-gray-500 hover:text-gray-800"
+                                            ? "border-[#6d5dfc] text-[#5848e8]"
+                                            : "border-transparent text-gray-400 hover:text-gray-600"
                                     }`}
                                 >
                                     All ({notifications.length})
@@ -436,8 +302,8 @@ export default function Header() {
                                     onClick={() => setNotifFilter("unread")}
                                     className={`pb-2 border-b-2 transition ${
                                         notifFilter === "unread"
-                                            ? "border-[#6d5dfc] text-[#6d5dfc]"
-                                            : "border-transparent text-gray-500 hover:text-gray-800"
+                                            ? "border-[#6d5dfc] text-[#5848e8]"
+                                            : "border-transparent text-gray-400 hover:text-gray-600"
                                     }`}
                                 >
                                     Unread ({unreadCount})
@@ -448,11 +314,11 @@ export default function Header() {
                             <div className="max-h-[360px] overflow-y-auto divide-y divide-gray-50">
                                 {filteredNotifications.length > 0 ? (
                                     filteredNotifications.map((notif) => (
-                                        <button
+                                        <div
                                             key={notif.id}
                                             onClick={() => handleNotificationClick(notif)}
-                                            className={`w-full flex items-start gap-3 px-4 py-3 text-left transition hover:bg-gray-50/80 ${
-                                                !notif.read ? "bg-[#faf9ff]" : "bg-white"
+                                            className={`flex items-start gap-3 p-3.5 cursor-pointer transition hover:bg-gray-50 ${
+                                                !notif.read ? "bg-[#eeebff]/20" : ""
                                             }`}
                                         >
                                             <div
@@ -464,23 +330,24 @@ export default function Header() {
                                             </div>
 
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-1">
-                                                    <p className={`text-xs truncate ${!notif.read ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>
+                                                <div className="flex items-center justify-between">
+                                                    <p className={`text-xs font-semibold truncate ${!notif.read ? "text-gray-900" : "text-gray-600"}`}>
                                                         {notif.title}
                                                     </p>
-                                                    <span className="text-[10px] text-gray-400 shrink-0">
+                                                    <span className="text-[10px] text-gray-400 shrink-0 ml-1">
                                                         {formatTimeAgo(notif.timestamp)}
                                                     </span>
                                                 </div>
-                                                <p className="mt-0.5 text-xs text-gray-600 line-clamp-2 leading-relaxed">
+
+                                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
                                                     {notif.message}
                                                 </p>
                                             </div>
 
                                             {!notif.read && (
-                                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#6d5dfc]" />
+                                                <span className="h-2 w-2 shrink-0 rounded-full bg-[#6d5dfc] mt-1.5" />
                                             )}
-                                        </button>
+                                        </div>
                                     ))
                                 ) : (
                                     <div className="py-8 text-center">
@@ -510,25 +377,46 @@ export default function Header() {
                 </div>
 
                 {/* User Profile */}
-                <div className="flex items-center gap-3 border-l border-gray-200 pl-5">
+                <div className="flex items-center gap-2.5 sm:gap-3 border-l border-gray-200 pl-3 sm:pl-5">
+                    {isAdmin && (
+                        <Link
+                            href="/admin"
+                            className="hidden md:flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-[#eeebff] px-2.5 py-1 text-xs font-semibold text-[#5848e8] hover:bg-[#5848e8] hover:text-white transition shadow-xs"
+                            title="Open Admin Oversight Console"
+                        >
+                            <Shield size={13} />
+                            Admin
+                        </Link>
+                    )}
+
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eeebff] text-sm font-semibold uppercase text-[#5848e8]">
                         {initials}
                     </div>
 
-                    <div>
-                        <p className="text-sm font-semibold text-gray-900">
+                    <div className="hidden sm:block">
+                        <p className="text-sm font-semibold text-gray-900 leading-tight">
                             {firstName} {lastName}
                         </p>
 
-                        <p className="text-xs text-gray-500">
-                            {role}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <span
+                                className={`inline-block rounded-md px-1.5 py-0.2 text-[10px] font-bold uppercase tracking-wider ${
+                                    role === "ADMIN"
+                                        ? "bg-purple-100 text-purple-700 border border-purple-200"
+                                        : role === "ENGINEER"
+                                        ? "bg-blue-100 text-blue-700 border border-blue-200"
+                                        : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                                }`}
+                            >
+                                {role}
+                            </span>
+                        </div>
                     </div>
 
                     {user && (
                         <button
                             onClick={logout}
-                            className="ml-2 rounded-xl p-2 text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"
+                            className="ml-1 sm:ml-2 rounded-xl p-2 text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"
                             title="Sign out"
                         >
                             <LogOut size={18} />

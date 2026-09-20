@@ -1,5 +1,5 @@
 """
-DispenseIQ — Image Analysis API Route Handler
+Dispense Lens - Image Analysis API Route Handler
 
 Provides the resource-safe POST /api/v1/images/analyze endpoint.
 Accepts multipart file uploads with an analysis profile, offloads CPU-bound

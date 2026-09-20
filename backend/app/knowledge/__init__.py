@@ -1,5 +1,5 @@
 """
-DispenseIQ — Knowledge Base Loader
+Dispense Lens - Knowledge Base Loader
 
 Loads defect definitions, causes, questions, actions, and evidence rules
 from the static JSON knowledge files. These are the structured domain

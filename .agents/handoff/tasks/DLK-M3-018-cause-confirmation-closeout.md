@@ -30,7 +30,7 @@ DLK-M3-017 was reviewed at commit:
 
 The review returned `changes_requested`.
 
-### R1 — Internal engine ValueErrors can leak
+### R1 - Internal engine ValueErrors can leak
 
 The cause-confirmation endpoint currently catches every `ValueError` raised around `engine.confirm_cause()` and returns `str(e)` as HTTP 422.
 
@@ -41,7 +41,7 @@ Required distinction:
 - known invalid/unknown cause request -> `422`
 - unexpected internal engine/domain failure -> sanitized `500`
 
-### R2 — `confirmed_by` lacks the existing storage boundary
+### R2 - `confirmed_by` lacks the existing storage boundary
 
 The request currently accepts unrestricted `confirmed_by` text while PostgreSQL stores the field in `VARCHAR(64)`.
 
@@ -71,7 +71,7 @@ Do not begin:
 
 ## Requirements
 
-### R1 requirements — sanitize unexpected engine failures
+### R1 requirements - sanitize unexpected engine failures
 
 #### Known invalid cause behavior
 
@@ -124,7 +124,7 @@ Add an API regression using the existing dependency-override/test seam:
 
 Retain unknown-cause `422` coverage so both sides of the distinction are proven.
 
-### R2 requirements — enforce confirmed_by storage contract
+### R2 requirements - enforce confirmed_by storage contract
 
 Align the request schema with the accepted database contract.
 

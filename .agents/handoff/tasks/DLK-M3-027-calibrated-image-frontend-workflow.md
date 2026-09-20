@@ -232,8 +232,8 @@ Run from `frontend/` in PowerShell:
 
 1. `npx eslint "lib/api/client.ts" "lib/api/images.ts" "types/api.ts" "types/image.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageRoiEditor.tsx" "components/diagnosis/ImageCalibrationPanel.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "components/diagnosis/ProblemForm.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx"`
 2. `npm run build`
-3. `npm run lint` — compare with the recorded baseline and itemize only remaining pre-existing out-of-scope findings if it still exits nonzero.
-4. `rg -n "127\\.0\\.0\\.1|DSP-2026-0185|0\\.8mm|1\\.2mm|Undersized, flat profile|Smooth, no bubbles|Nozzle Restriction|Air / Supply|Pressure Instability|Parameter Issue" "lib/api/images.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx"` — must return no hardcoded task-owned result data.
+3. `npm run lint` - compare with the recorded baseline and itemize only remaining pre-existing out-of-scope findings if it still exits nonzero.
+4. `rg -n "127\\.0\\.0\\.1|DSP-2026-0185|0\\.8mm|1\\.2mm|Undersized, flat profile|Smooth, no bubbles|Nozzle Restriction|Air / Supply|Pressure Instability|Parameter Issue" "lib/api/images.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx"` - must return no hardcoded task-owned result data.
 
 Run from the repository root:
 

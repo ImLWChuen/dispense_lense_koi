@@ -1,5 +1,5 @@
 """
-DispenseIQ — Phases 6–8 Verification Test
+Dispense Lens - Phases 6–8 Verification Test
 
 Verifies:
   1. Cause Ranker produces ranked causes with score explanations
@@ -219,7 +219,7 @@ def _verify_question_engine(ranking: RankingResult) -> Question:
 
 
 # ===================================================================
-# Test 4: Question Engine — Already Answered Penalty
+# Test 4: Question Engine - Already Answered Penalty
 # ===================================================================
 
 def _verify_question_already_answered(
@@ -254,7 +254,7 @@ def _verify_question_already_answered(
 
 
 # ===================================================================
-# Test 5: Question Engine — Stopping Condition
+# Test 5: Question Engine - Stopping Condition
 # ===================================================================
 
 def _verify_question_stopping() -> None:
@@ -299,7 +299,7 @@ def _verify_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
 
     assert result.selected_check is not None, "Should select a check"
     check = result.selected_check
-    print(f"Selected: {check.check_id} — {check.name}")
+    print(f"Selected: {check.check_id} - {check.name}")
     print(f"Priority: {check.priority_score:.1f}")
     print(f"Effort:   {check.effort_level}")
     print(f"Targets:  {check.target_causes}")
@@ -315,7 +315,7 @@ def _verify_action_planner(ranking: RankingResult) -> TroubleshootingCheck:
 
 
 # ===================================================================
-# Test 7: Action Planner — Already Attempted
+# Test 7: Action Planner - Already Attempted
 # ===================================================================
 
 def _verify_action_already_attempted(
@@ -343,7 +343,7 @@ def _verify_action_already_attempted(
     if result.selected_check is not None:
         assert result.selected_check.check_id != first_check.check_id, \
             "Should NOT re-select the already-attempted check"
-        print(f"Selected: {result.selected_check.check_id} — {result.selected_check.name}")
+        print(f"Selected: {result.selected_check.check_id} - {result.selected_check.name}")
         print(f"(Different from {first_check.check_id})")
     else:
         print(f"Stopped: {result.reason}")
@@ -383,7 +383,7 @@ def _verify_full_pipeline() -> None:
         ranking.ranked_causes, [], defect.code
     )
     if q_result.selected_question is not None:
-        print(f"4. Next question: {q_result.selected_question.question_id} — {q_result.selected_question.text[:60]}...")
+        print(f"4. Next question: {q_result.selected_question.question_id} - {q_result.selected_question.text[:60]}...")
     else:
         print(f"4. No question needed: {q_result.reason_stopped}")
 
@@ -393,7 +393,7 @@ def _verify_full_pipeline() -> None:
         ranking.ranked_causes, [], defect.code
     )
     if a_result.selected_check is not None:
-        print(f"5. Next check: {a_result.selected_check.check_id} — {a_result.selected_check.name}")
+        print(f"5. Next check: {a_result.selected_check.check_id} - {a_result.selected_check.name}")
     else:
         print(f"5. No check needed: {a_result.reason}")
 

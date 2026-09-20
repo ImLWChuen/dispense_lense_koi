@@ -17,12 +17,12 @@ Complete one gated vertical increment for the troubleshooting-check workflow.
 
 This task has two phases and **Phase B is forbidden until Phase A passes**:
 
-1. **Phase A — bounded semantic closeout**
+1. **Phase A - bounded semantic closeout**
    - remove the reviewed false inference for `ACT03:consistent_but_wrong_size`;
    - repair the semantic verification test module so it uses the repository's canonical `app.*` import namespace;
    - prove the Member 2 check-result contract is green before any public API work begins.
 
-2. **Phase B — durable check-result workflow**
+2. **Phase B - durable check-result workflow**
    - persist troubleshooting check-result history;
    - reconstruct it as part of `StructuredCase`;
    - atomically append check result + any newly generated observations + analysis Revision N+1;
@@ -86,7 +86,7 @@ These are the **only Member 2 semantic corrections authorized in this task**.
 
 ## Requirements
 
-### Phase A — mandatory semantic gate
+### Phase A - mandatory semantic gate
 
 Before creating a migration, ORM model, repository check-result persistence method, API schema, or endpoint:
 
@@ -124,7 +124,7 @@ Before creating a migration, ORM model, repository check-result persistence meth
 
 If Phase A does not pass completely, set DLK-M3-013 to `blocked` and stop. **Do not start Phase B.**
 
-### Phase B — durable check-result persistence
+### Phase B - durable check-result persistence
 
 After Phase A passes, establish durable check-result history analogous to accepted question-answer history.
 
@@ -145,11 +145,11 @@ Use an additive Alembic migration after the current head. Do not rewrite existin
 The persistence contract must support interleaved investigation revisions, for example:
 
 ```text
-Revision 1 — initial diagnosis
-Revision 2 — question answer
-Revision 3 — troubleshooting check result
-Revision 4 — another question answer
-Revision 5 — another check result
+Revision 1 - initial diagnosis
+Revision 2 - question answer
+Revision 3 - troubleshooting check result
+Revision 4 - another question answer
+Revision 5 - another check result
 ```
 
 Revision numbers are global per case and remain monotonic regardless of event type.
@@ -199,7 +199,7 @@ The operation must:
 
 Once check-result history exists, the existing question-answer append path must also remain safe when question answers occur **after** check-result revisions. Make only the smallest consistency/reconstruction adjustment required for mixed event histories.
 
-### Phase B — public API
+### Phase B - public API
 
 Expose exactly one new endpoint:
 
@@ -278,11 +278,11 @@ The response must represent the state that is actually committed, not an uncommi
 
 Use:
 
-- `200 OK` — successful check-result submission and Revision N+1 commit
-- `404 Not Found` — case does not exist
-- `409 Conflict` — stale `expected_revision`
-- `422 Unprocessable Entity` — malformed request, unsupported check ID, invalid outcome, or other existing check-result contract validation failure
-- `500 Internal Server Error` — unexpected engine/persistence failure
+- `200 OK` - successful check-result submission and Revision N+1 commit
+- `404 Not Found` - case does not exist
+- `409 Conflict` - stale `expected_revision`
+- `422 Unprocessable Entity` - malformed request, unsupported check ID, invalid outcome, or other existing check-result contract validation failure
+- `500 Internal Server Error` - unexpected engine/persistence failure
 
 Do not expose database URLs, credentials, SQL, stack traces, local filesystem paths, or raw infrastructure exception details.
 
@@ -317,7 +317,7 @@ Do not impose arbitrary text limits that are stricter than the domain contract.
 
 ## Allowed paths
 
-### Explicit Member 2 ownership exception — Phase A only
+### Explicit Member 2 ownership exception - Phase A only
 
 - `backend/app/services/diagnosis/engine.py`
   - **only** remove the reviewed false `ACT03:consistent_but_wrong_size -> deposit_size="undersized"` derived mapping and make the smallest code adjustment necessary for that exact behavior.
@@ -377,7 +377,7 @@ The existence of `DiagnosticEngine.confirm_cause()` does **not** authorize its u
 
 ## Implementation guidance
 
-### Phase A — semantic closeout
+### Phase A - semantic closeout
 
 1. Perform implementation-handoff preflight.
 2. Confirm DLK-M3-012 is accepted and DLK-M3-013 is the only `ready` task.
@@ -388,7 +388,7 @@ The existence of `DiagnosticEngine.confirm_cause()` does **not** authorize its u
 7. Run all Phase A verification commands.
 8. If any Phase A semantic suite fails, record the failure and mark the task `blocked`. Do not create persistence/API code.
 
-### Phase B — persistence then API
+### Phase B - persistence then API
 
 9. Add the forward-only check-result history migration and ORM model.
 10. Extend `load_structured_case()` to restore check-result history inside its consistent-snapshot logic.
@@ -469,7 +469,7 @@ The existence of `DiagnosticEngine.confirm_cause()` does **not** authorize its u
 
 ## Required verification scenarios
 
-### A. Semantic closeout — must run first and gate Phase B
+### A. Semantic closeout - must run first and gate Phase B
 
 1. Run:
 
