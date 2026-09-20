@@ -2789,6 +2789,10 @@ def generate_case_ai_summary(
             for cr in report.check_results
         ]
 
+        # Bounded projection of persisted observations for AI summary prompt
+        obs_models = repository.get_case_observations(canonical_id, max_revision=report.current_revision)
+        projected_observations = PromptManager.project_safe_observations(obs_models)
+
         if llm.is_available:
             try:
                 sys_prompt, user_prompt = prompt_mgr.get_case_summary_prompt(
@@ -2799,6 +2803,7 @@ def generate_case_ai_summary(
                     confirmed_causes=confirmed_causes,
                     attempted_checks=attempted_checks,
                     issue_condition=str(report.issue_condition),
+                    observations=projected_observations,
                 )
                 generated = llm.generate_text(user_prompt, system_prompt=sys_prompt)
                 if generated and generated.strip():
@@ -2892,4 +2897,3 @@ def get_similar_cases(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while finding similar cases.",
         )
-

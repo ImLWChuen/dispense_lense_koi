@@ -28,4 +28,3 @@ class UserModel(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-

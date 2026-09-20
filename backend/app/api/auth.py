@@ -25,7 +25,7 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
-    
+
     from datetime import datetime, timezone
     user.last_login = datetime.now(timezone.utc)
     db.add(user)
@@ -125,4 +125,3 @@ def change_user_password(
     db.add(current_user)
     db.commit()
     return {"message": "Password updated successfully."}
-

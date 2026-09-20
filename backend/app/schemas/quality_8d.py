@@ -36,7 +36,7 @@ class SectionD2ProblemDescription5W2H(BaseModel):
     why: str = Field(..., description="Why is this considered a defect? (Quality/Yield impact)")
     how: str = Field(..., description="How was the defect observed or measured?")
     how_many: str = Field(..., description="Defect rate, scrap count, or lot volume affected")
-    
+
     defect_code: str = Field(..., description="Standard defect taxonomy code (e.g., D01)")
     defect_name: str = Field(..., description="Human-readable defect title")
     machine_id: str = Field(..., description="Equipment or line identifier")

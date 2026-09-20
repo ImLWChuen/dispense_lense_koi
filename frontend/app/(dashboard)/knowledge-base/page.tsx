@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
     Search,
     AlertTriangle,
     Wrench,
-    HelpCircle,
     BookOpen,
     Link2,
     X,
-    FileText,
 } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
@@ -98,25 +96,30 @@ const evidenceRules = [
 function KnowledgeBaseContent() {
     const searchParams = useSearchParams();
 
-    const initialTab = searchParams.get("tab");
-    const initialSearch = searchParams.get("search") || "";
+    const tabFromUrl = searchParams.get("tab");
+    const searchFromUrl = searchParams.get("search");
 
     const [activeTab, setActiveTab] = useState(
-        tabs.includes(initialTab || "") ? (initialTab as string) : "Defects"
+        tabFromUrl && tabs.includes(tabFromUrl) ? tabFromUrl : "Defects"
     );
-    const [search, setSearch] = useState(initialSearch);
+    const [search, setSearch] = useState(searchFromUrl || "");
 
-    useEffect(() => {
-        const tabFromUrl = searchParams.get("tab");
-        const searchFromUrl = searchParams.get("search");
+    const [prevTab, setPrevTab] = useState(tabFromUrl);
+    const [prevSearch, setPrevSearch] = useState(searchFromUrl);
 
+    if (tabFromUrl !== prevTab) {
+        setPrevTab(tabFromUrl);
         if (tabFromUrl && tabs.includes(tabFromUrl)) {
             setActiveTab(tabFromUrl);
         }
+    }
+
+    if (searchFromUrl !== prevSearch) {
+        setPrevSearch(searchFromUrl);
         if (searchFromUrl !== null) {
             setSearch(searchFromUrl);
         }
-    }, [searchParams]);
+    }
 
     const q = search.trim().toLowerCase();
 

@@ -26,4 +26,3 @@ api_router.include_router(images_router, prefix="/images", tags=["images"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
 api_router.include_router(telemetry_router, prefix="/telemetry", tags=["telemetry"])
-

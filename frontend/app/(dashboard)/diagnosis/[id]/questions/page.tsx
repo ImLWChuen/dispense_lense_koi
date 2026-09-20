@@ -27,9 +27,9 @@ function normalizeOptions(options?: string[]) {
     }
     return options.map(opt => {
         if (typeof opt === 'string') {
-            return { 
-                value: opt, 
-                label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, ' ') 
+            return {
+                value: opt,
+                label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, ' ')
             };
         }
         return opt;
@@ -120,7 +120,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
 
     const handleAnswer = useCallback(async (questionId: string, value: string) => {
         if (!caseData?.diagnosis?.analysis_revision) return;
-        
+
         setIsSubmitting(true);
         try {
             await coordinateWorkflowMutation({

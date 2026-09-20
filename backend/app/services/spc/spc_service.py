@@ -92,13 +92,13 @@ def generate_spc_analysis(
     """Generate comprehensive Statistical Process Control analysis."""
     param_key = parameter if parameter in PARAM_SPECS else "dot_diameter"
     spec = PARAM_SPECS[param_key]
-    
+
     target = spec["target"]
     usl = spec["usl"]
     lsl = spec["lsl"]
     base_mean = spec["base_mean"]
     base_sigma = spec["base_sigma"]
-    
+
     # Adjust for selected line
     if line_id in LINE_CONFIGS:
         cfg = LINE_CONFIGS[line_id]
@@ -114,7 +114,7 @@ def generate_spc_analysis(
 
     values: list[float] = []
     data_points: list[SpcDataPoint] = []
-    
+
     start_time = now - timedelta(minutes=sample_size * 4)
     active_line_key = line_id if line_id in LINE_CONFIGS else "line-a"
     active_line_name = LINE_CONFIGS.get(active_line_key, {}).get("name", "Line A")
@@ -126,7 +126,7 @@ def generate_spc_analysis(
         anomaly = 0.0
         if sample_size >= 40 and i == 32:
             anomaly = 3.2 * sigma_gen  # Rule 1 trigger
-            
+
         val = rng.gauss(mean_gen + drift, sigma_gen) + anomaly
         val = round(val, 2 if spec["unit"] == "mg" else 1)
         values.append(val)
@@ -312,13 +312,13 @@ def generate_spc_analysis(
         b_start = span_min + (b * bin_width)
         b_end = b_start + bin_width
         b_center = (b_start + b_end) / 2.0
-        
+
         # Count elements in bin
         if b == num_bins - 1:
             count = sum(1 for v in values if b_start <= v <= b_end)
         else:
             count = sum(1 for v in values if b_start <= v < b_end)
-            
+
         freq = count / n
         pdf_val = _norm_pdf(b_center, mean_val, s_overall)
 
@@ -353,7 +353,7 @@ def generate_spc_analysis(
         l_cpu = (usl - l_mean) / (3.0 * l_sigma)
         l_cpl = (l_mean - lsl) / (3.0 * l_sigma)
         l_cpk = max(0.0, min(l_cpu, l_cpl))
-        
+
         l_status = "World-Class" if l_cpk >= 1.67 else "Capable" if l_cpk >= 1.33 else "Marginal" if l_cpk >= 1.0 else "Action Req"
 
         line_comparisons.append(

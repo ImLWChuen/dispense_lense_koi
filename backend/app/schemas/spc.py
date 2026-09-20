@@ -29,27 +29,27 @@ class SpcCapabilityMetrics(BaseModel):
     parameter_label: str = Field(..., description="Display label, e.g. Dot Diameter")
     unit: str = Field(..., description="Engineering unit, e.g. µm, mg, kPa")
     sample_count: int = Field(...)
-    
+
     # Specification limits (Engineering tolerances)
     target: float = Field(..., description="Nominal target value T")
     usl: float = Field(..., description="Upper Specification Limit")
     lsl: float = Field(..., description="Lower Specification Limit")
-    
+
     # Statistical central tendencies
     mean: float = Field(..., description="Sample mean X-bar")
     mean_offset: float = Field(..., description="Difference from nominal target (X-bar - T)")
     std_dev_overall: float = Field(..., description="Overall sample standard deviation (s)")
     std_dev_within: float = Field(..., description="Within-subgroup standard deviation (MR-bar / d2)")
-    
+
     # Control limits for Individuals (X) chart
     ucl: float = Field(..., description="Upper Control Limit (X-bar + 3 * sigma_within)")
     cl: float = Field(..., description="Center Line (X-bar)")
     lcl: float = Field(..., description="Lower Control Limit (X-bar - 3 * sigma_within)")
-    
+
     # Control limits for Moving Range (MR) chart
     ucl_mr: float = Field(..., description="Upper Control Limit for MR (3.267 * MR-bar)")
     cl_mr: float = Field(..., description="Center Line for MR (MR-bar)")
-    
+
     # Capability indices
     cp: float = Field(..., description="Process Capability (USL - LSL) / (6 * sigma_within)")
     cpk: float = Field(..., description="Process Capability Index min(USL - X-bar, X-bar - LSL) / (3 * sigma_within)")
@@ -57,7 +57,7 @@ class SpcCapabilityMetrics(BaseModel):
     ppk: float = Field(..., description="Process Performance Index min(USL - X-bar, X-bar - LSL) / (3 * s_overall)")
     cpm: float = Field(..., description="Taguchi capability index penalizing deviation from target T")
     ppm_total: float = Field(..., description="Estimated Parts Per Million non-conforming")
-    
+
     # Quality classification
     capability_status: str = Field(..., description="WORLD_CLASS (Cpk >= 1.67), CAPABLE (1.33-1.67), MARGINAL (1.00-1.33), INCAPABLE (< 1.00)")
     status_description: str = Field(...)

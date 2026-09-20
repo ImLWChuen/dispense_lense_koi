@@ -2,93 +2,52 @@
 
 ## Current milestone
 
-Phase 3B: restart-safe technician troubleshooting and lifecycle workflow
-
-## Active task
-
-- `DLK-M3-027` - Calibrated image workflow and dynamic diagnosis analysis - **accepted**
-  - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`
-  - review: `.agents/handoff/reviews/DLK-M3-027-review.md`
-  - reviewed commit: `ebeacc7d0bb65e42dd4da3c154f43aa0c6adad61`
-  - branch: `backend-database`
-  - depends on: accepted `DLK-M3-026`
-  - outcome: typed multipart image client, stable upload/ROI/calibration state, calibrated-only case evidence, persisted image evidence presentation, backend-derived evidence analysis, and canonical new-diagnosis form values
-  - corrections resolved (R1–R8): atomic activeRequestToken React state tracking and safe finally cleanup; Section 3.4 observation id contract alignment; backend-guaranteed required response types with separate ObservationInput; lint-clean questions/troubleshooting pages; reproducible verification commands and outputs; shared production module frontend/lib/image-upload-state.ts for pure validation and request-state transitions, imported and executed by ImageUpload.tsx and regression suite with aligned 1.00001 ROI tolerance
-  - reviewer verification: shared production state module executed by all seven regression scenarios; focused lint clean across all 17 task-owned frontend files; production build and TypeScript passed; task validation and committed whitespace check passed
-  - next step: return to the planner before beginning Phase 3 or publishing this branch
-  - explicit exclusions: backend changes, dashboard/reports/cases/analytics, troubleshooting/verification corrections, dependencies, raw image persistence, and remote Git operations
-
-## Accepted calibrated-vision task
-
-- `DLK-M3-026` - Calibrated vision and evidence-safety foundation - **accepted**
-  - task: `.agents/handoff/tasks/DLK-M3-026-calibrated-vision-evidence-foundation.md`
-  - review: `.agents/handoff/reviews/DLK-M3-026-review.md`
-  - reviewed commit: `6e52628f4e6e192a5044dc9de07b0f01b9cdc213`
-  - branch: `backend-database`
-  - depends on: accepted `DLK-M3-025`
-  - outcome: calibrated and resolution-independent image features, canonical score-bearing observations only with explicit comparison basis, lossless metadata persistence, safe mixed evidence, and provenance-aware bounded explanations
-  - corrections addressed (R1–R9): sanitized internal pipeline failures to 500 without leaking private details; refined target uniformity, border dominance, and candidate ambiguity handling; consistent binary mask arithmetic; strict gating of D04 on explicit presence limit; bounded streaming reads up to 10 MB in 64 KB chunks; strict profile validation (non-empty ProcessLimits, mode exclusivity, unique non-blank roi_id); restored mixed-evidence benchmark intake contract; treated completely uniform frames as UNRELIABLE without an established background/reference basis; documented the actual UNRELIABLE status enum in API specification
-  - reviewer verification: 83 focused checks, 37 PostgreSQL workflow/persistence checks, and 466 full backend tests passed; task validation and committed whitespace checks passed
-  - next dependency: active `DLK-M3-027`
-  - explicit exclusions: frontend changes, D06 score-bearing classification, knowledge/weight changes, lifecycle changes, image/blob storage, remote Git operations
-
-## Accepted current task
-
-- `DLK-M3-025` - Restore safe backend startup and offline troubleshooting baseline - **accepted**
-  - reviewed commit: `f1db85435b177dd9961a14116900c03556a912de`
-  - verification: Gemini reports 401 backend tests passed; reviewer source review, task validation and committed whitespace checks passed; no independent backend rerun
-  - review: `.agents/handoff/reviews/DLK-M3-025-review.md`
-  - corrections addressed (R1–R7): restored migration environment via try/finally; isolated offline tests from real .env loading and shell overrides; exercised mocked provider timeout and error paths with exact deterministic parity assertions; rejected ambiguous development database destinations before rebinding; preserved in-process TestClient requests while blocking outbound transport; exercised actual production .env loader in isolation; gated migrations behind exit-code checked validation; verified development database nonmutation via table counts and sample identity checks
-  - task: `.agents/handoff/tasks/DLK-M3-025-backend-runtime-offline-safety.md`
-  - branch: `backend-database`
-  - depends on: accepted `DLK-M3-024`
-  - outcome: synchronized declared dependencies, deterministic no-key operation, frontend port-3001 CORS, and a separate fail-closed PostgreSQL test destination that preserves development records
-  - explicit exclusions: image/CV work, check-history repair, diagnostic semantic changes, frontend edits, schema/migration changes, and remote Git operations
-
-## Deferred after the calibrated-vision programme
-
-- Canonical lossless check-history integrity - **planned, not released**
-  - preserve stored check outcome, provenance, notes, and revision consistently across case responses and reports;
-  - retain compatibility with the teammate check-execution projection;
-  - cover legacy canonical records that do not yet have a projection;
-  - assign a new task ID only after the active calibrated-vision task is reviewed.
-
-## Integration accepted (R4 and R5 resolved)
-
-- Reviewed reconciliation commit: `c7a21a8f4e670a653f49cef8958b07d958d8b185`; accepted by ChatGPT review.
-- R5 resolved: returned persisted nested `analysis_revision` snapshots in `POST /checks`, exactly as `GET` handler does, retaining revision bound (`<= target_revision`). Preserved `changes_from_previous` and `new_evidence_summary`. Added `test_check_execution_analysis_revision_history_parity` verifying complete history objects parity against fresh GET and PostgreSQL snapshots.
-- R4 resolved: reconciled `/checks` with canonical engine and persistence contracts; added `get_case_check_executions`, synchronized `CheckExecutionModel` in `append_check_result_revision`, added alias support in `get_action_by_id`, ensured single commit on successful response construction, and added real PostgreSQL integration test suite (`test_check_execution_api.py`).
-- Review: `.agents/handoff/reviews/DLK-M3-024-review.md` (R4 & R5 resolution sections added).
-- Full backend suite independently verified by reviewer on 2026-09-16: 350 passed, 0 failed, 34 warnings. Previously authorized publication may proceed.
+Repeatable local demo startup and competition rehearsal readiness
 
 ## Accepted prerequisite
 
-- `DLK-M3-023` - Deterministic downloadable PDF case report - **accepted**
-  - reviewed commit: `53cc609ad136628a811d6291522ae64c7ff70f72`
-  - recorded full backend verification: 297 passed, 0 failed, 0 skipped
-  - PDF unit verification: 5 passed
-  - PDF integration verification: 9 passed
+- `DLK-M3-030` — Final submission hardening and end-to-end demo acceptance — **accepted**
+  - reviewed commit: `747235695fa9777a8b9f84f4b47e66844b50a98f`
+  - accepted outcome: calibrated image-to-diagnosis-to-lifecycle-to-report/dashboard flow, truthful dynamic surfaces, deterministic evidence-projected AI summaries, clean frontend lint/build, and 491 passing backend tests
+  - review: `.agents/handoff/reviews/DLK-M3-030-review.md`
+  - next-stage evidence: root startup documentation and the existing database helper are still environment-specific/inaccurate, so repeatable local demo operation remains a release dependency
 
-## Accepted
+## Active task
 
-- `DLK-M3-024` - Final backend MVP contract and end-to-end acceptance - **accepted**
-  - reviewed commit: `2f60f9292b07edfe6982996e1d10cdfe84d48d66`
-  - review: `.agents/handoff/reviews/DLK-M3-024-review.md`
-  - corrections: genuine empty-list integration proof with transactional isolation and rollback, failure-path and asserted revision 7 rich-state nonmutation proof, accurate Member 1 contract documentation.
-  - task: `.agents/handoff/tasks/DLK-M3-024-backend-mvp-acceptance.md`
+- `DLK-M3-031` — Repeatable local demo startup and operator runbook — **accepted**
+  - task: `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`
   - branch: `backend-database`
-  - depends on: `DLK-M3-023`
-  - primary nature: verification/hardening, not a new diagnostic feature
+  - depends on: accepted `DLK-M3-030`
+  - implemented outcome:
+    - portable/safe PostgreSQL startup script (`scripts/start-db.ps1`) without hardcoded paths, waiting for health check and preserving development volume;
+    - read-only environment preflight script (`scripts/demo-preflight.ps1`) checking tools, dependencies, non-blank config presence, and port availability (8000/3001) without killing processes;
+    - post-startup identity verification script (`scripts/verify-demo.ps1`) confirming `dispense-lens-api` and `DispenseIQ` frontend and rejecting wrong local applications;
+    - rewritten root `README.md` with complete three-layer quickstart, Node.js 20.9.0+ requirement, port 3001 instructions, port 3000 avoidance warning, health scope, and troubleshooting;
+    - competition demo runbook (`docs/demo/local-demo-runbook.md`) with 6–10 minute timed walkthrough, truthful claims, failure fallbacks, and rehearsal tracking;
+    - resolved review findings R1–R5:
+      - R1: rewrote timed runbook using only rendered controls and ordering from the checked-in UI (image analysis on `/diagnosis/new` before Start Diagnosis, Dispensing Line A, blockage_found, free-text recovery/boolean verification, no static score or ranking claims);
+      - R2: replaced confidence-percentage, probability, and Bayesian terminology with the accepted deterministic `Evidence Support /100` meaning across README, runbook, and task packet;
+      - R3: enforced Node.js `>=20.9.0` requirement in README and preflight (`Test-NodeVersionSupported`); verified across lower, exact, and higher versions;
+      - R4: ensured secret-safe database check (`Get-DatabaseConfigStatus`) strictly rejecting missing and blank `DATABASE_URL` values without leaking connection strings or credentials; verified missing, blank, and configured branches;
+      - R5: aligned runbook labels with exact rendered UI controls (`Analyze`, `Evidence`, `Submit Check Result`, `Submit Passed Verification` / `Submit Failed Verification`); explicitly prefixed all entered symptom, material, check, recovery, and verification details with `[SYNTHETIC DEMO]`; removed nonexistent editable operator example and explained generic technician actor.
+  - verification: PowerShell AST parse (3/3 passed), Node-version checks (below/exact/above verified), secret-safe database checks (missing/blank/configured verified), static runbook terminology & UI label check (clean), health API test passed (2/2), frontend lint (0 errors, 0 warnings), frontend build (13/13 routes), task validation (VALID), git diff whitespace check passed;
+  - reviewed commit: `ececf645938dc910721655af55df8ae8a3ce5cef`
+  - review: `.agents/handoff/reviews/DLK-M3-031-review.md`
+  - next step: Member 3 feature implementation is complete for the authorized scope; proceed with final team rehearsal, submission evidence/video, and user-directed Git publication or merge
 
 ## Explicitly deferred
 
-Do not release these within DLK-M3-024:
+Do not implement inside DLK-M3-031:
 
-- vector/semantic historical-case retrieval
-- bounded LLM integration
-- image/CV integration
-- analytics
+- vector/semantic historical-case similarity
+- new AI/CV models
+- D06 score-bearing vision semantics
 - authentication/authorization
-- frontend implementation
+- new analytics infrastructure
+- deployment redesign or production hosting
+- new testing frameworks
+- database/schema changes
 
-The earlier competition-critical Member 3 backend MVP milestone was accepted. `DLK-M3-026` now starts the separately approved calibrated-vision programme. Member 1 integration follow-up remains documented in `docs/api/frontend-backend-contract.md`; any new backend integration defect requires a bounded follow-up task.
+No additional Member 3 implementation task is currently authorized.
+
+DLK-M3-031 is accepted. Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work is final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.

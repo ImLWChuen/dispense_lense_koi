@@ -50,4 +50,3 @@ def require_admin(
             detail="Administrative privileges required to access this resource.",
         )
     return current_user
-
