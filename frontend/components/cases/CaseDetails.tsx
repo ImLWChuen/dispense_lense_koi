@@ -12,6 +12,7 @@ import { DurableCaseResponse } from "@/types/api";
 
 interface CaseDetailsProps {
     caseData?: DurableCaseResponse;
+    caseId?: string;
 }
 
 const statusColors = {

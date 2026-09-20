@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { API_BASE_URL } from "@/lib/api/client";
 
 export type User = {
     id: string;
@@ -30,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedToken) {
             setToken(storedToken);
             // Fetch user info
-            fetch("http://127.0.0.1:800/api/v1/auth/me", {
+            fetch(`${API_BASE_URL}/auth/me`, {
                 headers: {
                     Authorization: `Bearer ${storedToken}`,
                 },

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/components/providers/AuthContext";
 import { useRouter } from "next/navigation";
+import { API_BASE_URL } from "@/lib/api/client";
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +25,7 @@ export default function LoginPage() {
             formData.append("username", email);
             formData.append("password", password);
 
-            const response = await fetch("http://127.0.0.1:800/api/v1/auth/login", {
+            const response = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
@@ -40,7 +41,7 @@ export default function LoginPage() {
             const data = await response.json();
             
             // fetch user data using token
-            const userResponse = await fetch("http://127.0.0.1:800/api/v1/auth/me", {
+            const userResponse = await fetch(`${API_BASE_URL}/auth/me`, {
                 headers: {
                     Authorization: `Bearer ${data.access_token}`,
                 },

@@ -54,6 +54,9 @@ from app.knowledge import get_causes_for_defect, get_defect_by_code
 from app.services.diagnosis.engine import CheckResultHandler, DiagnosticEngine, StateManager
 from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
 from app.services.reporting import build_case_report, render_case_report_pdf
+from app.services.ai.llm_service import LLMService
+from app.services.ai.prompt_manager import PromptManager
+from app.api.analytics import broadcast_analytics_update
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +122,7 @@ def create_durable_case(
 
         repository.save_initial_case(case, result)
         session.commit()
+        broadcast_analytics_update("CASE_CREATED", {"case_id": case.case_id})
 
         observations = [
             CaseObservationResponse(
@@ -162,7 +166,6 @@ def create_durable_case(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during case creation.",
         )
-
 
 @router.get(
     "",
@@ -1492,6 +1495,7 @@ def submit_case_cause_confirmation(
             )
 
             session.commit()
+            broadcast_analytics_update("CAUSE_CONFIRMED", {"case_id": canonical_id, "cause_id": request.cause_id})
             return response
         except StaleRevisionError as e:
             session.rollback()
@@ -2131,6 +2135,10 @@ def submit_case_recovery_verification(
             )
 
             session.commit()
+            if request.verification_passed:
+                broadcast_analytics_update("CASE_COMPLETED", {"case_id": canonical_id, "status": "RESOLVED"})
+            else:
+                broadcast_analytics_update("CASE_UPDATED", {"case_id": canonical_id, "status": "UNRESOLVED"})
             return response
         except StaleRevisionError as e:
             session.rollback()
@@ -2594,3 +2602,117 @@ def get_case_report_pdf(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while generating the PDF case report.",
         )
+
+
+@router.post(
+    "/{case_id}/ai-summary",
+    status_code=status.HTTP_200_OK,
+    summary="Generate AI Executive Summary for a case report",
+    description=(
+        "Generates a concise, professional executive summary of the case using "
+        "bounded LLM generation or deterministic fallback."
+    ),
+)
+def generate_case_ai_summary(
+    case_id: str,
+    repository: CaseRepository = Depends(get_case_repository),
+) -> dict[str, Any]:
+    """Generate or retrieve an AI executive summary for a case report."""
+    try:
+        try:
+            uuid_obj = uuid.UUID(case_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid case ID format: '{case_id}' must be a valid UUID.",
+            )
+
+        canonical_id = str(uuid_obj)
+        report = build_case_report(canonical_id, repository)
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Case '{canonical_id}' not found.",
+            )
+
+        # Attempt LLM-based summary with PromptManager
+        llm = LLMService()
+        prompt_mgr = PromptManager()
+        summary_text: str | None = None
+        source = "deterministic"
+
+        confirmed_causes = (
+            report.outcome_summary.confirmed_causes
+            if report.outcome_summary
+            else []
+        )
+        attempted_checks = [
+            {
+                "check_id": cr.check_id,
+                "status": cr.execution_status,
+                "finding": cr.finding,
+                "outcome": cr.outcome,
+            }
+            for cr in report.check_results
+        ]
+
+        if llm.is_available:
+            try:
+                sys_prompt, user_prompt = prompt_mgr.get_case_summary_prompt(
+                    case_id=report.case_id,
+                    defect_name=report.defect_name,
+                    description=report.description or "",
+                    total_revisions=report.current_revision,
+                    confirmed_causes=confirmed_causes,
+                    attempted_checks=attempted_checks,
+                    issue_condition=str(report.issue_condition),
+                )
+                generated = llm.generate_text(user_prompt, system_prompt=sys_prompt)
+                if generated and generated.strip():
+                    summary_text = generated.strip()
+                    source = "llm"
+            except Exception:
+                logger.warning("LLM generation failed for case summary; falling back to deterministic summary", exc_info=True)
+
+        # Deterministic summary fallback
+        if not summary_text:
+            defect_title = report.defect_name or report.defect_code or "Unspecified Defect"
+            raw_condition = getattr(report.issue_condition, "value", str(report.issue_condition))
+            condition_display = raw_condition.replace("IssueCondition.", "").replace("Issuecondition.", "").replace("_", " ").title()
+            confirmed_display = ", ".join(confirmed_causes) if confirmed_causes else "None confirmed yet"
+            
+            lines = [
+                f"Diagnostic Case Report for {defect_title} (Case ID: {report.case_id}).",
+                f"Initial problem observed: {report.description or 'No initial description provided.'}",
+            ]
+            if report.material or report.method:
+                lines.append(f"Operating Context: Material '{report.material or 'N/A'}', dispensing method '{report.method or 'N/A'}'.")
+            
+            if confirmed_causes:
+                lines.append(f"Root cause confirmed: {confirmed_display}.")
+            elif report.current_diagnosis and report.current_diagnosis.ranked_causes:
+                top = report.current_diagnosis.ranked_causes[0]
+                lines.append(f"Top diagnostic candidate is '{top.cause_name}' with evidence support score {top.score:.0f}/100.")
+            
+            if report.check_results:
+                lines.append(f"A total of {len(report.check_results)} troubleshooting check(s) have been conducted across {report.current_revision} diagnostic revision(s).")
+            
+            lines.append(f"Current Issue Condition: {condition_display}.")
+            summary_text = " ".join(lines)
+            source = "deterministic"
+
+        return {
+            "case_id": canonical_id,
+            "summary": summary_text,
+            "source": source,
+            "revision": report.current_revision,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error generating AI summary for case '%s'", case_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the AI summary.",
+        )
+
