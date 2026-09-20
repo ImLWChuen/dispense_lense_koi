@@ -12,6 +12,7 @@ import {
     Loader2,
     Activity,
     Download,
+    AlertCircle,
 } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
@@ -73,19 +74,52 @@ export default function AnalyticsPage() {
     const [spcData, setSpcData] = useState<SpcAnalysisResponse | null>(null);
     const [isSpcLoading, setIsSpcLoading] = useState(false);
 
-    // Fetch Performance Analytics
-    const fetchAnalytics = useCallback(async (period: string, showLoading: boolean = true) => {
-        try {
-            if (showLoading) setIsLoading(true);
-            const data = await analyticsApi.getPerformanceAnalytics(period);
-            setAnalytics(data);
-            setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-        } catch (err) {
-            console.error("Failed to fetch performance analytics:", err);
-        } finally {
-            if (showLoading) setIsLoading(false);
-        }
+    // Fetch Performance Analytics callback
+    const refreshAnalytics = useCallback((period: string, showLoading: boolean = true) => {
+        if (showLoading) setIsLoading(true);
+        analyticsApi
+            .getPerformanceAnalytics(period)
+            .then((data) => {
+                setAnalytics(data);
+                setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+                setError(null);
+            })
+            .catch((err: unknown) => {
+                console.error("Failed to fetch performance analytics:", err);
+                setError(err instanceof Error ? err.message : "Failed to load analytics");
+            })
+            .finally(() => {
+                setIsLoading(false);
+                setIsSyncing(false);
+            });
     }, []);
+
+    // Initial and periodic load for Performance Analytics
+    useEffect(() => {
+        let isCurrent = true;
+        setIsLoading(true);
+        analyticsApi
+            .getPerformanceAnalytics(selectedPeriod)
+            .then((data) => {
+                if (isCurrent) {
+                    setAnalytics(data);
+                    setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    console.error("Failed to fetch performance analytics:", err);
+                    setError(err instanceof Error ? err.message : "Failed to load analytics");
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [selectedPeriod]);
 
     // Fetch SPC Data
     const fetchSpcData = useCallback(async () => {
@@ -103,10 +137,6 @@ export default function AnalyticsPage() {
             setIsSpcLoading(false);
         }
     }, [spcParam, spcLine, spcSampleSize]);
-
-    useEffect(() => {
-        fetchAnalytics(selectedPeriod, true);
-    }, [selectedPeriod, fetchAnalytics]);
 
     useEffect(() => {
         if (viewMode === "spc") {
@@ -140,9 +170,7 @@ export default function AnalyticsPage() {
                 setTimeout(() => setIsSyncing(false), 800);
             });
         } else {
-            fetchAnalytics(selectedPeriod, false).finally(() => {
-                setTimeout(() => setIsSyncing(false), 800);
-            });
+            refreshAnalytics(selectedPeriod, false);
         }
     };
 
@@ -268,6 +296,20 @@ export default function AnalyticsPage() {
                                 </button>
                             ))}
                         </div>
+
+                        {isSyncing && (
+                            <div className="flex items-center gap-1.5 text-xs text-[#6d5dfc] font-medium animate-pulse">
+                                <Loader2 size={13} className="animate-spin" />
+                                Syncing global updates...
+                            </div>
+                        )}
+                    </div>
+
+                    {isLoading && !analytics ? (
+                        <div className="flex flex-col items-center justify-center py-24 text-gray-500">
+                            <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
+                            <p className="text-sm font-medium">Loading analytics data...</p>
+                        </div>
                     ) : error && !analytics ? (
                         <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50/50 p-12 text-center">
                             <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
@@ -298,83 +340,43 @@ export default function AnalyticsPage() {
                                 </div>
                             )}
 
-                            {/* Interactive Date Filter Bar */}
-                            <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
-                                    {periods.map((p) => (
-                                        <button
-                                            key={p.value}
-                                            onClick={() => {
-                                                if (selectedPeriod !== p.value) {
-                                                    setIsLoading(true);
-                                                    setSelectedPeriod(p.value);
-                                                }
-                                            }}
-                                            className={`rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${
-                                                selectedPeriod === p.value
-                                                    ? "bg-[#6d5dfc] text-white shadow-sm font-semibold"
-                                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                                            }`}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
-                                </div>
+                            {/* KPIs Grid */}
+                            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <KpiCard
+                                    title="Total Cases"
+                                    value={isLoading ? "..." : String(kpis?.total_cases ?? 0)}
+                                    description={`${kpis?.resolved_cases ?? 0} resolved in this period`}
+                                    trend={kpis?.total_cases_trend}
+                                    icon={<BarChart3 size={20} />}
+                                />
 
-                                {isSyncing && (
-                                    <div className="flex items-center gap-1.5 text-xs text-[#6d5dfc] font-medium animate-pulse">
-                                        <Loader2 size={13} className="animate-spin" />
-                                        Syncing global updates...
-                                    </div>
-                                )}
-                            </div>
+                                <KpiCard
+                                    title="Avg. Resolution Time"
+                                    value={
+                                        isLoading
+                                            ? "..."
+                                            : kpis?.avg_resolution_time_minutes != null
+                                            ? `${kpis.avg_resolution_time_minutes} min`
+                                            : "Not available"
+                                    }
+                                    description="from issue detection to closure"
+                                    trend={kpis?.avg_resolution_trend}
+                                    icon={<Clock3 size={20} />}
+                                />
 
-                    {/* KPIs Grid */}
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <KpiCard
-                            title="Total Cases"
-                            value={isLoading ? "..." : String(kpis?.total_cases ?? 0)}
-                            description={`${kpis?.resolved_cases ?? 0} resolved in this period`}
-                            trend={kpis?.total_cases_trend || "0%"}
-                            icon={<BarChart3 size={20} />}
-                        />
-
-                        <KpiCard
-                            title="Avg. Resolution Time"
-                            value={isLoading ? "..." : `${kpis?.avg_resolution_time_minutes ?? 0} min`}
-                            description="from issue detection to closure"
-                            trend={kpis?.avg_resolution_trend || "0%"}
-                            icon={<Clock3 size={20} />}
-                        />
-
-                        <KpiCard
-                            title="First-Time Resolution"
-                            value={isLoading ? "..." : `${kpis?.first_time_resolution_rate ?? 0}%`}
-                            description="resolved without re-diagnosis"
-                            trend={kpis?.first_time_resolution_trend || "0%"}
-                            icon={<CheckCircle2 size={20} />}
-                        />
-
-                        <KpiCard
-                            title="Diagnostic Accuracy"
-                            value={isLoading ? "..." : `${kpis?.diagnostic_accuracy_rate ?? 0}%`}
-                            description="confirmed vs engine hypothesis"
-                            trend={kpis?.diagnostic_accuracy_trend || "0%"}
-                            icon={<TrendingUp size={20} />}
-                        />
-                    </div>
-
-                    {/* Charts Grid */}
-                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                        <DefectChart data={analytics?.defect_trend} />
-                        <CauseChart data={analytics?.cause_distribution} />
-                    </div>
-
-                    {/* Resolution Distribution & Defect Breakdown */}
-                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-                        <div className="xl:col-span-2">
-                            <ResolutionChart data={analytics?.resolution_time_distribution} />
-                        </div>
+                                <KpiCard
+                                    title="First-Time Resolution"
+                                    value={
+                                        isLoading
+                                            ? "..."
+                                            : firstTimeRate != null
+                                            ? `${firstTimeRate}%`
+                                            : "Not available"
+                                    }
+                                    description="resolved without re-diagnosis"
+                                    trend={kpis?.first_time_resolution_trend}
+                                    icon={<CheckCircle2 size={20} />}
+                                />
 
                                 <KpiCard
                                     title="Cause Confirmation Coverage"
@@ -448,10 +450,9 @@ export default function AnalyticsPage() {
                                         <span>Synced across all users</span>
                                     </div>
                                 </div>
-                                <span>Synced across all cleanroom accounts</span>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    ) : null}
                 </div>
             )}
 

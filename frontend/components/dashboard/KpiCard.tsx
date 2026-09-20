@@ -6,7 +6,7 @@ interface KpiCardProps {
     value: string;
     description: string;
     icon: ReactNode;
-    trend?: string;
+    trend?: string | null;
     trendDirection?: "up" | "down" | "neutral";
     sparkline?: number[];
     accentColor?: string;

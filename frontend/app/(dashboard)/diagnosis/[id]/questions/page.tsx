@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Keyboard } from "lucide-react";
+import { ArrowRight, CheckCircle2, Keyboard, RefreshCw } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
 import DiagnosticStepper from "@/components/diagnosis/DiagnosticStepper";
@@ -186,8 +186,6 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [nextQuestion, isSubmitting, isLoading, handleAnswer]);
 
-    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
-    const nextQuestion = diagnosis?.next_question;
 
     const derived = deriveQuestionsView({
         isLoading,
@@ -196,24 +194,6 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         hasNextQuestion: Boolean(nextQuestion),
     });
 
-    const normalizeOptions = (options?: string[]) => {
-        if (!options || options.length === 0) {
-            return [
-                { value: "YES", label: "Yes" },
-                { value: "NO", label: "No" },
-                { value: "UNKNOWN", label: "Unknown" },
-            ];
-        }
-        return options.map((opt) => {
-            if (typeof opt === "string") {
-                return {
-                    value: opt,
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, " "),
-                };
-            }
-            return opt;
-        });
-    };
 
     // 1. Initial Loading
     if (derived.showInitialLoading) {

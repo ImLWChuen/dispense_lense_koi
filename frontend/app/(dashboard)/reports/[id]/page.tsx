@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use, Suspense } from "react";
+import { useEffect, useState, useCallback, use, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -12,16 +12,14 @@ import {
     AlertTriangle,
     Sparkles,
     Loader2,
-    ShieldAlert,
     ShieldCheck,
-    Cpu,
-    Check,
-    HelpCircle,
+    AlertCircle,
 } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
 import { reportsApi, CaseReportResponse, EightDReportResponse } from "@/lib/api/reports";
 import EightDReportView from "@/components/reports/EightDReportView";
+import ReportPreview from "@/components/reports/ReportPreview";
 
 function ReportDetailContent({
     params,
@@ -51,14 +49,14 @@ function ReportDetailContent({
     const [isLoading8D, setIsLoading8D] = useState(false);
     const [isDownloading8D, setIsDownloading8D] = useState(false);
 
-    useEffect(() => {
-        const fetchReportData = async () => {
-            try {
-                setIsLoading(true);
-                setError(null);
-                const data = await reportsApi.getCaseReport(id);
+    const reloadReport = useCallback(() => {
+        if (!id) return;
+        setIsLoading(true);
+        setError(null);
+        reportsApi
+            .getCaseReport(id)
+            .then((data) => {
                 setReport(data);
-
                 if (data.current_diagnosis?.explanation) {
                     setAiSummary(data.current_diagnosis.explanation);
                     setAiSource("deterministic");
@@ -108,7 +106,7 @@ function ReportDetailContent({
             setIsLoading8D(true);
             const data = await reportsApi.get8DReport(id);
             setEightDReport(data);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.warn("Failed to load 8D report:", err);
         } finally {
             setIsLoading8D(false);
@@ -119,7 +117,7 @@ function ReportDetailContent({
         if (reportFormat === "8d" && !eightDReport) {
             fetch8DData();
         }
-    }, [reportFormat, id]);
+    }, [reportFormat, id, eightDReport]);
 
     const handleDownloadPdf = () => {
         setIsDownloadingPdf(true);
@@ -226,68 +224,10 @@ function ReportDetailContent({
             ) : (
                 /* Standard Diagnostic Report View Mode */
                 <>
-                    {/* Report Header */}
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-8 pb-6 border-b border-gray-200">
-                        <div>
-                            <div className="flex flex-wrap items-center gap-2.5 mb-2">
-                                <span
-                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-semibold ${
-                                        isResolved
-                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                            : "bg-amber-50 text-amber-700 border border-amber-200"
-                                    }`}
-                                >
-                                    {isResolved ? (
-                                        <CheckCircle2 size={13} />
-                                    ) : (
-                                        <AlertTriangle size={13} />
-                                    )}
-                                    {isResolved ? "Complete / Resolved" : "Under Investigation"}
-                                </span>
-
-                                <span className="text-xs font-semibold text-gray-400">•</span>
-
-                                <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-0.5 rounded-full">
-                                    Diagnostic Case Report
-                                </span>
-
-                                {report?.current_revision && (
-                                    <span className="text-xs font-medium text-[#6d5dfc] bg-[#6d5dfc]/10 px-2.5 py-0.5 rounded-full">
-                                        Revision {report.current_revision}
-                                    </span>
-                                )}
-                            </div>
-
-                            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
-                                {report?.defect_name || report?.description || "Dispensing Diagnostic Report"}
-                            </h1>
-
-                            <div className="mt-2.5 flex flex-wrap items-center gap-4 text-xs sm:text-sm text-gray-500">
-                                <div className="flex items-center gap-1.5 font-mono">
-                                    <FileText size={15} className="text-gray-400" />
-                                    <span className="font-semibold text-gray-700">{reportCode}</span>
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                    <Calendar size={15} className="text-gray-400" />
-                                    <span>
-                                        {report?.created_at
-                                            ? new Date(report.created_at).toLocaleDateString("en-US", {
-                                                  month: "short",
-                                                  day: "numeric",
-                                                  year: "numeric",
-                                                  hour: "2-digit",
-                                                  minute: "2-digit",
-                                              })
-                                            : "Sep 15, 2026"}
-                                    </span>
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-gray-400">Ref:</span>
-                                    <span className="font-mono text-gray-700">{caseRef}</span>
-                                </div>
-                            </div>
+                    {isLoading ? (
+                        <div className="flex min-h-[400px] flex-col items-center justify-center">
+                            <Loader2 size={32} className="animate-spin text-[#6d5dfc] mb-3" />
+                            <p className="text-sm font-medium text-gray-500">Loading diagnostic case report...</p>
                         </div>
                     ) : error || !report ? (
                         <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
@@ -322,175 +262,100 @@ function ReportDetailContent({
                                             {isResolved ? "Complete / Resolved" : "Under Investigation"}
                                         </span>
 
-                    {/* Main Content Grid */}
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                        {/* Left 2 Columns: Summary & Diagnostic Details */}
-                        <div className="lg:col-span-2 space-y-6">
-                            {/* AI Executive Summary Card */}
-                            <div className="relative overflow-hidden rounded-2xl border border-[#6d5dfc]/20 bg-gradient-to-br from-white via-white to-[#f5f3ff] p-6 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6d5dfc] text-white">
-                                            <Sparkles size={18} />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-base font-bold text-gray-900">
-                                                Executive Summary
-                                            </h2>
-                                            <p className="text-xs text-gray-500">
-                                                Synthesized case findings and operational impact
-                                            </p>
-                                        </div>
-                                    </div>
+                                        <span className="text-xs font-semibold text-gray-400">•</span>
 
-                                    {aiSource && (
-                                        <span className="text-xs font-mono font-medium text-[#6d5dfc] bg-[#6d5dfc]/10 px-2 py-0.5 rounded-full">
-                                            {aiSource === "llm" ? "AI Generated" : "Deterministic Summary"}
+                                        <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                                            Diagnostic Case Report
                                         </span>
 
-                                <div className="text-sm leading-relaxed text-gray-700 bg-white/80 p-4 rounded-xl border border-gray-100 shadow-inner">
-                                    {aiSummary ? (
-                                        <p>{aiSummary}</p>
-                                    ) : (
-                                        <p className="text-gray-400 italic">
-                                            Click &quot;Generate AI Summary&quot; above to synthesize an automated executive briefing for this case.
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Root Cause & Evidence Findings Card */}
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <ShieldAlert size={18} className="text-[#6d5dfc]" />
-                                        <h2 className="text-base font-bold text-gray-900">
-                                            Root Cause Analysis
-                                        </h2>
-                                    </div>
-                                </div>
-
-                                    {topCause && (
-                                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                                            {Math.round(topCause.score * 100)}% Match
-                                        </span>
-                                    )}
-                                </div>
-
-                                {topCause ? (
-                                    <div className="space-y-4">
-                                        <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                                Leading Hypothesis
+                                        {report.current_revision && (
+                                            <span className="text-xs font-medium text-[#6d5dfc] bg-[#6d5dfc]/10 px-2.5 py-0.5 rounded-full">
+                                                Revision {report.current_revision}
                                             </span>
-                                            <h3 className="text-base font-bold text-gray-900 mt-1">
-                                                {topCause.cause_name}
-                                            </h3>
-                                            <p className="mt-1 text-xs sm:text-sm text-gray-600">
-                                                {report?.current_diagnosis?.explanation || "Confirmed via diagnostic checks."}
-                                            </p>
-                                        </div>
-
-                                        {/* Confirmed Causes List */}
-                                        {confirmedCauses.length > 0 && (
-                                            <div>
-                                                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
-                                                    Confirmed Causes
-                                                </h4>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {confirmedCauses.map((c, idx) => (
-                                                        <span
-                                                            key={idx}
-                                                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200"
-                                                        >
-                                                            <Check size={13} />
-                                                            {c}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="text-center py-6 text-gray-400 text-sm">
-                                        No root cause determined yet.
-                                    </div>
-                                )}
-                            </div>
 
-                            {/* Action History & Timeline */}
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Activity size={18} className="text-[#6d5dfc]" />
-                                    <h2 className="text-base font-bold text-gray-900">
-                                        Audit & Action History
-                                    </h2>
+                                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+                                        {report.defect_name || report.description || "Dispensing Diagnostic Report"}
+                                    </h1>
+
+                                    <div className="mt-2.5 flex flex-wrap items-center gap-4 text-xs sm:text-sm text-gray-500">
+                                        <div className="flex items-center gap-1.5 font-mono">
+                                            <FileText size={15} className="text-gray-400" />
+                                            <span className="font-semibold text-gray-700">{reportCode}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                            <Calendar size={15} className="text-gray-400" />
+                                            <span>
+                                                {report.created_at
+                                                    ? new Date(report.created_at).toLocaleString()
+                                                    : "Not recorded"}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-gray-400">Ref:</span>
+                                            <span className="font-mono text-gray-700">{caseRef}</span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {report?.lifecycle_events && report.lifecycle_events.length > 0 ? (
-                                    <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
-                                        {report.lifecycle_events.map((event, idx) => (
-                                            <div key={idx} className="relative">
-                                                <div className="absolute -left-[27px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#6d5dfc]" />
-                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="text-xs font-bold text-gray-800">
-                                                        {event.event_type.replace(/_/g, " ")}
-                                                    </span>
-                                                    <span className="text-[11px] font-mono text-gray-400">
-                                                        {event.created_at ? new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "10:00"}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-1 text-xs text-gray-600">
-                                                    {event.details || `State shifted to ${event.resulting_issue_condition}`}
-                                                </p>
-                                                {event.actor && (
-                                                    <span className="mt-1 inline-block text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-                                                        By: {event.actor}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-gray-400 italic">No lifecycle events recorded.</p>
-                                )}
+                                {/* Action Buttons */}
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <button
+                                        onClick={handleGenerateAiSummary}
+                                        disabled={isGeneratingAi}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-[#6d5dfc]/30 bg-[#eeebff] px-4 py-2.5 text-sm font-semibold text-[#5848e8] shadow-sm transition hover:bg-[#e4e0ff] disabled:opacity-50"
+                                    >
+                                        {isGeneratingAi ? (
+                                            <Loader2 size={16} className="animate-spin text-[#6d5dfc]" />
+                                        ) : (
+                                            <Sparkles size={16} className="text-[#6d5dfc]" />
+                                        )}
+                                        {aiSummary ? "Regenerate AI Summary" : "Generate AI Summary"}
+                                    </button>
+
+                                    <button
+                                        onClick={handleDownloadPdf}
+                                        disabled={isDownloadingPdf}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5848e8] disabled:opacity-70"
+                                    >
+                                        {isDownloadingPdf ? (
+                                            <Loader2 size={16} className="animate-spin" />
+                                        ) : (
+                                            <Download size={16} />
+                                        )}
+                                        Download PDF
+                                    </button>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Right Column: Case Info & Metadata */}
-                        <div className="space-y-6">
-                            {/* Case Parameters Card */}
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                                <h3 className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
-                                    Process & Equipment Specs
-                                </h3>
+                            {/* Executive Summary Card if generated */}
+                            {aiSummary && (
+                                <div className="mb-6 relative overflow-hidden rounded-2xl border border-[#6d5dfc]/20 bg-gradient-to-br from-white via-white to-[#f5f3ff] p-6 shadow-sm">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6d5dfc] text-white">
+                                                <Sparkles size={16} />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-base font-bold text-gray-900">
+                                                    Executive Summary
+                                                </h2>
+                                                <p className="text-xs text-gray-500">
+                                                    {aiSource === "llm"
+                                                        ? "Synthesized by Bounded LLM Service"
+                                                        : "Deterministic Diagnostic Synthesis"}
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                <dl className="space-y-3.5 text-xs">
-                                    <div>
-                                        <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            Defect Category
-                                        </dt>
-                                        <dd className="mt-0.5 font-semibold text-gray-800">
-                                            {report?.defect_code || "D01"} - {report?.defect_name || "Tailing"}
-                                        </dd>
-                                    </div>
-
-                                    <div>
-                                        <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            Dispensing Material
-                                        </dt>
-                                        <dd className="mt-0.5 font-medium text-gray-700">
-                                            {report?.material || "UV-Curable Optical Adhesive"}
-                                        </dd>
-                                    </div>
-
-                                    <div>
-                                        <dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                                            Dispensing Method
-                                        </dt>
-                                        <dd className="mt-0.5 font-medium text-gray-700">
-                                            {report?.method || "Piezoelectric Jetting"}
-                                        </dd>
+                                        {aiSource && (
+                                            <span className="rounded-full bg-[#eeebff] px-2.5 py-0.5 text-[11px] font-semibold text-[#5848e8]">
+                                                {aiSource.toUpperCase()}
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className="rounded-xl bg-white/80 p-4 border border-[#6d5dfc]/10 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
@@ -499,23 +364,10 @@ function ReportDetailContent({
                                 </div>
                             )}
 
-                                <ul className="space-y-3 text-xs sm:text-sm text-gray-600">
-                                    <li className="flex items-start gap-2">
-                                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#6d5dfc] shrink-0" />
-                                        <span>Maintain routine nozzle purge cycle every 2 hours during continuous line operations.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#6d5dfc] shrink-0" />
-                                        <span>Verify fluid temperature stability when ambient temperature exceeds 25°C.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#6d5dfc] shrink-0" />
-                                        <span>Retain diagnostic report and revision logs for equipment maintenance history.</span>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                            {/* Formal Typed Report Preview */}
+                            <ReportPreview report={report} />
+                        </>
+                    )}
                 </>
             )}
         </PageContainer>
