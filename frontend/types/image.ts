@@ -45,7 +45,7 @@ export interface AnalysisProfile {
 export interface ImageDimensions {
     width: number;
     height: number;
-    channels?: number;
+    channels: number;
 }
 
 export interface RoiMeasurement {
@@ -55,20 +55,20 @@ export interface RoiMeasurement {
     coverage_ratio: number;
     overflow_ratio: number;
     equivalent_diameter_px: number;
-    calibrated_diameter_mm?: number | null;
+    calibrated_diameter_mm: number | null;
     circularity: number;
     solidity: number;
     aspect_ratio: number;
     hole_void_ratio: number;
     segmentation_quality: number;
-    is_missing?: boolean;
+    is_missing: boolean;
 }
 
 export interface AggregateMeasurements {
-    mean_coverage?: number | null;
-    size_cv?: number | null;
-    missing_roi_ids?: string[];
-    warnings?: string[];
+    mean_coverage: number | null;
+    size_cv: number | null;
+    missing_roi_ids: string[];
+    warnings: string[];
 }
 
 export interface ImageAnalysisResponse {
@@ -98,6 +98,7 @@ export interface UploadItem {
     result?: ImageAnalysisResponse | null;
     errorMessage?: string | null;
     configRevision: number;
+    activeRequestToken: number | null;
 }
 
 export type UploadSnapshot = Record<string, UploadItem>;

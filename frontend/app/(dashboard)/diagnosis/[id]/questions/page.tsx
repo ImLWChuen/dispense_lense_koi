@@ -26,17 +26,39 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
-        } catch (err: any) {
+            setError(null);
+        } catch (err: unknown) {
             console.error("Failed to fetch case", err);
-            setError(err.message || "Failed to load case data.");
+            const message = err instanceof Error ? err.message : "Failed to load case data.";
+            setError(message);
         } finally {
             setIsLoading(false);
         }
     }, [resolvedParams.id]);
 
     useEffect(() => {
-        fetchCase();
-    }, [fetchCase]);
+        let isCurrent = true;
+        casesApi
+            .getCase(resolvedParams.id)
+            .then((data) => {
+                if (isCurrent) {
+                    setCaseData(data);
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    const message = err instanceof Error ? err.message : "Failed to load case data.";
+                    setError(message);
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [resolvedParams.id]);
 
     const handleAnswer = async (questionId: string, value: string) => {
         if (!caseData?.diagnosis?.analysis_revision) return;
@@ -52,9 +74,10 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
             
             // Refresh to get the next question
             await fetchCase();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to submit answer", err);
-            setError(err.message || "Failed to submit answer.");
+            const message = err instanceof Error ? err.message : "Failed to submit answer.";
+            setError(message);
         } finally {
             setIsSubmitting(false);
         }
@@ -80,7 +103,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const nextQuestion = diagnosis?.next_question;
     const isDone = !nextQuestion && !isLoading;
 
-    const normalizeOptions = (options?: any[]) => {
+    const normalizeOptions = (options?: string[]) => {
         if (!options || options.length === 0) {
             return [
                 { value: "YES", label: "Yes" },

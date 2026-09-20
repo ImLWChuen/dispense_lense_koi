@@ -22,10 +22,9 @@ import {
     UploadSnapshot,
 } from "@/types/image";
 
-interface InFlightRequest {
+interface InFlightController {
     token: number;
     controller: AbortController;
-    configRevision: number;
 }
 
 export function validateAnalysisConfiguration(item: UploadItem): string | null {
@@ -177,7 +176,7 @@ export default function ImageUpload({
     const [globalError, setGlobalError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const requestStateRef = useRef<Record<string, InFlightRequest>>({});
+    const controllersRef = useRef<Record<string, InFlightController>>({});
     const nextTokenRef = useRef<number>(1);
     const uploadsRef = useRef<UploadSnapshot>({});
 
@@ -204,8 +203,8 @@ export default function ImageUpload({
     // Cleanup all object URLs and abort pending requests on unmount
     useEffect(() => {
         return () => {
-            Object.values(requestStateRef.current).forEach((req) => req.controller.abort());
-            requestStateRef.current = {};
+            Object.values(controllersRef.current).forEach((req) => req.controller.abort());
+            controllersRef.current = {};
             Object.values(uploadsRef.current).forEach((item) => {
                 if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
                 if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
@@ -248,6 +247,7 @@ export default function ImageUpload({
             result: null,
             errorMessage: null,
             configRevision: 1,
+            activeRequestToken: null,
         };
 
         setUploads((prev) => ({ ...prev, [uploadId]: newItem }));
@@ -274,9 +274,9 @@ export default function ImageUpload({
 
     const removeUpload = (uploadId: string) => {
         // Synchronously invalidate and abort running request
-        const pending = requestStateRef.current[uploadId];
+        const pending = controllersRef.current[uploadId];
         if (pending) {
-            delete requestStateRef.current[uploadId];
+            delete controllersRef.current[uploadId];
             pending.controller.abort();
         }
 
@@ -300,9 +300,9 @@ export default function ImageUpload({
     const updateUploadConfig = useCallback(
         (uploadId: string, updates: Partial<UploadItem>) => {
             // Synchronously invalidate and abort running request
-            const pending = requestStateRef.current[uploadId];
+            const pending = controllersRef.current[uploadId];
             if (pending) {
-                delete requestStateRef.current[uploadId];
+                delete controllersRef.current[uploadId];
                 pending.controller.abort();
             }
 
@@ -320,6 +320,7 @@ export default function ImageUpload({
                         result: null,
                         errorMessage: null,
                         configRevision: current.configRevision + 1,
+                        activeRequestToken: null,
                     },
                 };
             });
@@ -332,9 +333,9 @@ export default function ImageUpload({
         if (!item || item.status === "analyzing") return;
 
         // Abort any existing in-flight request for this upload
-        const existingReq = requestStateRef.current[uploadId];
+        const existingReq = controllersRef.current[uploadId];
         if (existingReq) {
-            delete requestStateRef.current[uploadId];
+            delete controllersRef.current[uploadId];
             existingReq.controller.abort();
         }
 
@@ -369,10 +370,9 @@ export default function ImageUpload({
         const requestRevision = item.configRevision;
         const controller = new AbortController();
 
-        requestStateRef.current[uploadId] = {
+        controllersRef.current[uploadId] = {
             token: requestToken,
             controller,
-            configRevision: requestRevision,
         };
 
         setUploads((prev) => {
@@ -384,6 +384,7 @@ export default function ImageUpload({
                     ...cur,
                     status: "analyzing",
                     errorMessage: null,
+                    activeRequestToken: requestToken,
                 },
             };
         });
@@ -396,18 +397,11 @@ export default function ImageUpload({
                 controller.signal
             );
 
-            // Synchronous check outside delayed effects
-            const activeReq = requestStateRef.current[uploadId];
-            if (!activeReq || activeReq.token !== requestToken || activeReq.configRevision !== requestRevision) {
-                return;
-            }
-
             // Commit result inside functional state update confirming upload exists,
             // configRevision matches, and request token matches
             setUploads((prev) => {
                 const cur = prev[uploadId];
-                const active = requestStateRef.current[uploadId];
-                if (!cur || cur.configRevision !== requestRevision || active?.token !== requestToken) {
+                if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
                     return prev;
                 }
                 return {
@@ -417,6 +411,7 @@ export default function ImageUpload({
                         status: "analyzed",
                         result: response,
                         errorMessage: null,
+                        activeRequestToken: null,
                     },
                 };
             });
@@ -426,16 +421,10 @@ export default function ImageUpload({
                 return;
             }
 
-            const activeReq = requestStateRef.current[uploadId];
-            if (!activeReq || activeReq.token !== requestToken || activeReq.configRevision !== requestRevision) {
-                return;
-            }
-
             const message = err instanceof Error ? err.message : "Image analysis failed.";
             setUploads((prev) => {
                 const cur = prev[uploadId];
-                const active = requestStateRef.current[uploadId];
-                if (!cur || cur.configRevision !== requestRevision || active?.token !== requestToken) {
+                if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
                     return prev;
                 }
                 return {
@@ -444,13 +433,14 @@ export default function ImageUpload({
                         ...cur,
                         status: "error",
                         errorMessage: message,
+                        activeRequestToken: null,
                     },
                 };
             });
         } finally {
-            // Delete controller only if stored request still belongs to this request token
-            if (requestStateRef.current[uploadId]?.token === requestToken) {
-                delete requestStateRef.current[uploadId];
+            // Delete controller only if stored controller still belongs to this request token
+            if (controllersRef.current[uploadId]?.token === requestToken) {
+                delete controllersRef.current[uploadId];
             }
         }
     };

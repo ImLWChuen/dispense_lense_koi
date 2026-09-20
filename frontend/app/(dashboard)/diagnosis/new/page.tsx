@@ -8,7 +8,7 @@ import PageContainer from "@/components/layout/PageContainer";
 import ProblemForm, { ProblemFormData } from "@/components/diagnosis/ProblemForm";
 import ImageUpload from "@/components/diagnosis/ImageUpload";
 import { casesApi } from "@/lib/api/cases";
-import { CreateCaseRequest, Observation } from "@/types/api";
+import { CreateCaseRequest, Observation, ObservationInput } from "@/types/api";
 import { UploadSnapshot } from "@/types/image";
 
 export default function NewDiagnosisPage() {
@@ -24,7 +24,7 @@ export default function NewDiagnosisPage() {
 
         try {
             // 1. Derive active calibrated observations strictly from current snapshot
-            const observations: Observation[] = [];
+            const observations: (Observation | ObservationInput)[] = [];
 
             for (const uploadItem of Object.values(uploadSnapshot)) {
                 if (uploadItem.status === "analyzed" && uploadItem.result?.status === "CALIBRATED") {

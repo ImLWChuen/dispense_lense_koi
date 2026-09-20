@@ -86,7 +86,7 @@ All actor, confirmer, verifier, and reporter string fields enforce max length of
     - `image_dimensions`: `{ width: number, height: number, channels: number }`
     - `roi_measurements`: `list[RoiMeasurement]` (each containing `roi_id`, `deposit_area_px`, `target_area_px`, `coverage_ratio`, `overflow_ratio`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `aspect_ratio`, `hole_void_ratio`, `segmentation_quality`, `is_missing`)
     - `aggregate_measurements`: `AggregateMeasurements` (`mean_coverage`, `size_cv`, `missing_roi_ids`, `warnings`)
-    - `observations`: `list[Observation]` (structured observations with `observation_id`, `observation_type`, `value`, `confidence`, `source: "IMAGE"`, `statement_type: "AI_INFERENCE"`, `original_text`, and `metadata`)
+    - `observations`: `list[Observation]` (structured observations with `id`, `observation_type`, `value`, `confidence`, `source: "IMAGE"`, `statement_type: "AI_INFERENCE"`, `original_text`, and `metadata`; note that `observation_id` is reserved for `CaseObservationResponse` in durable case responses)
     - `warnings`: `list[str]`
   - `400 Bad Request`: Missing `reference_file` when required, or malformed `profile` JSON.
   - `413 Payload Too Large`: Uploaded file exceeds 10 MiB limit.
