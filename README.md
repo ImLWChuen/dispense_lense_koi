@@ -4,7 +4,7 @@
 
 1. **Result Inspection:** Computer-vision measurement and classification of dispensing defects (e.g. undersized/oversized deposits, abnormal shape, coverage ratio, overflow ratio) under calibrated conditions.
 2. **Process Context:** Equipment parameters, fluid material properties, valve and nozzle configurations, dispensing pressure, and ambient environmental conditions.
-3. **Diagnostic Decision:** Deterministic cause ranking with numeric confidence percentages, actionable question/check recommendations, immutable analysis revisions, and independent root-cause confirmation and recovery tracking.
+3. **Diagnostic Decision:** Deterministic cause ranking with cumulative evidence support scores (`Evidence Support /100`), actionable question/check recommendations, immutable analysis revisions, and independent root-cause confirmation and recovery tracking. Scores represent evidence support rather than statistical probabilities and do not need to sum to 100.
 
 ---
 
@@ -15,7 +15,7 @@ Ensure the following prerequisites are installed on your Windows development mac
 - **Windows PowerShell 5.1+** or **PowerShell 7+**
 - **Docker Desktop** with the **Linux container engine** enabled and running
 - **Python 3.11+** (tested up to Python 3.14 on Windows)
-- **Node.js 18+** and **npm**
+- **Node.js 20.9.0+** (required by Next.js 16) and **npm**
 
 ---
 
@@ -141,7 +141,7 @@ The backend health endpoint at `GET /api/v1/health` returns:
 ### Health Scope & Deterministic Offline Operation
 - `/api/v1/health` verifies **solely** that the FastAPI web service process is active, initialized, and handling HTTP requests.
 - It **does not** verify database connectivity, CV inference pipelines, or external AI services.
-- **Offline / Deterministic Diagnostic Authority:** The diagnostic engine runs **100% offline and deterministic** without an OpenAI API key. All cause ranking, numeric confidence calculations, and follow-up troubleshooting checks are driven by Member 2's deterministic rules and weights.
+- **Offline / Deterministic Diagnostic Authority:** The diagnostic engine runs **100% offline and deterministic** without an OpenAI API key. All cause ranking, evidence support score calculations (`Evidence Support /100`), and follow-up troubleshooting checks are driven by Member 2's deterministic rules and weights.
 - **Optional LLM Summaries:** An `OPENAI_API_KEY` is completely optional. If configured, it generates narrative explanation summaries (`source="llm"`). If unconfigured or unavailable, the system transparently falls back to structured deterministic summaries (`source="deterministic"`). LLM output never mutates diagnosis scores, rankings, or case states.
 
 ---

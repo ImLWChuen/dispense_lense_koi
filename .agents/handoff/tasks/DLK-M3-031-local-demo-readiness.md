@@ -124,7 +124,7 @@ Add `docs/demo/local-demo-runbook.md` with:
   - frame the technician problem and evidence-based ranking;
   - create a real durable case from process context and symptom evidence;
   - optionally add calibrated image evidence under the accepted image limitations;
-  - show ranked causes with numeric confidence and short supporting/contradicting evidence;
+  - show ranked causes with deterministic evidence support scores (Evidence Support /100) and short supporting/contradicting evidence;
   - answer one follow-up question or record one check and show the ranking revision;
   - explicitly confirm a cause;
   - record a recovery action;
@@ -262,44 +262,55 @@ Proposed commit message: `docs(demo): make local competition startup repeatable`
 
 ### Summary
 
-Delivered all local demo readiness and competition rehearsal requirements for DLK-M3-031:
-1. Refactored `scripts/start-db.ps1`:
-   - Made repository-path-independent using `$PSScriptRoot` (works regardless of caller directory).
-   - Removed all user-specific and hardcoded paths (`C:\Users\koay\...`), finding Docker via `Get-Command docker`.
-   - Distinguishes missing Docker CLI, engine-unavailable (directing operator to start Docker Desktop Linux engine), invalid Compose configuration, Compose startup errors, and container health check timeouts with concise actionable text and non-zero exit.
-   - Preserved `postgres_data` volume and development database records without destructive commands (`down -v`, volume deletions, or silent replacements).
-2. Created `scripts/demo-preflight.ps1`:
-   - Safe, read-only Windows PowerShell script that validates Docker CLI, Docker engine, Compose configuration, local Python virtual environment (`backend\.venv\Scripts\python.exe`), Node.js/npm, frontend dependencies (`frontend\node_modules\next`), `DATABASE_URL` presence (reporting presence/absence only, never printing secret connection strings), and pre-startup port availability on ports `8000` and `3001`.
-   - Rejects occupied ports with PID and process name identification without terminating external processes; reminds operator that port `3000` is outside the project startup contract.
-   - States the exact next command (`scripts\start-db.ps1`) upon complete pass.
-3. Created `scripts/verify-demo.ps1`:
-   - Read-only post-startup verification script asserting backend identity on `http://127.0.0.1:8000/api/v1/health` (`service="dispense-lens-api"`, `status="ok"`) and frontend identity on `http://localhost:3001` (`<title>DispenseLens</title>` / DispenseIQ application content).
-   - Rejects non-DispenseIQ services on those ports (such as Open-WebUI on port 3000) as wrong local applications with actionable failure messages.
-4. Replaced root `README.md`:
-   - Replaced Create Next App boilerplate with a comprehensive project quickstart covering the three-layer diagnostic flow, prerequisites, first-time dependency setup, development database migration (`alembic upgrade heads`), exact startup commands for backend (8000) and frontend (3001), health scope vs. readiness distinction, offline deterministic operation, port 3000 avoidance warning, safe shutdown, troubleshooting matrix, and documentation links.
-5. Created `docs/demo/local-demo-runbook.md`:
-   - Structured 6–10 minute timed competition demonstration script covering problem framing, context/case creation, calibrated image analysis evidence, deterministic cause ranking, troubleshooting checks, root-cause confirmation, recovery actions, and report/PDF export.
-   - Detailed truthful claims and engineering limitations (technician decision support, deterministic scoring authority, optional LLM explanations, calibrated optical vision boundaries, deferred hardware integration).
-   - Fallback procedures for each component (Docker, backend, frontend, camera/image, OpenAI) and a reset-free rehearsal record table.
+Delivered all local demo readiness and competition rehearsal requirements for DLK-M3-031 and resolved review findings R1–R4 from `.agents/handoff/reviews/DLK-M3-031-review.md`:
+
+1. Initial local demo readiness delivery:
+   - Refactored `scripts/start-db.ps1`: repository-path-independent via `$PSScriptRoot`, removed hardcoded developer paths, distinguishes Docker CLI/engine/Compose failures with actionable text, waits for container health check, and preserves development database volume.
+   - Created `scripts/demo-preflight.ps1`: safe, read-only Windows PowerShell preflight script validating tools, Python virtual environment, Node.js/npm, frontend dependencies, non-blank database configuration, and ports 8000/3001 without terminating processes.
+   - Created `scripts/verify-demo.ps1`: read-only post-startup verification asserting backend `dispense-lens-api` and frontend `DispenseLens`/`DispenseIQ` presence while rejecting wrong local services (e.g. on port 3000).
+   - Replaced root `README.md`: complete project quickstart, prerequisites, setup, migration, startup sequence, port 3000 avoidance warning, health scope, and troubleshooting.
+   - Created `docs/demo/local-demo-runbook.md`: structured timed 6–10 minute competition demonstration script, truthful claims, failure fallbacks, and rehearsal tracking.
+
+2. Review correction round (R1–R4 resolution):
+   - **R1 (Executable runbook aligned with checked-in UI):**
+     - Rewrote `docs/demo/local-demo-runbook.md` using only controls, labels, values, and ordering that exist in the checked-in UI.
+     - Moved optional image upload/calibration to Phase 2 *before* `Start Diagnosis` on `/diagnosis/new` so that image observations are collected into the case request.
+     - Changed Equipment/Line select to use checked-in options (`Dispensing Line A–D`), selecting `Dispensing Line A` instead of nonexistent `SYNTHETIC-LINE-04`.
+     - In Phase 4, prescribed `Completed` + `SUPPORTS` + `blockage_found` only when `ACT01 - Inspect Nozzle` is recommended.
+     - In Phase 5, documented root-cause confirmation, corrective recovery, and verification as distinct engineering assessment, physical recovery, and verification steps using free-text and boolean controls (no `ACT01` or `VERIFY01` aliases for recovery or verification).
+     - Removed static measurement, score, and ranking claims; instructed narrator to state actual rendered values.
+   - **R2 (Deterministic Evidence Support /100 semantics):**
+     - Replaced all occurrences of confidence-percentage, probability, and Bayesian terminology across `README.md`, `docs/demo/local-demo-runbook.md`, and this task specification with the accepted `Evidence Support /100` contract.
+     - Explicitly documented that scores are deterministic evidence-support metrics, not statistical probabilities, and do not sum to 100 across causes.
+   - **R3 (Node.js >=20.9.0 requirement & preflight):**
+     - Updated `README.md` to require `Node.js 20.9.0+` (Next.js 16 requirement).
+     - In `scripts/demo-preflight.ps1`, implemented `Test-NodeVersionSupported` with semver parsing. Preflight fails with a non-zero exit and actionable message when the installed Node version is below `20.9.0`.
+     - Added `-OverrideNodeVersion` parameter for dependency-free verification of unsupported, exact, and supported versions without altering machine installation.
+   - **R4 (Secret-safe database configuration check):**
+     - Eliminated complete database URLs and credentials from preflight output; points to `.env.example` and `README.md` without echoing connection strings.
+     - Implemented `Get-DatabaseConfigStatus` in `scripts/demo-preflight.ps1` to strictly reject missing and blank/whitespace-only `DATABASE_URL` values while accepting valid configurations in environment or `.env` files.
+     - Added `-OverrideDatabaseUrl`, `-OverrideRootEnvPath`, and `-OverrideBackendEnvPath` parameters for controlled secret-safe verification of missing, blank, and valid states.
 
 ### Files changed
 
 Primary feature paths:
 - `scripts/start-db.ps1`: Refactored to be path-independent, portable, distinguish engine failures, wait for container health, and preserve development volume.
-- `scripts/demo-preflight.ps1`: Added read-only preflight check for Docker, Python, Node, npm, dependencies, config presence, and ports 8000/3001.
+- `scripts/demo-preflight.ps1`: Added read-only preflight check for Docker, Python, Node.js (>=20.9.0), npm, dependencies, non-blank config presence, and ports 8000/3001; added `Test-NodeVersionSupported` and `Get-DatabaseConfigStatus` helpers with secret-safe reporting and test override parameters.
 - `scripts/verify-demo.ps1`: Added post-startup identity verification asserting backend `dispense-lens-api` and frontend `DispenseLens`/`DispenseIQ` presence.
-- `README.md`: Authoritative project quickstart, prerequisites, setup, startup sequence, port 3000 warning, health scope, and troubleshooting.
-- `docs/demo/local-demo-runbook.md`: Timed 6–10 minute competition demonstration script, truthful claims, failure fallbacks, and rehearsal table.
+- `README.md`: Project quickstart, Node.js 20.9.0+ prerequisite, setup, startup sequence, port 3000 warning, health scope, deterministic offline operation, and `Evidence Support /100` terminology.
+- `docs/demo/local-demo-runbook.md`: Timed 6–10 minute competition demonstration script rewritten strictly from checked-in UI controls/order, truthful claims, failure fallbacks, rehearsal table, and `Evidence Support /100` terminology.
 
 Handoff paths:
-- `.agents/handoff/QUEUE.md`: Updated DLK-M3-031 status to `implemented`.
-- `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`: Updated frontmatter status to `implemented` and completed implementation report.
-- `.agents/handoff/reviews/DLK-M3-030-review.md`: Included accepted pending review record unchanged.
+- `.agents/handoff/QUEUE.md`: Updated DLK-M3-031 status to `implemented` with R1–R4 resolution details.
+- `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`: Corrected task requirements wording, completed implementation report with R1–R4 resolution and fresh verification evidence, and maintained `status: implemented`.
+- `.agents/handoff/reviews/DLK-M3-031-review.md`: Uncommitted review record included for atomic commit.
 
 ### Decisions made
 
-- Avoided global `$ErrorActionPreference = "Stop"` for native console invocations in PowerShell scripts so that standard progress output on stderr (e.g. from Docker Compose) does not trigger false-positive terminating exceptions; evaluated `$LASTEXITCODE` explicitly.
-- Used `alembic upgrade heads` in documentation to accommodate multiple head branches cleanly.
+- In `scripts/demo-preflight.ps1`, used .NET `[version]` parsing after stripping leading `v` to robustly evaluate semver versions against `20.9.0`.
+- In `Get-DatabaseConfigStatus`, parsed `.env` lines with regex `^\s*DATABASE_URL\s*=\s*(.*)$`, stripped optional enclosing quotes, and asserted `-not [string]::IsNullOrWhiteSpace($rawVal)` to reliably distinguish blank or whitespace-only assignments from valid configurations.
+- Maintained strict zero-credential-leakage policy in `demo-preflight.ps1`: only reports the source (e.g. `.env file in repository root` or `$env:DATABASE_URL`) when configured, and refers to `.env.example` on failure without printing connection strings.
+- Kept optional test override parameters on `demo-preflight.ps1` to permit dependency-free testing of version and database branches without temporary script files or machine modifications.
 - Preserved existing development records in PostgreSQL volume `postgres_data` without running destructive volume wipes or automated tests against `dispenselens`.
 
 ### Verification results
@@ -308,26 +319,30 @@ Handoff paths:
    - `demo-preflight.ps1`: PARSED OK (0 errors)
    - `start-db.ps1`: PARSED OK (0 errors)
    - `verify-demo.ps1`: PARSED OK (0 errors)
-2. Read-Only Preflight Check (`scripts/demo-preflight.ps1`):
-   - Pre-startup run with free ports: Passed with exit code 0.
-   - Controlled port-conflict run: Correctly detected occupied port 8000 (PID 45164 python), identified process, printed actionable warning without killing process, and returned exit code 1.
-3. Database Startup & Health (`scripts/start-db.ps1`):
-   - Succeeded from repository root and from parent directory.
-   - `docker inspect --format "{{.State.Health.Status}}" dispenselens-postgres` reported `healthy`.
-4. Development Migrations:
-   - `.\.venv\Scripts\python.exe -m alembic upgrade heads` applied successfully with exit code 0.
-5. Post-Startup Application Identity (`scripts/verify-demo.ps1`):
-   - Backend identity verified: `service: dispense-lens-api`, `status: ok`, `version: 0.1.0`.
-   - Frontend identity verified: `http://localhost:3001 (HTTP 200)` matching `DispenseLens` / `DispenseIQ` title/content. Returned exit code 0.
-   - Controlled wrong-service run against port 3000 (Open-WebUI): Correctly failed with exit code 1 and reported `(Wrong local application detected at http://localhost:3000)`.
-6. Health API Integration Test (`backend/tests/integration/test_health_api.py`):
-   - `2 passed, 11 warnings in 2.38s`.
-7. Frontend Static & Production Checks:
-   - `npm run lint`: 0 errors, 0 warnings.
-   - `npm run build`: Compiled successfully with Turbopack and TypeScript; all 13 routes generated.
-8. Task Validation & Whitespace:
-   - `validate_task.py`: Returned VALID.
-   - `git diff --check`: Passed with 0 errors.
+
+2. Dependency-Free Node-Version Checks (`Test-NodeVersionSupported` & preflight):
+   - Preflight with `-OverrideNodeVersion "v18.19.0"`: Correctly failed with exit code 1 (`[FAIL] Node.js: Unsupported version (v18.19.0). Node.js >=20.9.0 is required by Next.js 16.`).
+   - Preflight with `-OverrideNodeVersion "v20.9.0"`: Passed with exit code 0 (`[PASS] Node.js: Available (v20.9.0, >= 20.9.0)`).
+   - Preflight with `-OverrideNodeVersion "v22.12.0"`: Passed with exit code 0 (`[PASS] Node.js: Available (v22.12.0, >= 20.9.0)`).
+   - Boundary tests for `Test-NodeVersionSupported`: "18.19.0" -> False, "v18.0.0" -> False, "20.8.9" -> False, "20.9.0" -> True, "v20.9.0" -> True, "20.10.0" -> True, "v22.12.0" -> True, "" -> False.
+
+3. Secret-Safe Database Configuration Checks (`Get-DatabaseConfigStatus` & preflight):
+   - Missing configuration test: Reported `Configured: False`, preflight exited with code 1 (`[FAIL] DATABASE_URL: Not configured or blank.`).
+   - Blank configuration test (`DATABASE_URL=""`): Reported `Configured: False`, preflight exited with code 1 (`[FAIL] DATABASE_URL: Not configured or blank.`).
+   - Valid configuration test: Reported `Configured: True`, preflight exited with code 0 (`[PASS] DATABASE_URL: Configured (.env file in repository root)`).
+   - Credential leakage assertion: Output verified free of passwords (`super_secret_pw`: False) and complete connection URLs (`postgresql+psycopg`: False).
+
+4. Static Cross-Check on Documentation:
+   - `docs/demo/local-demo-runbook.md`: 0 occurrences of `confidence`, 0 occurrences of `% confidence`, 0 occurrences of `Bayesian`, 0 occurrences of `RESTRICTION_OBSERVED`, 0 occurrences of `VERIFY01`, 0 occurrences of `SYNTHETIC-LINE-04`, and 0 occurrences of `ACT01` in recovery/verification sections.
+   - `README.md`: 0 occurrences of `confidence`, 0 occurrences of `% confidence`, 0 occurrences of `Bayesian`. Confirmed `Node.js 20.9.0+` requirement.
+   - `DLK-M3-031-local-demo-readiness.md`: Task requirement updated to `Evidence Support /100`.
+
+5. Application Health, Lint, and Build Gates:
+   - Backend health API integration test (`pytest tests/integration/test_health_api.py -q`): 2 passed.
+   - Frontend lint (`npm run lint`): Passed with 0 errors, 0 warnings across all files.
+   - Frontend production build (`npm run build`): Compiled successfully with Turbopack and TypeScript; all 13 routes generated.
+   - Task validation (`validate_task.py`): Returned VALID.
+   - Git diff whitespace check (`git diff --check`): Passed with 0 errors.
 
 ### Limitations and follow-up
 
@@ -336,4 +351,4 @@ Handoff paths:
 
 ### Proposed commit message
 
-`docs(demo): make local competition startup repeatable`
+`docs(demo): resolve DLK-M3-031 review findings R1-R4`

@@ -1,17 +1,89 @@
 # ==============================================================================
 # scripts/demo-preflight.ps1: Read-Only Environment and Port Preflight Check
 # ==============================================================================
-# Verifies Docker, Python virtual environment, Node.js/npm, frontend dependencies,
-# database configuration presence, compose config, and port availability (8000, 3001).
+# Verifies Docker, Python virtual environment, Node.js (>=20.9.0), frontend dependencies,
+# non-blank database configuration presence, compose config, and port availability (8000, 3001).
 #
 # Read-only: Makes NO persistent changes and terminates NO processes.
 # Returns exit code 0 on complete pass, or exit code 1 on any check failure.
 # ==============================================================================
 
 [CmdletBinding()]
-param()
+param(
+    # Optional parameters for dependency-free verification testing
+    [string]$OverrideNodeVersion = $null,
+    [string]$OverrideDatabaseUrl = $null,
+    [string]$OverrideRootEnvPath = $null,
+    [string]$OverrideBackendEnvPath = $null
+)
 
 $ErrorActionPreference = "Continue"
+
+# ------------------------------------------------------------------------------
+# Helper Functions (Exported for dependency-free unit testing)
+# ------------------------------------------------------------------------------
+
+function Test-NodeVersionSupported([string]$versionString, [string]$minRequired = "20.9.0") {
+    if ([string]::IsNullOrWhiteSpace($versionString)) { return $false }
+    $clean = $versionString.Trim() -replace '^[vV]', ''
+    try {
+        $parsed = [version]$clean
+        $min = [version]$minRequired
+        return ($parsed -ge $min)
+    } catch {
+        return $false
+    }
+}
+
+function Get-DatabaseConfigStatus(
+    [string]$envVal,
+    [string]$rootEnvPath,
+    [string]$backendEnvPath
+) {
+    if (-not [string]::IsNullOrWhiteSpace($envVal)) {
+        return [PSCustomObject]@{
+            Configured = $true
+            Source = "Environment variable `$env:DATABASE_URL"
+        }
+    }
+
+    $targets = @(
+        @{ Path = $rootEnvPath; Label = ".env file in repository root" },
+        @{ Path = $backendEnvPath; Label = "backend\.env file" }
+    )
+
+    foreach ($target in $targets) {
+        if ($target.Path -and (Test-Path $target.Path)) {
+            $lines = Get-Content $target.Path -ErrorAction SilentlyContinue
+            if ($lines) {
+                foreach ($line in $lines) {
+                    $trimmed = $line.Trim()
+                    if ($trimmed.StartsWith("#") -or -not ($trimmed -match '^\s*DATABASE_URL\s*=\s*(.*)$')) {
+                        continue
+                    }
+                    $rawVal = $matches[1].Trim()
+                    # Strip surrounding quotes if present
+                    if (($rawVal.StartsWith('"') -and $rawVal.EndsWith('"')) -or ($rawVal.StartsWith("'") -and $rawVal.EndsWith("'"))) {
+                        if ($rawVal.Length -ge 2) {
+                            $rawVal = $rawVal.Substring(1, $rawVal.Length - 2).Trim()
+                        }
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace($rawVal)) {
+                        return [PSCustomObject]@{
+                            Configured = $true
+                            Source = $target.Label
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        Configured = $false
+        Source = "None"
+    }
+}
 
 # 1. Resolve repository root from script location
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -91,17 +163,25 @@ if (Test-Path $backendVenvPython) {
 }
 
 # ------------------------------------------------------------------------------
-# Check 5: Node.js and npm
+# Check 5: Node.js (>=20.9.0 required by Next.js 16) and npm
 # ------------------------------------------------------------------------------
 $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
 $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
 
-if ($nodeCmd) {
-    $nodeVer = ((& node --version 2>&1) | Out-String).Trim()
-    Write-Host "[PASS] Node.js: Available ($nodeVer)" -ForegroundColor Green
+$nodeVerRaw = if ($OverrideNodeVersion) { $OverrideNodeVersion } elseif ($nodeCmd) { ((& node --version 2>&1) | Out-String).Trim() } else { $null }
+
+if ($nodeVerRaw) {
+    $isNodeValid = Test-NodeVersionSupported $nodeVerRaw "20.9.0"
+    if ($isNodeValid) {
+        Write-Host "[PASS] Node.js: Available ($nodeVerRaw, >= 20.9.0)" -ForegroundColor Green
+    } else {
+        Write-Host "[FAIL] Node.js: Unsupported version ($nodeVerRaw). Node.js >=20.9.0 is required by Next.js 16." -ForegroundColor Red
+        Write-Host "       Action: Install or upgrade Node.js to v20.9.0 or higher." -ForegroundColor Yellow
+        $hasFailure = $true
+    }
 } else {
     Write-Host "[FAIL] Node.js: Not found on PATH." -ForegroundColor Red
-    Write-Host "       Action: Install Node.js (v18+ recommended)." -ForegroundColor Yellow
+    Write-Host "       Action: Install Node.js (v20.9.0+ required by Next.js 16)." -ForegroundColor Yellow
     $hasFailure = $true
 }
 
@@ -126,36 +206,20 @@ if (Test-Path $frontendNodeModules) {
 }
 
 # ------------------------------------------------------------------------------
-# Check 7: Database configuration presence (DATABASE_URL presence/absence only)
+# Check 7: Database configuration presence (non-blank check; no secrets printed)
 # ------------------------------------------------------------------------------
-$dbUrlConfigured = $false
-$dbUrlSource = ""
+$envDb = if ($PSBoundParameters.ContainsKey('OverrideDatabaseUrl')) { $OverrideDatabaseUrl } else { $env:DATABASE_URL }
+$rEnv = if ($OverrideRootEnvPath) { $OverrideRootEnvPath } else { $rootEnvFile }
+$bEnv = if ($OverrideBackendEnvPath) { $OverrideBackendEnvPath } else { $backendEnvFile }
 
-if (-not [string]::IsNullOrWhiteSpace($env:DATABASE_URL)) {
-    $dbUrlConfigured = $true
-    $dbUrlSource = "Environment variable `$env:DATABASE_URL"
-} elseif (Test-Path $rootEnvFile) {
-    $rootEnvContent = Get-Content $rootEnvFile -ErrorAction SilentlyContinue
-    if ($rootEnvContent -match "^\s*DATABASE_URL\s*=") {
-        $dbUrlConfigured = $true
-        $dbUrlSource = ".env file in repository root"
-    }
-}
+$dbStatus = Get-DatabaseConfigStatus -envVal $envDb -rootEnvPath $rEnv -backendEnvPath $bEnv
 
-if (-not $dbUrlConfigured -and (Test-Path $backendEnvFile)) {
-    $backendEnvContent = Get-Content $backendEnvFile -ErrorAction SilentlyContinue
-    if ($backendEnvContent -match "^\s*DATABASE_URL\s*=") {
-        $dbUrlConfigured = $true
-        $dbUrlSource = "backend\.env file"
-    }
-}
-
-if ($dbUrlConfigured) {
-    Write-Host "[PASS] DATABASE_URL: Configured ($dbUrlSource)" -ForegroundColor Green
+if ($dbStatus.Configured) {
+    Write-Host "[PASS] DATABASE_URL: Configured ($($dbStatus.Source))" -ForegroundColor Green
 } else {
-    Write-Host "[FAIL] DATABASE_URL: Not configured." -ForegroundColor Red
-    Write-Host "       Action: Set `$env:DATABASE_URL in PowerShell session or create .env from .env.example." -ForegroundColor Yellow
-    Write-Host "       Example: `$env:DATABASE_URL = `"postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens`"" -ForegroundColor Yellow
+    Write-Host "[FAIL] DATABASE_URL: Not configured or blank." -ForegroundColor Red
+    Write-Host "       Action: Set a non-blank `$env:DATABASE_URL in PowerShell session or configure in .env." -ForegroundColor Yellow
+    Write-Host "       Reference: See .env.example or README.md for connection configuration instructions." -ForegroundColor Yellow
     $hasFailure = $true
 }
 
