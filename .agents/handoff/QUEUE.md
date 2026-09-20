@@ -6,15 +6,16 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 ## Active task
 
-- `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **implemented (ready for review)**
+- `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`
   - review: `.agents/handoff/reviews/DLK-M3-027-review.md`
-  - reviewed commit: `5ba415d7d9c1b0bd1a185d24f7d69cd2adae95d7`
+  - reviewed commit: `ebeacc7d0bb65e42dd4da3c154f43aa0c6adad61`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-026`
   - outcome: typed multipart image client, stable upload/ROI/calibration state, calibrated-only case evidence, persisted image evidence presentation, backend-derived evidence analysis, and canonical new-diagnosis form values
   - corrections resolved (R1–R8): atomic activeRequestToken React state tracking and safe finally cleanup; Section 3.4 observation id contract alignment; backend-guaranteed required response types with separate ObservationInput; lint-clean questions/troubleshooting pages; reproducible verification commands and outputs; shared production module frontend/lib/image-upload-state.ts for pure validation and request-state transitions, imported and executed by ImageUpload.tsx and regression suite with aligned 1.00001 ROI tolerance
-  - stop point: commit the bounded R8 correction locally and return for ChatGPT review; do not begin Phase 3
+  - reviewer verification: shared production state module executed by all seven regression scenarios; focused lint clean across all 17 task-owned frontend files; production build and TypeScript passed; task validation and committed whitespace check passed
+  - next step: return to the planner before beginning Phase 3 or publishing this branch
   - explicit exclusions: backend changes, dashboard/reports/cases/analytics, troubleshooting/verification corrections, dependencies, raw image persistence, and remote Git operations
 
 ## Accepted calibrated-vision task
