@@ -16,6 +16,7 @@ Verifies:
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 import uuid
@@ -123,8 +124,59 @@ def test_project_safe_observations_image_provenance():
 
 
 def test_project_safe_observations_rejects_paths_secrets_bytes_and_unwhitelisted():
-    """Verify raw image bytes, base64 strings, paths, secrets, and unapproved metadata are omitted."""
+    """Verify raw image bytes, base64 strings, paths, secrets, overlength text, and unapproved metadata are omitted,
+    both when placed in the primary observation value and in metadata. Ordinary canonical observations remain intact.
+    """
     dirty_observations = [
+        # 1. Prohibited in primary value: data:image / base64
+        {
+            "observation_type": "deposit_size",
+            "value": "data:image/png;base64,QUJDREVGRw==",
+            "source": "IMAGE",
+        },
+        # 2. Prohibited in primary value: Windows filesystem path
+        {
+            "observation_type": "deposit_size",
+            "value": "C:\\Users\\admin\\AppData\\Local\\Temp\\defect_roi.png",
+            "source": "IMAGE",
+        },
+        # 3. Prohibited in primary value: Unix filesystem path
+        {
+            "observation_type": "deposit_size",
+            "value": "/var/app/uploads/2026/09/image_01.jpg",
+            "source": "IMAGE",
+        },
+        # 4. Prohibited in primary value: Credential / secret-like token
+        {
+            "observation_type": "deposit_size",
+            "value": "sk-proj-supersecretkey12345",
+            "source": "IMAGE",
+        },
+        # 5. Prohibited in primary value: Bearer token
+        {
+            "observation_type": "deposit_size",
+            "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6",
+            "source": "IMAGE",
+        },
+        # 6. Prohibited in primary value: Overlength string (> 200 chars)
+        {
+            "observation_type": "deposit_size",
+            "value": "undersized_" + "x" * 5000,
+            "source": "IMAGE",
+        },
+        # 7. Prohibited in primary value: Raw bytes
+        {
+            "observation_type": "deposit_size",
+            "value": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+            "source": "IMAGE",
+        },
+        # 8. Prohibited in primary value: Empty / blank string
+        {
+            "observation_type": "deposit_size",
+            "value": "   ",
+            "source": "IMAGE",
+        },
+        # 9. Prohibited in metadata of an otherwise canonical observation
         {
             "observation_type": "deposit_size",
             "value": "undersized",
@@ -151,39 +203,112 @@ def test_project_safe_observations_rejects_paths_secrets_bytes_and_unwhitelisted
                 # Prohibited: Unwhitelisted arbitrary metadata
                 "unrestricted_internal_state": {"arbitrary": "data"},
             },
-        }
+        },
+        # 10. Ordinary canonical IMAGE observation that must remain intact
+        Observation(
+            observation_type=ObservationType.DEPOSIT_SIZE,
+            value="undersized",
+            source=EvidenceSource.IMAGE,
+            statement_type=StatementType.AI_INFERENCE,
+            confidence=0.95,
+            metadata={"mode": "PROCESS_LIMITS", "status": "CALIBRATED", "roi_id": "ROI_1"},
+        ),
     ]
 
     projected = PromptManager.project_safe_observations(dirty_observations)
-    assert len(projected) == 1
+    # Only items 9 and 10 should be projected; all 8 dirty-value items must be omitted
+    assert len(projected) == 2
 
-    item = projected[0]
-    prov = item.get("provenance", {})
+    # Item 9: dirty metadata was sanitized, safe fields preserved
+    item9 = projected[0]
+    assert item9["value"] == "undersized"
+    prov9 = item9.get("provenance", {})
+    assert prov9.get("mode") == "PROCESS_LIMITS"
+    assert prov9.get("status") == "CALIBRATED"
+    assert prov9.get("roi_id") == 2
+    assert "raw_bytes" not in prov9
+    assert "encoded_preview" not in prov9
+    assert "file_path_win" not in prov9
+    assert "file_path_unix" not in prov9
+    assert "secret_key" not in prov9
 
-    # Safe fields preserved
-    assert prov.get("mode") == "PROCESS_LIMITS"
-    assert prov.get("status") == "CALIBRATED"
-    assert prov.get("roi_id") == 2
-
-    # Prohibited fields must be strictly absent
-    assert "raw_bytes" not in prov
-    assert "encoded_preview" not in prov
-    assert "file_path_win" not in prov
-    assert "file_path_unix" not in prov
-    assert "relative_path" not in prov
-    assert "secret_key" not in prov
-    assert "auth_token" not in prov
-    assert "password" not in prov
-    assert "unrestricted_internal_state" not in prov
+    # Item 10: canonical observation remains intact
+    item10 = projected[1]
+    assert item10["observation_type"] == "deposit_size"
+    assert item10["value"] == "undersized"
+    assert item10["source"] == "IMAGE"
+    assert item10["confidence"] == 0.95
+    assert item10["provenance"] == {"mode": "PROCESS_LIMITS", "status": "CALIBRATED", "roi_id": "ROI_1"}
 
     # String representation of projected output must have zero paths or secret strings
     dumped = json.dumps(projected)
     assert "base64" not in dumped
+    assert "QUJD" not in dumped
     assert "sk-proj" not in dumped
     assert "AppData" not in dumped
     assert "uploads" not in dumped
     assert ".png" not in dumped
     assert ".jpg" not in dumped
+    assert "x" * 500 not in dumped
+
+
+def test_project_safe_observations_caps_at_maximum_count():
+    """Verify projection strictly caps observation count at 50 while preserving deterministic order."""
+    observations = [
+        {
+            "observation_type": "deposit_size",
+            "value": f"undersized_{i:03d}",
+            "source": "IMAGE",
+            "first_seen_revision": 1,
+        }
+        for i in range(80)
+    ]
+
+    projected = PromptManager.project_safe_observations(observations)
+    assert len(projected) == 50
+    # Deterministic input order preserved
+    assert projected[0]["value"] == "undersized_000"
+    assert projected[49]["value"] == "undersized_049"
+
+
+def test_project_safe_observations_rejects_overlength_type_and_source():
+    """Verify overlength or prohibited observation_type and source are skipped."""
+    observations = [
+        # Overlength observation_type (> 64)
+        {
+            "observation_type": "type_" + "a" * 100,
+            "value": "undersized",
+            "source": "IMAGE",
+        },
+        # Overlength source (> 64)
+        {
+            "observation_type": "deposit_size",
+            "value": "undersized",
+            "source": "source_" + "b" * 100,
+        },
+        # Path in observation_type
+        {
+            "observation_type": "/path/to/bad/type",
+            "value": "undersized",
+            "source": "IMAGE",
+        },
+        # Secret in source
+        {
+            "observation_type": "deposit_size",
+            "value": "undersized",
+            "source": "secret_source_key",
+        },
+        # Canonical valid observation
+        {
+            "observation_type": "deposit_size",
+            "value": "undersized",
+            "source": "IMAGE",
+        },
+    ]
+
+    projected = PromptManager.project_safe_observations(observations)
+    assert len(projected) == 1
+    assert projected[0]["value"] == "undersized"
 
 
 # ===========================================================================
@@ -374,21 +499,39 @@ def test_ai_summary_endpoint_case_state_invariance(tracked_cases):
     assert before_res.status_code == 200
     before_data = before_res.json()
 
-    # Call ai-summary multiple times (both LLM and deterministic fallback)
-    with patch("app.api.cases.LLMService") as MockLLMClass:
-        mock_instance = MagicMock()
-        mock_instance.is_available = True
-        mock_instance.generate_text.return_value = "Mocked LLM summary"
-        MockLLMClass.return_value = mock_instance
+    # Call ai-summary multiple times with synthetic OPENAI_API_KEY to guarantee complete offline isolation
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "synthetic-test-key-do-not-call"}):
+        with patch("app.api.cases.LLMService") as MockLLMClass:
+            # 1. First request: mocked successful provider returns source="llm"
+            mock_success = MagicMock()
+            mock_success.is_available = True
+            mock_success.generate_text.return_value = "Mocked LLM summary"
+            MockLLMClass.return_value = mock_success
 
-        summary_res1 = client.post(f"/api/v1/cases/{case_id}/ai-summary")
-        assert summary_res1.status_code == 200
-        assert summary_res1.json()["source"] == "llm"
+            summary_res1 = client.post(f"/api/v1/cases/{case_id}/ai-summary")
+            assert summary_res1.status_code == 200
+            assert summary_res1.json()["source"] == "llm"
+            assert mock_success.generate_text.called
 
-    # Second call falling back
-    summary_res2 = client.post(f"/api/v1/cases/{case_id}/ai-summary")
-    assert summary_res2.status_code == 200
-    assert summary_res2.json()["source"] == "deterministic"
+            # 2. Second request: explicitly mocked unavailable provider returns source="deterministic"
+            mock_unavailable = MagicMock()
+            mock_unavailable.is_available = False
+            mock_unavailable.generate_text.return_value = None
+            MockLLMClass.return_value = mock_unavailable
+
+            summary_res2 = client.post(f"/api/v1/cases/{case_id}/ai-summary")
+            assert summary_res2.status_code == 200
+            assert summary_res2.json()["source"] == "deterministic"
+
+            # 3. Third request: provider raising exception also safely falls back to source="deterministic"
+            mock_error = MagicMock()
+            mock_error.is_available = True
+            mock_error.generate_text.side_effect = RuntimeError("Simulated network timeout")
+            MockLLMClass.return_value = mock_error
+
+            summary_res3 = client.post(f"/api/v1/cases/{case_id}/ai-summary")
+            assert summary_res3.status_code == 200
+            assert summary_res3.json()["source"] == "deterministic"
 
     # Fetch state after summaries
     after_res = client.get(f"/api/v1/cases/{case_id}")

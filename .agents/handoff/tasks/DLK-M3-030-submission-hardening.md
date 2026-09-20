@@ -534,13 +534,13 @@ Do not push, merge, rebase, create/update a pull request, or modify `main`.
 
 ### Summary
 
-Closed all submission hardening requirements for DLK-M3-030 and resolved review findings R1-R3:
+Closed all submission hardening requirements for DLK-M3-030 and resolved review findings R1-R5:
 1. R1 (AI-Summary bounded evidence projection and verification):
    - Implemented `PromptManager.project_safe_observations` to produce a strictly bounded text-only projection of persisted observations for the summary prompt, including observation type, normalized value, source, confidence (when present), first-seen revision, and safe image-analysis provenance (`mode`, `status`, `roi_id`, `comparison_basis`, `coverage_ratio`, `overflow_ratio`, `calibrated_diameter_mm`, `segmentation_quality`).
    - Enforced strict safety sanitization: raw image bytes, base64 data URIs, local filesystem paths (Windows and Unix), secret/credential keywords, and unrestricted metadata are strictly excluded.
    - Updated `PromptManager.get_case_summary_prompt` and callers (`cases.py`, `explanation_service.py`) with backward compatibility when observations are omitted.
    - Preserved deterministic diagnosis scores, conclusions, revision, and issue condition invariance before and after summary generation.
-   - Added 8 focused backend tests in `tests/unit/test_ai_summary_projection.py` verifying observation projection, safety rejection, mocked LLM success (`source="llm"`), provider failure fallback (`source="deterministic"`), and case state invariance.
+   - Added focused backend tests in `tests/unit/test_ai_summary_projection.py` verifying observation projection, safety rejection, mocked LLM success (`source="llm"`), provider failure fallback (`source="deterministic"`), and case state invariance.
    - Re-executed live smoke on durable case `ae21109f-1b21-4c9b-9412-8a2e3e72bd6c`: verified secret-safely that `OPENAI_API_KEY` is not set in the local environment; live LLM generation is honestly recorded as blocked by the missing local API key; deterministic fallback executed cleanly with HTTP 200 and verified case state invariance.
 2. R2 (Deterministic timeline keys):
    - Eliminated `Math.random()` from `frontend/lib/case-detail-state.ts`.
@@ -550,18 +550,28 @@ Closed all submission hardening requirements for DLK-M3-030 and resolved review 
    - Eliminated literal `"technician"` and `"Engineer"` identity fallbacks from `frontend/lib/case-detail-state.ts` across confirmations, recovery actions, recovery verifications, and recurrence events.
    - Renders `"Not recorded"` or omits the actor clause when the persisted actor is blank/null.
    - Extended regression in `test-case-detail-state.mjs` asserting zero hardcoded technician/engineer identities across all timeline event types.
-4. Repaired dynamic `/cases/[id]` route: loaded authoritative case state via `casesApi.getCase(id)` with mutually exclusive loading, error/retry, and loaded detail states. Removed the deferred `SimilarCases` card from the demo path.
-5. Cleared full repository frontend lint gate: `npm run lint` completes with 0 errors and 0 warnings.
-6. Verified `npm run build` succeeds cleanly with Turbopack and TypeScript type checking.
-7. Passed all test suites: 54 calibrated vision tests, 89 technician lifecycle tests, 8 AI summary projection tests, 489 full backend tests.
+4. R4 (Observation projection bounding and sanitization):
+   - In `PromptManager.project_safe_observations`, applied the same `_is_safe_text` safety filter and length limits to primary observation `value`, `observation_type`, and `source` (`max_type_length = 64`, `max_value_length = 200`, `max_source_length = 64`).
+   - Capped projected observations at 50 (`max_projected_observations = 50`) while preserving deterministic input order.
+   - Strictly reject raw bytes/bytearrays, base64 strings, data URIs, Windows and Unix filesystem paths (containing `\`, `/`, `:\`, `:/`), secret/credential keywords (`secret`, `password`, `token`, `api_key`, `bearer`, `credential`), and overlength strings directly in primary observation values, types, and sources. Unsafe or incomplete observations are omitted completely without emitting rejected content.
+   - Preserved valid canonical values (`undersized`, `IMAGE`, `PROCESS_LIMITS`, etc.).
+   - Extended `tests/unit/test_ai_summary_projection.py` with tests verifying rejection of dirty primary values (data URI base64, Windows path, Unix path, sk-proj secret, Bearer token, 5000-char overlength, raw bytes, blank string), capping at 50 observations, and rejection of overlength type/source.
+5. R5 (Offline test isolation and state invariance):
+   - Updated `test_ai_summary_endpoint_case_state_invariance` to inject a synthetic `OPENAI_API_KEY` (`synthetic-test-key-do-not-call`) and mock `LLMService` across all summary requests (successful provider -> `source="llm"`, unavailable provider -> `source="deterministic"`, provider error -> `source="deterministic"`).
+   - Proves complete offline test isolation: even when an API key is present in the environment, mocking prevents real network calls or client creation.
+   - Verified 100% case state invariance before and after all summary calls.
+6. Repaired dynamic `/cases/[id]` route: loaded authoritative case state via `casesApi.getCase(id)` with mutually exclusive loading, error/retry, and loaded detail states. Removed the deferred `SimilarCases` card from the demo path.
+7. Cleared full repository frontend lint gate: `npm run lint` completes with 0 errors and 0 warnings.
+8. Verified `npm run build` succeeds cleanly with Turbopack and TypeScript type checking.
+9. Passed all test suites: 54 calibrated vision tests, 89 technician lifecycle tests, 10 AI summary projection tests, 491 full backend tests.
 
 ### Files changed
 
 Primary feature paths:
-- `backend/app/services/ai/prompt_manager.py`: Added `project_safe_observations` with strict whitelist and safety filters; updated `get_case_summary_prompt` to accept and embed projected observations.
+- `backend/app/services/ai/prompt_manager.py`: Added `project_safe_observations` with strict whitelist and safety filters; updated `get_case_summary_prompt` to accept and embed projected observations; applied safety filter and length limits to primary value, type, and source, and capped at 50 observations.
 - `backend/app/api/cases.py`: Hydrated persisted observations via `repository.get_case_observations` and passed bounded projection to `get_case_summary_prompt`.
 - `backend/app/services/ai/explanation_service.py`: Updated `summarize_case` to pass safe projected observations to `get_case_summary_prompt`.
-- `backend/tests/unit/test_ai_summary_projection.py`: New focused unit test suite verifying observation projection, safety rejection, mocked provider success (`source="llm"`), provider failure fallback (`source="deterministic"`), and case state invariance.
+- `backend/tests/unit/test_ai_summary_projection.py`: Focused unit test suite verifying observation projection, safety rejection in primary value/type/source, 50-item capping, mocked provider success (`source="llm"`), provider failure fallback (`source="deterministic"`), offline isolation with synthetic API key, and case state invariance.
 - `frontend/lib/case-detail-state.ts`: Made timeline keys deterministic from array index; omitted actor clause when unrecorded; removed all hardcoded "technician"/"Engineer" literals.
 - `frontend/scripts/test-case-detail-state.mjs`: Extended regressions with Test 6 (identity truthfulness across timeline) and Test 7 (deterministic keys without event IDs).
 - `frontend/app/(dashboard)/cases/[id]/page.tsx`: Rewritten to load real durable case with mutually exclusive loading/error/loaded states; removed deferred SimilarCases component.
@@ -603,10 +613,10 @@ Frontend:
 
 Backend:
 - `alembic upgrade heads`: Verified up to date on PostgreSQL.
-- AI summary focused suite (`tests/unit/test_ai_summary_projection.py`): 8 passed in 2.21s.
+- AI summary focused suite (`tests/unit/test_ai_summary_projection.py`): 10 passed in 2.59s.
 - Calibrated vision focused suite (`tests/unit/test_vision_*.py`, `tests/integration/test_image_*.py`): 54 passed in 2.91s.
 - Technician lifecycle focused suite (`tests/integration/test_case_api.py`, `tests/integration/test_check_result_api.py`, `tests/integration/test_cause_confirmation_api.py`, `tests/integration/test_recovery_verification_api.py`, `tests/integration/test_recurrence_api.py`): 89 passed in 28.62s.
-- Full backend suite (`pytest -q --basetemp=.pytest_temp`): 489 passed, 0 failed, 42 warnings in 63.64s.
+- Full backend suite (`pytest -q --basetemp=.pytest_temp`): 491 passed, 0 failed, 42 warnings in 65.04s.
 - Task validation: `validate_task.py` returned VALID.
 - Whitespace: `git diff --check` passed with 0 errors.
 
@@ -617,4 +627,4 @@ Backend:
 
 ### Proposed commit message
 
-`fix(ai-summary): resolve DLK-M3-030 review findings R1-R3`
+`fix(ai-summary): resolve DLK-M3-030 review findings R4-R5`

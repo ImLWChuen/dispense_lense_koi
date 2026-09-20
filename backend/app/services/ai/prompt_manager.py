@@ -172,17 +172,28 @@ CRITICAL RULES:
             "max_overflow_ratio",
         }
 
-        def _is_safe_text(val: str) -> bool:
-            if len(val) > 200:
+        max_projected_observations = 50
+        max_type_length = 64
+        max_value_length = 200
+        max_source_length = 64
+
+        def _is_safe_text(val: Any, max_len: int = 200) -> bool:
+            if not isinstance(val, str):
                 return False
-            lower = val.lower()
+            cleaned = val.strip()
+            if not cleaned or len(cleaned) > max_len:
+                return False
+            lower = cleaned.lower()
+            # Reject secret/credential markers
             if any(s in lower for s in ("secret", "password", "token", "api_key", "bearer", "credential")):
                 return False
-            if "base64" in lower or lower.startswith("data:image"):
+            # Reject base64 or data URLs
+            if "base64" in lower or "data:image" in lower:
                 return False
-            if "\\" in val or ":\\" in val or lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".tmp")):
+            # Reject local filesystem paths and file URLs
+            if "\\" in cleaned or "/" in cleaned or ":\\" in cleaned or ":/" in cleaned:
                 return False
-            if val.startswith("/") or val.startswith("./") or val.startswith("../"):
+            if lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".tmp")):
                 return False
             return True
 
@@ -190,13 +201,13 @@ CRITICAL RULES:
             if isinstance(val, (int, float, bool)):
                 return val
             if isinstance(val, str):
-                return val if _is_safe_text(val) else None
+                return val.strip() if _is_safe_text(val, max_len=max_value_length) else None
             if isinstance(val, dict):
                 cleaned: dict[str, Any] = {}
                 for k, v in val.items():
                     if (
                         isinstance(k, str)
-                        and _is_safe_text(k)
+                        and _is_safe_text(k, max_len=max_type_length)
                         and not any(s in k.lower() for s in ("path", "secret", "file", "token", "key"))
                     ):
                         clean_v = _sanitize_val(v)
@@ -207,27 +218,44 @@ CRITICAL RULES:
 
         projected: list[dict[str, Any]] = []
         for obs in raw_observations or []:
-            # 1. Observation Type
+            if len(projected) >= max_projected_observations:
+                break
+
+            # 1. Observation Type (must be bounded, non-blank safe string)
             obs_type = getattr(obs, "observation_type", None) or getattr(obs, "type", None)
             if obs_type is None and isinstance(obs, dict):
                 obs_type = obs.get("observation_type") or obs.get("type")
             if hasattr(obs_type, "value"):
                 obs_type = obs_type.value
-            obs_type_str = str(obs_type).strip() if obs_type is not None else ""
+            if not isinstance(obs_type, str) or not _is_safe_text(obs_type, max_len=max_type_length):
+                continue
+            obs_type_str = obs_type.strip()
 
-            # 2. Value
+            # 2. Value (must pass the same safety policy and length limit; reject raw bytes/paths/secrets/base64)
             val = getattr(obs, "value", None)
             if val is None and isinstance(obs, dict):
                 val = obs.get("value")
-            val_str = str(val).strip() if val is not None else ""
+            if isinstance(val, (bytes, bytearray)):
+                continue
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                val_str = str(val)
+            elif isinstance(val, str):
+                val_str = val.strip()
+            else:
+                continue
 
-            # 3. Source
+            if not _is_safe_text(val_str, max_len=max_value_length):
+                continue
+
+            # 3. Source (must be bounded, non-blank safe string)
             src = getattr(obs, "source", None) or getattr(obs, "provenance", None)
             if src is None and isinstance(obs, dict):
                 src = obs.get("source") or obs.get("provenance")
             if hasattr(src, "value"):
                 src = src.value
-            src_str = str(src).strip() if src is not None else ""
+            if not isinstance(src, str) or not _is_safe_text(src, max_len=max_source_length):
+                continue
+            src_str = src.strip()
 
             # 4. Confidence
             conf = getattr(obs, "confidence", None)
