@@ -2,9 +2,28 @@
 
 ## Current milestone
 
-Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support presentation
+Phase 3B: restart-safe technician troubleshooting and lifecycle workflow
 
 ## Active task
+
+- `DLK-M3-029` — Restart-safe technician troubleshooting and lifecycle workflow — **accepted**
+  - task: `.agents/handoff/tasks/DLK-M3-029-technician-lifecycle-workflow.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-028`
+  - outcome: make questions, physical checks, cause confirmation, recovery action, recovery verification, and recurrence truthful, independent, revision-safe, and resumable after refresh or partial failure
+  - authorized backend contract: additive confirmation and lifecycle histories in `GET /api/v1/cases/{case_id}` only; no database or diagnostic-semantic changes
+  - protected overlap: do not modify or stage the existing uncommitted `frontend/app/(dashboard)/cases/[id]/page.tsx`
+  - review stop: return to ChatGPT after one local implementation commit; do not begin final end-to-end acceptance or remote Git operations
+  - review: `.agents/handoff/reviews/DLK-M3-029-review.md`
+  - reviewed commit: `9cb20fae5093b1d4e617fcccf7e54ae89be23b5a`
+  - corrections resolved (R1–R7): preserve mutation failures and technician form inputs while refreshing durable state; never reactivate historical checks when no next check exists (resolveActiveCheck returns undefined for all-historical lists); render PASSED/FAILED badges only when verification_passed is boolean and restricted to recovery-verification events; expose all 6 check execution statuses (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE) with safe UNKNOWN finding and omitted outcome for non-completed checks; require non-blank verification details for both passed and failed recovery verifications; fetch authoritative durable case on mutation success to prevent history erasure; canonical no_blockage outcome key used for ACT01; strengthened 14-scenario dependency-free regression test-diagnostic-workflow-state.mjs covering all production helpers and mutation state paths
+  - corrections resolved (R8–R10): separated mutation success from durable refresh success across all workflow operations (POST failure preserves inputs and displays error; POST+GET success commits and refreshes; POST success + GET failure commits without false error, clears form, renders distinct refresh warning banner, gates further mutations, and provides GET-only retry without repeating POST); extracted coordinator to production module frontend/lib/diagnostic-workflow-state.ts used directly by questions, troubleshooting, and verification pages; wired payload builders directly to verification mutations; extended Node regression with Test 15 exercising all 9 coordinator properties; removed unused imports/variables in test script; focused task-owned ESLint clean with 0 errors and 0 warnings
+  - corrections resolved (R11–R12): corrected POST-failure + GET-failure transition in coordinateWorkflowMutation to preserve mutation error, set isRefreshRequired=true, gate subsequent mutations, display truthful unconfirmed warning (UNCONFIRMED_REFRESH_WARNING_MESSAGE), and clear all flags on GET-only retry; added explicit refreshWarningKind distinguishing "Action Saved" from "State Refresh Required"; added DiagnosticQuestion.tsx to allowed paths; separated active-question locking from persisted completion styling via separate disabled prop (isAnswered={false}, disabled={isSubmitting || isRefreshRequired}); added deriveQuestionPresentation and Test 16 covering all 4 question states
+  - reviewer verification: 89 focused backend tests and 16 workflow regressions passed; focused task-owned ESLint returned 0 errors and 0 warnings; production build generated all 13 static pages; task validation and committed whitespace passed; the prior 481-test full backend result remains applicable because the final three corrections contain no backend source changes
+  - next step: DLK-M3-029 is ready for the user's chosen Git publication/integration step; final end-to-end acceptance remains a separate next-stage decision
+  - explicit exclusions: diagnostic engine/knowledge/weights, durable rejection semantics, migrations, image workflow, dashboard/analytics/reports, authentication, dependencies, deployment, protected case-detail integration, and remote Git operations
+
+## Accepted Phase 3A dependency
 
 - `DLK-M3-028` — Truthful dynamic dashboard, reports, analytics, and evidence-support labels — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md`

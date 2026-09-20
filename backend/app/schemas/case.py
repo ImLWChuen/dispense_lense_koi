@@ -140,6 +140,35 @@ class CaseObservationResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class CauseConfirmationRecord(BaseModel):
+    """Persisted record of an explicit technician root-cause confirmation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    cause_id: str
+    confirmed_by: str = "technician"
+    notes: str | None = None
+    confirmed_at: datetime
+    resulting_revision_number: int
+
+
+class LifecycleEventRecord(BaseModel):
+    """Persisted record of an issue lifecycle event (recovery action or verification)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int | None = None
+    case_id: str
+    event_type: str
+    prior_issue_condition: IssueCondition | str
+    resulting_issue_condition: IssueCondition | str
+    resulting_revision_number: int
+    actor: str = "technician"
+    details: str = ""
+    verification_passed: bool | None = None
+    created_at: datetime
+
+
 class DurableCaseResponse(BaseModel):
     """Canonical representation of a persisted diagnostic case."""
 
@@ -157,6 +186,8 @@ class DurableCaseResponse(BaseModel):
     observations: list[CaseObservationResponse] = Field(default_factory=list)
     previous_answers: list[QuestionAnswerRecord] = Field(default_factory=list)
     previous_check_results: list[CheckResultRecord] = Field(default_factory=list)
+    previous_confirmations: list[CauseConfirmationRecord] = Field(default_factory=list)
+    lifecycle_events: list[LifecycleEventRecord] = Field(default_factory=list)
     analysis_revisions: list[AnalysisRevision] = Field(default_factory=list)
     initial_diagnosis: DiagnosisResult
     diagnosis: DiagnosisResult
@@ -298,18 +329,6 @@ class CaseCheckResultResponse(DurableCaseResponse):
     next_check: TroubleshootingCheck | None = None
 
 
-class CauseConfirmationRecord(BaseModel):
-    """Persisted record of an explicit technician root-cause confirmation."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    cause_id: str
-    confirmed_by: str = "technician"
-    notes: str | None = None
-    confirmed_at: datetime
-    resulting_revision_number: int
-
-
 class SubmitCauseConfirmationRequest(BaseModel):
     """Transport schema for explicitly confirming a diagnostic root cause.
 
@@ -364,23 +383,6 @@ class CaseCauseConfirmationResponse(DurableCaseResponse):
     selected_cause_conclusion: CauseConclusion | str = CauseConclusion.CONFIRMED
     next_question: Question | None = None
     next_check: TroubleshootingCheck | None = None
-
-
-class LifecycleEventRecord(BaseModel):
-    """Persisted record of an issue lifecycle event (recovery action or verification)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: int | None = None
-    case_id: str
-    event_type: str
-    prior_issue_condition: IssueCondition | str
-    resulting_issue_condition: IssueCondition | str
-    resulting_revision_number: int
-    actor: str = "technician"
-    details: str = ""
-    verification_passed: bool | None = None
-    created_at: datetime
 
 
 class SubmitRecoveryActionRequest(BaseModel):
