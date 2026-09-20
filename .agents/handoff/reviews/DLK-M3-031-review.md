@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-031
-reviewed_commit: 4e868160d0701a8e904349f2d18c112a2e396c97
-decision: changes_requested
+reviewed_commit: ececf645938dc910721655af55df8ae8a3ce5cef
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,9 +9,26 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested for one remaining documentation correction. The correction commit resolves R2-R4 and the substantive workflow/order problems in R1. The runbook still names four buttons/panels differently from the checked-in UI and does not actually label its entered demo data as synthetic.
+Accepted at `ececf645938dc910721655af55df8ae8a3ce5cef`. The final correction resolves R5 without changing product code, dependencies, schemas, APIs, or diagnostic semantics. Historical findings and correction evidence remain below for traceability.
 
-Keep this as a correction round within DLK-M3-031. No new feature task is released.
+## Final correction review: `ececf645938dc910721655af55df8ae8a3ce5cef`
+
+### Resolved
+
+- R5 is resolved: the runbook now uses the exact rendered labels `Analyze`, `Evidence`, `Submit Check Result`, `Submit Passed Verification`, and `Submit Failed Verification`.
+- All entered demonstration free text is explicitly prefixed with `[SYNTHETIC DEMO]`, including the symptom, material, check note, cause note, recovery action, and verification details.
+- The nonexistent editable operator example is removed. The runbook truthfully explains that the current prototype records a generic technician actor.
+
+### Final verification
+
+- Exact correction commit and one-parent diff inspected; changes remain limited to documentation and handoff records.
+- Static cross-check against the checked-in frontend source confirmed all corrected labels.
+- Static runbook check found none of the obsolete labels or the removed operator example.
+- Frontend lint passed with zero reported findings.
+- Frontend production build passed TypeScript and generated all 13 routes.
+- Task validation returned `VALID`.
+- Committed whitespace check passed.
+- Docker-backed positive startup was not repeated because the reviewer environment still cannot access the Docker engine. The implementer's earlier live startup evidence remains recorded, and this documentation-only correction does not alter startup behavior.
 
 ## Correction review: `4e868160d0701a8e904349f2d18c112a2e396c97`
 
@@ -92,12 +109,4 @@ Keep this as a correction round within DLK-M3-031. No new feature task is releas
 
 ## Follow-up
 
-Correct R5 within DLK-M3-031 and update its implementation report with fresh evidence. Preserve the current safe startup behavior and resolved R1-R4 work. Do not change application product code, API/database contracts, diagnostic rules, weights, or dependencies.
-
-Required correction verification:
-
-1. Static cross-check against the rendered UI source for the four corrected control labels.
-2. Static check that the runbook's entered symptom/material/notes are explicitly marked synthetic and that it no longer suggests an editable operator identity.
-3. Frontend lint/build, task validation, and whitespace check. Product/backend tests do not need to be repeated for this documentation-only correction.
-
-The correction should be one local commit on `backend-database`. Do not push, merge, create/update a pull request, or touch unrelated untracked files. Review and queue updates from this review remain uncommitted for inclusion in that correction commit.
+No further DLK-M3-031 correction is required. Member 3 feature implementation is complete for the currently authorized scope. Continue with team rehearsal, submission evidence/video, and Git publication or merge only when the user instructs it.

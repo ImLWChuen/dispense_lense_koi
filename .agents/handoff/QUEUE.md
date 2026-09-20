@@ -14,7 +14,7 @@ Repeatable local demo startup and competition rehearsal readiness
 
 ## Active task
 
-- `DLK-M3-031` — Repeatable local demo startup and operator runbook — **implemented**
+- `DLK-M3-031` — Repeatable local demo startup and operator runbook — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-030`
@@ -31,7 +31,9 @@ Repeatable local demo startup and competition rehearsal readiness
       - R4: ensured secret-safe database check (`Get-DatabaseConfigStatus`) strictly rejecting missing and blank `DATABASE_URL` values without leaking connection strings or credentials; verified missing, blank, and configured branches;
       - R5: aligned runbook labels with exact rendered UI controls (`Analyze`, `Evidence`, `Submit Check Result`, `Submit Passed Verification` / `Submit Failed Verification`); explicitly prefixed all entered symptom, material, check, recovery, and verification details with `[SYNTHETIC DEMO]`; removed nonexistent editable operator example and explained generic technician actor.
   - verification: PowerShell AST parse (3/3 passed), Node-version checks (below/exact/above verified), secret-safe database checks (missing/blank/configured verified), static runbook terminology & UI label check (clean), health API test passed (2/2), frontend lint (0 errors, 0 warnings), frontend build (13/13 routes), task validation (VALID), git diff whitespace check passed;
-  - next step: submit local documentation-only correction commit to ChatGPT reviewer for review; do not push or merge
+  - reviewed commit: `ececf645938dc910721655af55df8ae8a3ce5cef`
+  - review: `.agents/handoff/reviews/DLK-M3-031-review.md`
+  - next step: Member 3 feature implementation is complete for the authorized scope; proceed with final team rehearsal, submission evidence/video, and user-directed Git publication or merge
 
 ## Explicitly deferred
 
@@ -46,6 +48,6 @@ Do not implement inside DLK-M3-031:
 - new testing frameworks
 - database/schema changes
 
-Only DLK-M3-031 is authorized for implementation.
+No additional Member 3 implementation task is currently authorized.
 
-DLK-M3-031 is not accepted until R5 in its review is resolved. After acceptance, Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work should be final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.
+DLK-M3-031 is accepted. Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work is final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.
