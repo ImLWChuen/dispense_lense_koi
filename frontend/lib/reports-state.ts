@@ -81,6 +81,39 @@ export function deriveReportsView(state: ReportsPageState): ReportsViewDerived {
     };
 }
 
+export interface ReportStatusPresentation {
+    badgeClass: string;
+    icon: "check" | "clock";
+}
+
+export function getReportStatusPresentation(isResolved: boolean): ReportStatusPresentation {
+    if (isResolved) {
+        return {
+            badgeClass: "bg-emerald-50 text-emerald-700",
+            icon: "check",
+        };
+    }
+    return {
+        badgeClass: "bg-gray-100 text-gray-700",
+        icon: "clock",
+    };
+}
+
+export function formatReportDate(createdAt: string | null | undefined): string {
+    if (!createdAt || typeof createdAt !== "string" || createdAt.trim() === "") {
+        return "Not recorded";
+    }
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) {
+        return "Not recorded";
+    }
+    return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    });
+}
+
 export function mapCasesToReports(cases: DurableCaseResponse[]): ReportItem[] {
     if (!cases || cases.length === 0) return [];
     return cases.map((c) => {
@@ -92,13 +125,7 @@ export function mapCasesToReports(cases: DurableCaseResponse[]): ReportItem[] {
             ? "Complete"
             : c.issue_condition.replace("IssueCondition.", "").replace(/_/g, " ");
 
-        const dateStr = c.created_at
-            ? new Date(c.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-              })
-            : "Recent";
+        const dateStr = formatReportDate(c.created_at);
 
         return {
             id: c.case_id,

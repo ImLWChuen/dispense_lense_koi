@@ -19,6 +19,8 @@ import {
     reportsLoadSuccess,
     reportsLoadFailure,
     deriveReportsView,
+    getReportStatusPresentation,
+    formatReportDate,
     mapCasesToReports,
 } from "../lib/reports-state.ts";
 
@@ -200,7 +202,7 @@ function runTests() {
         console.log("✓ Test 7 Passed: Empty database renders empty state without error or stale banners.");
     }
 
-    // --- 8. Case Response Mapping ---
+    // --- 8. Case Response Mapping & Truthful Timestamps (R14) ---
     {
         const rawCases = [
             {
@@ -217,24 +219,96 @@ function runTests() {
                 issue_condition: "IssueCondition.INVESTIGATING",
                 created_at: null,
             },
+            {
+                case_id: "11223344-5566-7788-9900-aabbccddeeff",
+                defect_name: "Tailing",
+                description: "Invalid date case",
+                issue_condition: "UNRESOLVED",
+                created_at: "not-a-valid-date-timestamp",
+            },
+            {
+                case_id: "aabbccdd-eeff-0011-2233-445566778899",
+                defect_name: "Voiding",
+                description: "Empty string date case",
+                issue_condition: "UNRESOLVED",
+                created_at: "   ",
+            },
         ];
 
         const mapped = mapCasesToReports(rawCases);
-        assert.equal(mapped.length, 2);
+        assert.equal(mapped.length, 4);
         assert.equal(mapped[0].displayId, "RPT-12345678");
         assert.equal(mapped[0].caseRef, "DSP-12345678");
         assert.equal(mapped[0].title, "Bridging");
         assert.equal(mapped[0].status, "Complete");
         assert.equal(mapped[0].isResolved, true);
+        assert.equal(mapped[0].date, "Sep 20, 2026");
 
         assert.equal(mapped[1].displayId, "RPT-87654321");
         assert.equal(mapped[1].title, "Description when no defect name");
         assert.equal(mapped[1].status, "INVESTIGATING");
         assert.equal(mapped[1].isResolved, false);
-        assert.equal(mapped[1].date, "Recent");
+        // R14: Missing timestamp returns "Not recorded", never "Recent" or "Invalid Date"
+        assert.equal(mapped[1].date, "Not recorded");
+
+        // R14: Invalid date string returns "Not recorded", never "Invalid Date"
+        assert.equal(mapped[2].date, "Not recorded");
+
+        // R14: Whitespace-only date returns "Not recorded"
+        assert.equal(mapped[3].date, "Not recorded");
+
+        // Standalone formatReportDate helper assertions
+        assert.equal(formatReportDate(undefined), "Not recorded");
+        assert.equal(formatReportDate(null), "Not recorded");
+        assert.equal(formatReportDate(""), "Not recorded");
+        assert.equal(formatReportDate("invalid"), "Not recorded");
 
         testsPassed++;
-        console.log("✓ Test 8 Passed: mapCasesToReports correctly maps raw API cases to ReportItem view models.");
+        console.log("✓ Test 8 Passed: mapCasesToReports correctly maps cases and returns 'Not recorded' for missing/invalid timestamps.");
+    }
+
+    // --- 9. Resolved Status Presentation Derived from isResolved (R12) ---
+    {
+        const resolvedPres = getReportStatusPresentation(true);
+        assert.equal(resolvedPres.icon, "check", "Resolved report must select check icon");
+        assert.equal(resolvedPres.badgeClass, "bg-emerald-50 text-emerald-700", "Resolved report must select emerald badge");
+
+        const unresolvedPres = getReportStatusPresentation(false);
+        assert.equal(unresolvedPres.icon, "clock", "Unresolved report must select clock icon");
+        assert.equal(unresolvedPres.badgeClass, "bg-gray-100 text-gray-700", "Unresolved report must select neutral gray badge");
+
+        // Verify that mapped resolved cases select the resolved presentation
+        const rawCases = [
+            {
+                case_id: "12345678-abcd-ef01-2345-6789abcdef01",
+                defect_name: "Bridging",
+                description: "Resolved case",
+                issue_condition: "RESOLVED",
+                created_at: "2026-09-20T10:00:00Z",
+            },
+            {
+                case_id: "87654321-dcba-10fe-5432-10fedcba9876",
+                defect_name: "Tailing",
+                description: "Open case",
+                issue_condition: "UNRESOLVED",
+                created_at: "2026-09-20T10:00:00Z",
+            },
+        ];
+        const mapped = mapCasesToReports(rawCases);
+        assert.equal(mapped[0].isResolved, true);
+        assert.deepEqual(getReportStatusPresentation(mapped[0].isResolved), {
+            badgeClass: "bg-emerald-50 text-emerald-700",
+            icon: "check",
+        });
+
+        assert.equal(mapped[1].isResolved, false);
+        assert.deepEqual(getReportStatusPresentation(mapped[1].isResolved), {
+            badgeClass: "bg-gray-100 text-gray-700",
+            icon: "clock",
+        });
+
+        testsPassed++;
+        console.log("✓ Test 9 Passed: Report status presentation is derived strictly from isResolved lifecycle state.");
     }
 
     console.log(`\nAll ${testsPassed} reports state regression tests passed successfully.`);

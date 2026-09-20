@@ -27,6 +27,8 @@ import {
     startReportsLoading,
     reportsLoadSuccess,
     reportsLoadFailure,
+    deriveReportsView,
+    getReportStatusPresentation,
     mapCasesToReports,
 } from "@/lib/reports-state";
 
@@ -94,6 +96,7 @@ function ReportsContent() {
         }
     };
 
+    const view = deriveReportsView(state);
     const { reports, isLoading, error } = state;
 
     const filteredReports = reports.filter(
@@ -139,12 +142,12 @@ function ReportsContent() {
                 </div>
             </div>
 
-            {isLoading && reports.length === 0 && !error ? (
+            {view.showInitialLoading ? (
                 <div className="mt-12 flex flex-col items-center justify-center py-20 text-gray-500">
                     <Loader2 className="h-8 w-8 animate-spin text-[#6d5dfc] mb-3" />
                     <p className="text-sm font-medium">Loading case reports...</p>
                 </div>
-            ) : error && reports.length === 0 ? (
+            ) : view.showDedicatedError ? (
                 <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50/50 p-12 text-center">
                     <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
                     <h3 className="text-lg font-semibold text-rose-900">Failed to load reports</h3>
@@ -159,7 +162,7 @@ function ReportsContent() {
                 </div>
             ) : (
                 <>
-                    {error && (
+                    {view.showStaleBanner && (
                         <div className="mt-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             <div className="flex items-center gap-2">
                                 <AlertCircle size={18} className="text-amber-600" />
@@ -205,7 +208,7 @@ function ReportsContent() {
 
                     {/* Reports Table */}
                     <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                        {filteredReports.length === 0 ? (
+                        {view.showEmpty || filteredReports.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <AlertCircle className="h-10 w-10 text-gray-300 mb-3" />
                                 <p className="text-base font-semibold text-gray-900">No reports found</p>
@@ -228,51 +231,47 @@ function ReportsContent() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {filteredReports.map((report) => (
-                                            <tr
-                                                key={report.id}
-                                                className="border-b border-gray-50 transition hover:bg-gray-50/80"
-                                            >
-                                                <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900">
-                                                    {report.displayId}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <FileText size={15} className="text-[#6d5dfc]" />
-                                                        <span className="text-sm font-medium text-gray-900">
-                                                            {report.title}
+                                        {filteredReports.map((report) => {
+                                            const statusPresentation = getReportStatusPresentation(report.isResolved);
+                                            return (
+                                                <tr
+                                                    key={report.id}
+                                                    className="border-b border-gray-50 transition hover:bg-gray-50/80"
+                                                >
+                                                    <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900">
+                                                        {report.displayId}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <FileText size={15} className="text-[#6d5dfc]" />
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {report.title}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                                                        {report.caseRef}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
+                                                            {report.type}
                                                         </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 font-mono text-xs text-gray-500">
-                                                    {report.caseRef}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
-                                                        {report.type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-xs text-gray-500">
-                                                    {report.date}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span
-                                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                                            report.status === "Ready"
-                                                                ? "bg-emerald-50 text-emerald-700"
-                                                                : report.status === "Draft"
-                                                                ? "bg-amber-50 text-amber-700"
-                                                                : "bg-gray-100 text-gray-700"
-                                                        }`}
-                                                    >
-                                                        {report.status === "Ready" ? (
-                                                            <CheckCircle2 size={12} />
-                                                        ) : (
-                                                            <Clock3 size={12} />
-                                                        )}
-                                                        {report.status}
-                                                    </span>
-                                                </td>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-xs text-gray-500">
+                                                        {report.date}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span
+                                                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPresentation.badgeClass}`}
+                                                        >
+                                                            {statusPresentation.icon === "check" ? (
+                                                                <CheckCircle2 size={12} />
+                                                            ) : (
+                                                                <Clock3 size={12} />
+                                                            )}
+                                                            {report.status}
+                                                        </span>
+                                                    </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button
@@ -296,9 +295,10 @@ function ReportsContent() {
                                                             View
                                                         </Link>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
