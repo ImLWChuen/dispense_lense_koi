@@ -534,24 +534,39 @@ Do not push, merge, rebase, create/update a pull request, or modify `main`.
 
 ### Summary
 
-Closed all submission hardening requirements for DLK-M3-030:
-1. Repaired dynamic `/cases/[id]` route: loaded authoritative case state via `casesApi.getCase(id)` with mutually exclusive loading, error/retry, and loaded detail states. Removed the deferred `SimilarCases` card from the demo path.
-2. Built pure case detail helper module `frontend/lib/case-detail-state.ts` and Node regression suite `frontend/scripts/test-case-detail-state.mjs` covering full timeline derivation, deterministic ordering, timestamp formatting (`Not recorded`), and truthful identity derivation without hardcoded engineer identity. Updated `CaseDetails.tsx` to consume these production helpers.
-3. Cleared the entire repository frontend lint gate: eliminated all 10 errors and 8 warnings across tracked files without weakening lint rules or disabling ESLint globally. `npm run lint` now completes with 0 errors and 0 warnings.
-4. Verified `npm run build` succeeds cleanly with Turbopack and TypeScript type checking.
-5. Executed complete calibrated-image end-to-end acceptance journey proving calibrated image analysis emits canonical `IMAGE` evidence, creates durable cases, preserves independent description facts, drives diagnosis, and survives full technician lifecycle (answers, checks, cause confirmation, recovery action, recovery verification, recurrence), reports, and PDF download.
-6. Verified uncalibrated image neutrality (`FEATURES_ONLY` produces `UNCALIBRATED` status with zero score-bearing observations).
-7. Verified live OpenAI summary smoke endpoint: deterministic fallback executed cleanly without mutating case state, cause scores, or condition; zero secrets exposed.
-8. Passed all backend suites: 54 calibrated vision tests, 89 technician lifecycle tests, 481 full backend tests.
+Closed all submission hardening requirements for DLK-M3-030 and resolved review findings R1-R3:
+1. R1 (AI-Summary bounded evidence projection and verification):
+   - Implemented `PromptManager.project_safe_observations` to produce a strictly bounded text-only projection of persisted observations for the summary prompt, including observation type, normalized value, source, confidence (when present), first-seen revision, and safe image-analysis provenance (`mode`, `status`, `roi_id`, `comparison_basis`, `coverage_ratio`, `overflow_ratio`, `calibrated_diameter_mm`, `segmentation_quality`).
+   - Enforced strict safety sanitization: raw image bytes, base64 data URIs, local filesystem paths (Windows and Unix), secret/credential keywords, and unrestricted metadata are strictly excluded.
+   - Updated `PromptManager.get_case_summary_prompt` and callers (`cases.py`, `explanation_service.py`) with backward compatibility when observations are omitted.
+   - Preserved deterministic diagnosis scores, conclusions, revision, and issue condition invariance before and after summary generation.
+   - Added 8 focused backend tests in `tests/unit/test_ai_summary_projection.py` verifying observation projection, safety rejection, mocked LLM success (`source="llm"`), provider failure fallback (`source="deterministic"`), and case state invariance.
+   - Re-executed live smoke on durable case `ae21109f-1b21-4c9b-9412-8a2e3e72bd6c`: verified secret-safely that `OPENAI_API_KEY` is not set in the local environment; live LLM generation is honestly recorded as blocked by the missing local API key; deterministic fallback executed cleanly with HTTP 200 and verified case state invariance.
+2. R2 (Deterministic timeline keys):
+   - Eliminated `Math.random()` from `frontend/lib/case-detail-state.ts`.
+   - Fallback timeline keys are derived deterministically from persisted fields and the stable lifecycle-array index (`idx-${idx}`).
+   - Added regression in `test-case-detail-state.mjs` verifying calling `deriveCaseTimeline` twice on events without IDs produces deep equality with stable keys.
+3. R3 (Truthful technician identities):
+   - Eliminated literal `"technician"` and `"Engineer"` identity fallbacks from `frontend/lib/case-detail-state.ts` across confirmations, recovery actions, recovery verifications, and recurrence events.
+   - Renders `"Not recorded"` or omits the actor clause when the persisted actor is blank/null.
+   - Extended regression in `test-case-detail-state.mjs` asserting zero hardcoded technician/engineer identities across all timeline event types.
+4. Repaired dynamic `/cases/[id]` route: loaded authoritative case state via `casesApi.getCase(id)` with mutually exclusive loading, error/retry, and loaded detail states. Removed the deferred `SimilarCases` card from the demo path.
+5. Cleared full repository frontend lint gate: `npm run lint` completes with 0 errors and 0 warnings.
+6. Verified `npm run build` succeeds cleanly with Turbopack and TypeScript type checking.
+7. Passed all test suites: 54 calibrated vision tests, 89 technician lifecycle tests, 8 AI summary projection tests, 489 full backend tests.
 
 ### Files changed
 
 Primary feature paths:
+- `backend/app/services/ai/prompt_manager.py`: Added `project_safe_observations` with strict whitelist and safety filters; updated `get_case_summary_prompt` to accept and embed projected observations.
+- `backend/app/api/cases.py`: Hydrated persisted observations via `repository.get_case_observations` and passed bounded projection to `get_case_summary_prompt`.
+- `backend/app/services/ai/explanation_service.py`: Updated `summarize_case` to pass safe projected observations to `get_case_summary_prompt`.
+- `backend/tests/unit/test_ai_summary_projection.py`: New focused unit test suite verifying observation projection, safety rejection, mocked provider success (`source="llm"`), provider failure fallback (`source="deterministic"`), and case state invariance.
+- `frontend/lib/case-detail-state.ts`: Made timeline keys deterministic from array index; omitted actor clause when unrecorded; removed all hardcoded "technician"/"Engineer" literals.
+- `frontend/scripts/test-case-detail-state.mjs`: Extended regressions with Test 6 (identity truthfulness across timeline) and Test 7 (deterministic keys without event IDs).
 - `frontend/app/(dashboard)/cases/[id]/page.tsx`: Rewritten to load real durable case with mutually exclusive loading/error/loaded states; removed deferred SimilarCases component.
-- `frontend/components/cases/CaseDetails.tsx`: Rewritten to render full deterministic timeline and header using pure helper functions from `case-detail-state.ts`; removed hardcoded Engineer identity and unused imports.
+- `frontend/components/cases/CaseDetails.tsx`: Rewritten to render full deterministic timeline and header using pure helper functions from `case-detail-state.ts`.
 - `frontend/components/cases/SimilarCases.tsx`: Cleaned unused imports (`Link`, `ArrowRight`).
-- `frontend/lib/case-detail-state.ts`: New pure state derivation module for timeline, revision, top cause, condition formatting, and truthful owner representation.
-- `frontend/scripts/test-case-detail-state.mjs`: New Node regression suite testing 6 case detail derivation invariants.
 - `docs/api/frontend-backend-contract.md`: Documented wiring of `GET /api/v1/cases/{case_id}` in `cases/[id]/page.tsx`.
 
 Lint-only cleanup paths:
@@ -564,70 +579,22 @@ Lint-only cleanup paths:
 
 Handoff paths:
 - `.agents/handoff/QUEUE.md`: Updated DLK-M3-030 to `implemented`.
-- `.agents/handoff/tasks/DLK-M3-030-submission-hardening.md`: Frontmatter `status: implemented` and completed implementation report.
+- `.agents/handoff/tasks/DLK-M3-030-submission-hardening.md`: Frontmatter `status: implemented` and updated implementation report.
 
-### Initial full-lint findings
+### Live OpenAI smoke status
 
-Captured prior to edits (18 problems: 10 errors, 8 warnings):
-- `login/page.tsx:53:23`: error Unexpected any (`@typescript-eslint/no-explicit-any`)
-- `login/page.tsx:136:20`: error Unescaped `'` (`react/no-unescaped-entities`)
-- `register/page.tsx:51:23`: error Unexpected any (`@typescript-eslint/no-explicit-any`)
-- `cases/[id]/page.tsx:19:9`: error Calling setState synchronously within effect (`react-hooks/set-state-in-effect`)
-- `diagnosis/[id]/page.tsx:61:27, 110:25, 112:36`: 3 errors Unexpected any (`@typescript-eslint/no-explicit-any`)
-- `knowledge-base/page.tsx:9:5, 13:5`: 2 warnings unused imports (`@typescript-eslint/no-unused-vars`)
-- `knowledge-base/page.tsx:116:13`: error Calling setState synchronously within effect (`react-hooks/set-state-in-effect`)
-- `CaseDetails.tsx:8:5, 49:51`: 2 warnings unused vars (`@typescript-eslint/no-unused-vars`)
-- `SimilarCases.tsx:1:8, 2:10`: 2 warnings unused imports (`@typescript-eslint/no-unused-vars`)
-- `Header.tsx:20:5`: warning unused import (`@typescript-eslint/no-unused-vars`)
-- `AuthContext.tsx:32:13`: error Calling setState synchronously within effect (`react-hooks/set-state-in-effect`)
-- `AuthContext.tsx:50:21`: error Cannot access variable before it is declared (`react-hooks/immutability`)
-- `AuthContext.tsx:70:9`: warning `window.location.href` navigation (`@next/next/no-location-assign-relative-destination`)
-
-### Case-detail repair
-
-- `cases/[id]/page.tsx` now calls `casesApi.getCase(resolvedParams.id)` on mount with a safe unmount guard.
-- Handles mutually exclusive `isLoading` (spinner), `error || !caseData` (error card with retry button performing GET-only reload), and `caseData` (renders `CaseDetails`).
-- Deferred `SimilarCases` panel completely removed from the competition case-detail path; `CaseDetails` occupies the full container width.
-- `CaseDetails.tsx` renders canonical header fields (case ID, defect name/code, equipment, formatted issue condition badge, case owner, created timestamp, current revision, and top-ranked cause).
-- Case owner defaults to `"Not recorded"` when not persisted in machine context; zero hardcoded engineer identity.
-- Renders complete chronological and revision-ordered timeline across all 7 supported event types. Timestamps formatted safely or `"Not recorded"`, never `"Invalid Date"`.
-
-### Lint cleanup
-
-- Addressed all 18 baseline findings mechanically without altering public APIs or weakening ESLint configuration.
-- Final `npm run lint` result: **0 errors, 0 warnings**.
-
-### Browser end-to-end evidence
-
-- Journey executed using live backend (`http://127.0.0.1:8000`) and Next.js frontend (`http://localhost:3000`):
-  - Case ID: `ae21109f-1b21-4c9b-9412-8a2e3e72bd6c`
-  - Calibrated image analysis: Synthetic 200x200 image with 10px radius dot evaluated under `PROCESS_LIMITS` (`min_coverage_ratio: 0.15`). Produced status `CALIBRATED`, normalized coverage ratio measurement, and canonical `IMAGE` observation (`deposit_size: undersized`, statement_type `AI_INFERENCE`).
-  - Uncalibrated check: Evaluated under `FEATURES_ONLY`. Status `UNCALIBRATED`, 0 score-bearing observations emitted.
-  - Case creation: Created with independent text description ("Dispense dot volume drift during continuous shift on syringe line") and calibrated image observation. Starting Rev 1, initial top cause: "Nozzle Restriction".
-  - Question answered: Q01 answered -> Rev 2.
-  - Troubleshooting check: ACT05 submitted with outcome `improvement_temporary` -> Rev 3.
-  - Cause confirmation: Confirmed cause `air_supply_issue` by Alex Chen -> Rev 4.
-  - Recovery action: Ultrasonic cleaning & solvent purge -> condition `RECOVERY_PENDING_VERIFICATION`, Rev 5.
-  - Recovery verification: 50-dot test coupon passed -> condition `RESOLVED`, Rev 6.
-  - Recurrence reported: Minor drift noted -> condition `RECURRED`, ending Rev 7.
-  - Verification of views:
-    - `/cases/{id}`: HTTP 200, renders all 7 revisions, 3 lifecycle events, 1 confirmation.
-    - `/reports/{id}`: HTTP 200, JSON report reflects complete history.
-    - `/reports/{id}.pdf`: HTTP 200, binary PDF generated with `%PDF` header (11,687 bytes).
-    - `/cases`, `/dashboard`, `/diagnosis/{id}`: HTTP 200, case is visible in case list and analytics.
-
-### Live OpenAI smoke
-
-- Safe environment verification: `OPENAI_API_KEY` was checked safely without printing secret values.
-- Endpoint `POST /api/v1/cases/{case_id}/ai-summary` called on durable case `ae21109f-1b21-4c9b-9412-8a2e3e72bd6c`.
-- Result: HTTP 200, returned 426-character summary with `source: 'deterministic'`.
-- Invariance verification: `GET /cases/{case_id}` before and after the summary call was 100% identical (issue condition, ranked causes, scores, revision numbers unchanged).
-- Zero raw image bytes transmitted; zero secrets logged or exposed.
+- Secret-safe environment verification: `OPENAI_API_KEY` was checked safely without printing secret values.
+- Result: `OPENAI_API_KEY` is not configured in the local test environment (`OPENAI_KEY_SET: False`).
+- Endpoint `POST /api/v1/cases/ae21109f-1b21-4c9b-9412-8a2e3e72bd6c/ai-summary` called on live durable case:
+  - Returned HTTP 200 with `source: 'deterministic'` (426 characters).
+  - State invariance verified: `GET /cases/{case_id}` before and after the summary call was 100% identical (issue condition, ranked causes, scores, revision numbers, and observations unchanged).
+- Status: Live LLM provider execution remains explicitly **blocked** by the absence of a configured `OPENAI_API_KEY` in the local environment; deterministic fallback behavior is fully verified.
+- Automated tests in `tests/unit/test_ai_summary_projection.py` mock provider success to prove `source: 'llm'` output and observation embedding when a working provider is present.
 
 ### Backend/frontend verification results
 
 Frontend:
-- `node scripts/test-case-detail-state.mjs`: 6 passed
+- `node scripts/test-case-detail-state.mjs`: 7 passed
 - `node scripts/test-image-upload-state.mjs`: 7 passed
 - `node scripts/test-reports-state.mjs`: 9 passed
 - `node scripts/test-diagnostic-workflow-state.mjs`: 16 passed
@@ -636,17 +603,18 @@ Frontend:
 
 Backend:
 - `alembic upgrade heads`: Verified up to date on PostgreSQL.
-- Calibrated vision focused suite (`tests/unit/test_vision_*.py`, `tests/integration/test_image_*.py`): 54 passed in 4.21s.
-- Technician lifecycle focused suite (`tests/integration/test_case_api.py`, `tests/integration/test_check_result_api.py`, `tests/integration/test_cause_confirmation_api.py`, `tests/integration/test_recovery_verification_api.py`, `tests/integration/test_recurrence_api.py`): 89 passed in 27.65s.
-- Full backend suite (`pytest -q`): 481 passed in 59.69s.
+- AI summary focused suite (`tests/unit/test_ai_summary_projection.py`): 8 passed in 2.21s.
+- Calibrated vision focused suite (`tests/unit/test_vision_*.py`, `tests/integration/test_image_*.py`): 54 passed in 2.91s.
+- Technician lifecycle focused suite (`tests/integration/test_case_api.py`, `tests/integration/test_check_result_api.py`, `tests/integration/test_cause_confirmation_api.py`, `tests/integration/test_recovery_verification_api.py`, `tests/integration/test_recurrence_api.py`): 89 passed in 28.62s.
+- Full backend suite (`pytest -q --basetemp=.pytest_temp`): 489 passed, 0 failed, 42 warnings in 63.64s.
 - Task validation: `validate_task.py` returned VALID.
 - Whitespace: `git diff --check` passed with 0 errors.
 
 ### Limitations and follow-up
 
 - Vector/semantic similarity search for historical cases remains deferred as planned.
-- No new external frontend/backend dependencies or testing frameworks were added.
+- Live OpenAI provider execution requires an externally supplied `OPENAI_API_KEY`.
 
 ### Proposed commit message
 
-`fix(frontend): harden final competition workflow`
+`fix(ai-summary): resolve DLK-M3-030 review findings R1-R3`

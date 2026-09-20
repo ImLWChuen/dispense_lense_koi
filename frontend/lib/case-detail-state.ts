@@ -132,22 +132,24 @@ export function deriveCaseTimeline(caseData: DurableCaseResponse): CaseTimelineE
     if (Array.isArray(caseData.previous_confirmations)) {
         for (const conf of caseData.previous_confirmations) {
             const notesText = conf.notes ? ` · Notes: ${conf.notes}` : "";
+            const byClause = conf.confirmed_by && conf.confirmed_by.trim() ? ` by ${conf.confirmed_by.trim()}` : "";
             entries.push({
                 key: `04-confirmation-${conf.cause_id}-${conf.resulting_revision_number}`,
                 event: `Cause Confirmed: ${conf.cause_id}`,
                 timestamp: conf.confirmed_at || null,
                 displayTime: formatCaseTimestamp(conf.confirmed_at),
                 revision: conf.resulting_revision_number,
-                detail: `Confirmed by ${conf.confirmed_by || "technician"}${notesText}`,
+                detail: `Confirmed${byClause}${notesText}`,
             });
         }
     }
 
     // 6. Issue Lifecycle Events (Recovery Actions, Recovery Verifications, Recurrences)
     if (Array.isArray(caseData.lifecycle_events)) {
-        for (const evt of caseData.lifecycle_events) {
+        caseData.lifecycle_events.forEach((evt, idx) => {
             const eventType = (evt.event_type || "").toUpperCase();
-            const idSuffix = evt.id !== undefined && evt.id !== null ? evt.id : Math.random().toString(36).substring(2, 7);
+            const idSuffix = evt.id !== undefined && evt.id !== null ? evt.id : `idx-${idx}`;
+            const actorClause = evt.actor && evt.actor.trim() ? ` (by ${evt.actor.trim()})` : "";
 
             if (eventType === "RECOVERY_ACTION") {
                 entries.push({
@@ -157,8 +159,8 @@ export function deriveCaseTimeline(caseData: DurableCaseResponse): CaseTimelineE
                     displayTime: formatCaseTimestamp(evt.created_at),
                     revision: evt.resulting_revision_number,
                     detail: evt.details
-                        ? `Action: ${evt.details} (by ${evt.actor || "technician"})`
-                        : `Transitioned to ${evt.resulting_issue_condition} (by ${evt.actor || "technician"})`,
+                        ? `Action: ${evt.details}${actorClause}`
+                        : `Transitioned to ${evt.resulting_issue_condition}${actorClause}`,
                 });
             } else if (eventType === "RECOVERY_VERIFICATION") {
                 const passed = evt.verification_passed === true;
@@ -169,7 +171,7 @@ export function deriveCaseTimeline(caseData: DurableCaseResponse): CaseTimelineE
                     timestamp: evt.created_at || null,
                     displayTime: formatCaseTimestamp(evt.created_at),
                     revision: evt.resulting_revision_number,
-                    detail: `Result: ${passed ? "Passed" : "Failed"}${detailsText} (by ${evt.actor || "technician"})`,
+                    detail: `Result: ${passed ? "Passed" : "Failed"}${detailsText}${actorClause}`,
                 });
             } else if (eventType === "RECURRENCE") {
                 entries.push({
@@ -178,7 +180,7 @@ export function deriveCaseTimeline(caseData: DurableCaseResponse): CaseTimelineE
                     timestamp: evt.created_at || null,
                     displayTime: formatCaseTimestamp(evt.created_at),
                     revision: evt.resulting_revision_number,
-                    detail: `${evt.details || "Issue recurred"} (by ${evt.actor || "technician"})`,
+                    detail: `${evt.details || "Issue recurred"}${actorClause}`,
                 });
             } else {
                 const detailsText = evt.details ? ` · ${evt.details}` : "";
@@ -191,7 +193,7 @@ export function deriveCaseTimeline(caseData: DurableCaseResponse): CaseTimelineE
                     detail: `${evt.prior_issue_condition} → ${evt.resulting_issue_condition}${detailsText}`,
                 });
             }
-        }
+        });
     }
 
     // Deterministic Sort:

@@ -171,6 +171,9 @@ class ExplanationService:
             for c in case.previous_check_results
         ]
 
+        raw_obs = getattr(case, "observations", [])
+        projected_obs = self.prompt_manager.project_safe_observations(raw_obs)
+
         if self.llm.is_available:
             sys_prompt, user_prompt = self.prompt_manager.get_case_summary_prompt(
                 case_id=case.case_id,
@@ -180,6 +183,7 @@ class ExplanationService:
                 confirmed_causes=confirmed,
                 attempted_checks=attempted_checks,
                 issue_condition=case.issue_condition,
+                observations=projected_obs,
             )
             summary = self.llm.generate_text(user_prompt, system_prompt=sys_prompt)
             if summary:

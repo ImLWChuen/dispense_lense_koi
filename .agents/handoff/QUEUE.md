@@ -17,19 +17,20 @@ Final submission hardening and end-to-end demo acceptance
   - task: `.agents/handoff/tasks/DLK-M3-030-submission-hardening.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-029`
-  - primary outcome:
+  - implemented outcome:
     - repaired dynamic case detail with mutually exclusive loading, error/retry, and loaded detail states;
     - removed deferred Similar Cases from the competition demo path;
     - cleared full repository frontend lint gate (0 errors, 0 warnings across all files);
     - verified calibrated image → diagnosis → lifecycle → report/PDF → dashboard end to end;
-    - ran secret-safe live OpenAI summary smoke with zero case mutation and zero exposed secrets;
-    - passed 481 backend tests, 38 frontend regression tests, and production build with all routes compiled
+    - resolved review findings R1-R3:
+      - R1: implemented bounded observation and image provenance projection into AI-summary prompt (`PromptManager.project_safe_observations`, `PromptManager.get_case_summary_prompt`, `cases.py`, `explanation_service.py`), strictly rejecting raw bytes, base64 strings, file paths, and secrets; added 8 focused tests covering prompt projection, safety rejection, mocked provider returning `source="llm"`, provider failure returning `source="deterministic"`, and case state invariance; live smoke executed secret-safely (live OpenAI call honestly recorded as blocked by missing `OPENAI_API_KEY` in local test environment, deterministic fallback verified);
+      - R2: removed `Math.random()`, derived deterministic timeline keys from persisted fields plus stable lifecycle array index (`idx-0`, `idx-1`); verified identical deep equality when called twice without event IDs;
+      - R3: removed hardcoded `technician` identity from all timeline entries (cause confirmation, recovery action, recovery verification, recurrence), rendering `Not recorded` or omitting the actor clause when absent; regression verified no `technician` or `Engineer` identity is generated.
   - implementer verification:
-    - frontend: `test-case-detail-state.mjs` (6/6 passed), `test-image-upload-state.mjs` (7/7 passed), `test-reports-state.mjs` (9/9 passed), `test-diagnostic-workflow-state.mjs` (16/16 passed), `npm run lint` (0 errors, 0 warnings), `npm run build` (success)
-    - backend: `alembic upgrade heads` applied, calibrated vision suite (54 passed), technician lifecycle suite (89 passed), full backend suite (481 passed)
-    - acceptance: live e2e journey completed with calibrated image analysis, case creation, question answering, troubleshooting check, cause confirmation, recovery action, recovery verification, recurrence, report preview, and binary PDF download
+    - frontend: `test-case-detail-state.mjs` (7/7 passed), `test-image-upload-state.mjs` (7/7 passed), `test-reports-state.mjs` (9/9 passed), `test-diagnostic-workflow-state.mjs` (16/16 passed), `npm run lint` (0 errors, 0 warnings), `npm run build` (success, 13 routes compiled)
+    - backend: `alembic upgrade heads` applied, AI summary projection suite (8 passed), calibrated vision suite (54 passed), technician lifecycle suite (89 passed), full backend suite (489 passed, 0 failed, 42 warnings in 63.64s)
     - task validation: VALID; git diff whitespace check passed
-  - next step: return to ChatGPT reviewer with local commit hash and verification evidence; do not push or merge
+  - next step: submit local commit to ChatGPT reviewer for review; do not push or merge
 
 ## Explicitly deferred
 

@@ -267,7 +267,7 @@ function runTests() {
         console.log("✓ Test 5 Passed: Current revision, top-ranked cause, and status correctly derived from real case data.");
     }
 
-    // --- 6. Identity Truthfulness: No Hardcoded Engineer Identity ---
+    // --- 6. Identity Truthfulness: No Hardcoded Engineer or Technician Identity ---
     {
         const unassignedCase = {
             case_id: "case-owner-001",
@@ -284,8 +284,150 @@ function runTests() {
         assert.notEqual(deriveCaseOwner(unassignedCase), "Engineer");
         assert.notEqual(deriveCaseOwner(unassignedCase), "technician");
 
+        // Verify timeline entries omit actor clause or never generate hardcoded 'technician' / 'Engineer'
+        const anonymousCase = {
+            case_id: "case-anon-001",
+            description: "Anonymous test case",
+            created_at: "2026-09-20T08:00:00Z",
+            previous_confirmations: [
+                {
+                    cause_id: "C01",
+                    confirmed_by: "", // empty
+                    notes: "Visual check",
+                    resulting_revision_number: 2,
+                },
+                {
+                    cause_id: "C02",
+                    confirmed_by: null, // null
+                    resulting_revision_number: 3,
+                },
+            ],
+            lifecycle_events: [
+                {
+                    event_type: "RECOVERY_ACTION",
+                    resulting_revision_number: 4,
+                    actor: "",
+                    details: "Cleaned nozzle",
+                },
+                {
+                    event_type: "RECOVERY_ACTION",
+                    resulting_revision_number: 5,
+                    actor: null,
+                    details: null,
+                    resulting_issue_condition: "RECOVERY_PENDING_VERIFICATION",
+                },
+                {
+                    event_type: "RECOVERY_VERIFICATION",
+                    resulting_revision_number: 6,
+                    actor: "   ",
+                    verification_passed: true,
+                    details: "Coupon OK",
+                },
+                {
+                    event_type: "RECURRENCE",
+                    resulting_revision_number: 7,
+                    actor: null,
+                    details: "Shift 2 drift",
+                },
+            ],
+        };
+
+        const timeline = deriveCaseTimeline(anonymousCase);
+        for (const entry of timeline) {
+            const lowerDetail = entry.detail.toLowerCase();
+            assert.ok(
+                !lowerDetail.includes("technician"),
+                `Entry '${entry.key}' must not invent 'technician' identity: ${entry.detail}`
+            );
+            assert.ok(
+                !lowerDetail.includes("engineer"),
+                `Entry '${entry.key}' must not invent 'engineer' identity: ${entry.detail}`
+            );
+        }
+
+        // Verify confirmation detail when confirmed_by is absent
+        assert.equal(timeline.find((e) => e.key.includes("04-confirmation-C01"))?.detail, "Confirmed · Notes: Visual check");
+        assert.equal(timeline.find((e) => e.key.includes("04-confirmation-C02"))?.detail, "Confirmed");
+
+        // Verify recovery action detail when actor is absent
+        assert.equal(timeline.find((e) => e.key.includes("05-recovery-action-4"))?.detail, "Action: Cleaned nozzle");
+        assert.equal(timeline.find((e) => e.key.includes("05-recovery-action-5"))?.detail, "Transitioned to RECOVERY_PENDING_VERIFICATION");
+
+        // Verify verification detail when actor is absent
+        assert.equal(timeline.find((e) => e.key.includes("05-recovery-verification-6"))?.detail, "Result: Passed · Coupon OK");
+
+        // Verify recurrence detail when actor is absent
+        assert.equal(timeline.find((e) => e.key.includes("05-recurrence-7"))?.detail, "Shift 2 drift");
+
+        // Verify populated actor IS included
+        const populatedCase = {
+            case_id: "case-pop-001",
+            created_at: "2026-09-20T08:00:00Z",
+            previous_confirmations: [
+                { cause_id: "C01", confirmed_by: "Alex Chen", resulting_revision_number: 2 },
+            ],
+            lifecycle_events: [
+                { event_type: "RECOVERY_ACTION", resulting_revision_number: 3, actor: "Alex Chen", details: "Cleaned" },
+                { event_type: "RECOVERY_VERIFICATION", resulting_revision_number: 4, actor: "Alex Chen", verification_passed: true },
+                { event_type: "RECURRENCE", resulting_revision_number: 5, actor: "Pat Taylor" },
+            ],
+        };
+        const popTimeline = deriveCaseTimeline(populatedCase);
+        assert.ok(popTimeline.find((e) => e.key.includes("04-confirmation-C01"))?.detail.includes("by Alex Chen"));
+        assert.ok(popTimeline.find((e) => e.key.includes("05-recovery-action-3"))?.detail.includes("(by Alex Chen)"));
+        assert.ok(popTimeline.find((e) => e.key.includes("05-recovery-verification-4"))?.detail.includes("(by Alex Chen)"));
+        assert.ok(popTimeline.find((e) => e.key.includes("05-recurrence-5"))?.detail.includes("(by Pat Taylor)"));
+
         testsPassed++;
-        console.log("✓ Test 6 Passed: Case owner helper emits 'Not recorded' when unassigned and never hardcoded 'Engineer'.");
+        console.log("✓ Test 6 Passed: Case owner and timeline entries render persisted identities only; zero hardcoded technician/engineer.");
+    }
+
+    // --- 7. Deterministic Timeline Keys Without Event IDs ---
+    {
+        const caseWithoutIds = {
+            case_id: "case-noids-001",
+            description: "No IDs test",
+            created_at: "2026-09-20T08:00:00Z",
+            lifecycle_events: [
+                {
+                    event_type: "RECOVERY_ACTION",
+                    resulting_revision_number: 2,
+                    actor: "Alex Chen",
+                    details: "Cleaned tip",
+                    created_at: "2026-09-20T08:10:00Z",
+                    // id omitted
+                },
+                {
+                    event_type: "RECOVERY_VERIFICATION",
+                    resulting_revision_number: 3,
+                    actor: "Alex Chen",
+                    verification_passed: true,
+                    created_at: "2026-09-20T08:20:00Z",
+                    id: null,
+                },
+                {
+                    event_type: "RECURRENCE",
+                    resulting_revision_number: 4,
+                    actor: "Alex Chen",
+                    created_at: "2026-09-20T10:00:00Z",
+                    id: undefined,
+                },
+            ],
+        };
+
+        const run1 = deriveCaseTimeline(caseWithoutIds);
+        const run2 = deriveCaseTimeline(caseWithoutIds);
+
+        // Deep equality check between two separate calls
+        assert.deepEqual(run1, run2, "Calling deriveCaseTimeline twice must produce identical results with stable keys");
+
+        // Verify keys contain stable index suffixes
+        assert.equal(run1[1].key, "05-recovery-action-2-idx-0");
+        assert.equal(run1[2].key, "05-recovery-verification-3-idx-1");
+        assert.equal(run1[3].key, "05-recurrence-4-idx-2");
+
+        testsPassed++;
+        console.log("✓ Test 7 Passed: Timeline keys are fully deterministic when event IDs are omitted or null.");
     }
 
     console.log(`\nAll ${testsPassed} case-detail state regression tests passed successfully.`);

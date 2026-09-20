@@ -139,9 +139,154 @@ CRITICAL RULES:
 Your task is to generate a comprehensive case summary for maintenance records and engineering handover.
 
 CRITICAL RULES:
-1. Summarize the initial symptom, checks conducted, findings, and current state.
+1. Summarize the initial symptom, observations and evidence, checks conducted, findings, and current state.
 2. If the issue is UNRESOLVED, clearly state that the issue is unresolved.
 3. Do not invent details not present in the record."""
+
+    @classmethod
+    def project_safe_observations(cls, raw_observations: list[Any]) -> list[dict[str, Any]]:
+        """Project raw/persisted observations into bounded text-only representation.
+
+        Includes only:
+        - observation_type
+        - normalized value
+        - evidence source
+        - confidence (when present)
+        - first-seen revision
+        - safe image-analysis provenance (mode, status, roi_id, comparison basis)
+
+        Strictly excludes raw bytes, base64 data, filesystem paths, and secrets.
+        """
+        allowed_provenance_keys = {
+            "mode",
+            "status",
+            "roi_id",
+            "comparison_basis",
+            "coverage_ratio",
+            "overflow_ratio",
+            "calibrated_diameter_mm",
+            "segmentation_quality",
+            "min_coverage_ratio",
+            "max_coverage_ratio",
+            "min_presence_ratio",
+            "max_overflow_ratio",
+        }
+
+        def _is_safe_text(val: str) -> bool:
+            if len(val) > 200:
+                return False
+            lower = val.lower()
+            if any(s in lower for s in ("secret", "password", "token", "api_key", "bearer", "credential")):
+                return False
+            if "base64" in lower or lower.startswith("data:image"):
+                return False
+            if "\\" in val or ":\\" in val or lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp", ".tmp")):
+                return False
+            if val.startswith("/") or val.startswith("./") or val.startswith("../"):
+                return False
+            return True
+
+        def _sanitize_val(val: Any) -> Any:
+            if isinstance(val, (int, float, bool)):
+                return val
+            if isinstance(val, str):
+                return val if _is_safe_text(val) else None
+            if isinstance(val, dict):
+                cleaned: dict[str, Any] = {}
+                for k, v in val.items():
+                    if (
+                        isinstance(k, str)
+                        and _is_safe_text(k)
+                        and not any(s in k.lower() for s in ("path", "secret", "file", "token", "key"))
+                    ):
+                        clean_v = _sanitize_val(v)
+                        if clean_v is not None:
+                            cleaned[k] = clean_v
+                return cleaned if cleaned else None
+            return None
+
+        projected: list[dict[str, Any]] = []
+        for obs in raw_observations or []:
+            # 1. Observation Type
+            obs_type = getattr(obs, "observation_type", None) or getattr(obs, "type", None)
+            if obs_type is None and isinstance(obs, dict):
+                obs_type = obs.get("observation_type") or obs.get("type")
+            if hasattr(obs_type, "value"):
+                obs_type = obs_type.value
+            obs_type_str = str(obs_type).strip() if obs_type is not None else ""
+
+            # 2. Value
+            val = getattr(obs, "value", None)
+            if val is None and isinstance(obs, dict):
+                val = obs.get("value")
+            val_str = str(val).strip() if val is not None else ""
+
+            # 3. Source
+            src = getattr(obs, "source", None) or getattr(obs, "provenance", None)
+            if src is None and isinstance(obs, dict):
+                src = obs.get("source") or obs.get("provenance")
+            if hasattr(src, "value"):
+                src = src.value
+            src_str = str(src).strip() if src is not None else ""
+
+            # 4. Confidence
+            conf = getattr(obs, "confidence", None)
+            if conf is None and isinstance(obs, dict):
+                conf = obs.get("confidence")
+            conf_val: float | None = None
+            if conf is not None:
+                try:
+                    conf_val = round(float(conf), 4)
+                except (ValueError, TypeError):
+                    conf_val = None
+
+            # 5. First-seen revision
+            rev = getattr(obs, "first_seen_revision", None)
+            if rev is None and isinstance(obs, dict):
+                rev = obs.get("first_seen_revision")
+            rev_val: int | None = None
+            if rev is not None:
+                try:
+                    rev_int = int(rev)
+                    if rev_int >= 1:
+                        rev_val = rev_int
+                except (ValueError, TypeError):
+                    rev_val = None
+
+            item: dict[str, Any] = {
+                "observation_type": obs_type_str,
+                "value": val_str,
+                "source": src_str,
+            }
+            if conf_val is not None:
+                item["confidence"] = conf_val
+            if rev_val is not None:
+                item["first_seen_revision"] = rev_val
+
+            # 6. Safe Provenance
+            meta = (
+                getattr(obs, "observation_metadata", None)
+                or getattr(obs, "metadata", None)
+                or (
+                    obs.get("metadata") or obs.get("observation_metadata") or obs.get("provenance")
+                    if isinstance(obs, dict)
+                    else None
+                )
+                or {}
+            )
+            if isinstance(meta, dict):
+                safe_prov: dict[str, Any] = {}
+                for k, v in meta.items():
+                    if k in allowed_provenance_keys:
+                        cleaned_v = _sanitize_val(v)
+                        if cleaned_v is not None:
+                            safe_prov[k] = cleaned_v
+                if safe_prov:
+                    item["provenance"] = safe_prov
+
+            projected.append(item)
+
+        return projected
 
     @classmethod
     def get_case_summary_prompt(
@@ -153,9 +298,10 @@ CRITICAL RULES:
         confirmed_causes: list[str],
         attempted_checks: list[dict[str, Any]],
         issue_condition: str,
+        observations: list[dict[str, Any]] | None = None,
     ) -> tuple[str, str]:
         """Return (system_prompt, user_prompt) for summarizing a diagnostic case."""
-        payload = {
+        payload: dict[str, Any] = {
             "case_id": case_id,
             "defect_name": defect_name,
             "initial_problem": description,
@@ -164,6 +310,8 @@ CRITICAL RULES:
             "attempted_checks": attempted_checks,
             "final_issue_condition": issue_condition,
         }
+        if observations:
+            payload["observations"] = observations
         user_prompt = (
             "Generate a professional, structured case summary for technician records based on:\n"
             f"{json.dumps(payload, indent=2)}"
