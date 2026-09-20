@@ -14,212 +14,15 @@
  */
 
 import assert from "node:assert/strict";
-
-// ============================================================================
-// Extracted Validation Logic (mirrors ImageUpload.tsx validateAnalysisConfiguration)
-// ============================================================================
-
-export function validateAnalysisConfiguration(item) {
-    if (!item.rois || item.rois.length === 0) {
-        return "At least one target ROI must be defined before running analysis.";
-    }
-
-    for (const roi of item.rois) {
-        if (!roi.roi_id || !roi.roi_id.trim()) {
-            return "All ROIs must have a valid non-empty identifier.";
-        }
-        if (
-            !Number.isFinite(roi.x) || roi.x < 0 || roi.x > 1 ||
-            !Number.isFinite(roi.y) || roi.y < 0 || roi.y > 1 ||
-            !Number.isFinite(roi.width) || roi.width <= 0 || roi.width > 1 ||
-            !Number.isFinite(roi.height) || roi.height <= 0 || roi.height > 1
-        ) {
-            return `ROI "${roi.roi_id}" coordinates must be within [0.0, 1.0].`;
-        }
-        if (roi.x + roi.width > 1.0001) {
-            return `ROI "${roi.roi_id}" exceeds image width boundary.`;
-        }
-        if (roi.y + roi.height > 1.0001) {
-            return `ROI "${roi.roi_id}" exceeds image height boundary.`;
-        }
-    }
-
-    if (item.mmPerPixel !== null && item.mmPerPixel !== undefined) {
-        if (!Number.isFinite(item.mmPerPixel) || item.mmPerPixel <= 0) {
-            return "Scale factor mm_per_pixel must be a positive number.";
-        }
-    }
-
-    if (item.mode === "PROCESS_LIMITS") {
-        const limits = item.processLimits;
-        if (!limits) {
-            return "Process limits mode requires at least one process limit to be defined.";
-        }
-
-        const hasMinCov = limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined;
-        const hasMaxCov = limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined;
-        const hasMaxOverflow = limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined;
-        const hasMaxSizeCv = limits.max_size_cv !== null && limits.max_size_cv !== undefined;
-        const hasMinPresence = limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined;
-
-        if (!hasMinCov && !hasMaxCov && !hasMaxOverflow && !hasMaxSizeCv && !hasMinPresence) {
-            return "Process limits mode requires at least one process limit to be defined.";
-        }
-
-        const validateRatio = (val, name) => {
-            if (val !== null && val !== undefined) {
-                if (!Number.isFinite(val) || val < 0.0 || val > 1.0) {
-                    return `${name} must be a number between 0.0 and 1.0.`;
-                }
-            }
-            return null;
-        };
-
-        const covErr = validateRatio(limits.min_coverage_ratio, "Min coverage ratio") ||
-                       validateRatio(limits.max_coverage_ratio, "Max coverage ratio") ||
-                       validateRatio(limits.max_overflow_ratio, "Max overflow ratio") ||
-                       validateRatio(limits.min_presence_ratio, "Min presence ratio");
-        if (covErr) return covErr;
-
-        if (hasMaxSizeCv) {
-            if (!Number.isFinite(limits.max_size_cv) || limits.max_size_cv < 0.0) {
-                return "Max size CV must be a non-negative number.";
-            }
-        }
-
-        if (hasMinCov && hasMaxCov) {
-            if (limits.min_coverage_ratio > limits.max_coverage_ratio) {
-                return "Min coverage ratio cannot be greater than max coverage ratio.";
-            }
-        }
-    }
-
-    if (item.mode === "REFERENCE_IMAGE") {
-        if (!item.referenceFile) {
-            return "Reference image mode requires a reference image file.";
-        }
-
-        const rLimits = item.referenceLimits;
-        if (!rLimits) {
-            return "Reference image mode requires comparison tolerances to be defined.";
-        }
-
-        const hasMinRef = rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined;
-        const hasMaxRef = rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined;
-        const hasTolerance = rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined;
-
-        if (!hasMinRef && !hasMaxRef && !hasTolerance) {
-            return "Reference image mode requires at least one of min reference ratio, max reference ratio, or tolerance ratio.";
-        }
-
-        if (hasTolerance) {
-            if (!Number.isFinite(rLimits.tolerance_ratio) || rLimits.tolerance_ratio < 0.0 || rLimits.tolerance_ratio > 1.0) {
-                return "Tolerance ratio must be a number between 0.0 and 1.0.";
-            }
-        }
-
-        if (hasMinRef) {
-            if (!Number.isFinite(rLimits.min_reference_ratio) || rLimits.min_reference_ratio <= 0.0) {
-                return "Min reference ratio must be greater than 0.0.";
-            }
-        }
-
-        if (hasMaxRef) {
-            if (!Number.isFinite(rLimits.max_reference_ratio) || rLimits.max_reference_ratio <= 0.0) {
-                return "Max reference ratio must be greater than 0.0.";
-            }
-        }
-
-        if (hasMinRef && hasMaxRef) {
-            if (rLimits.min_reference_ratio > rLimits.max_reference_ratio) {
-                return "Min reference ratio cannot be greater than max reference ratio.";
-            }
-        }
-    }
-
-    return null;
-}
-
-// ============================================================================
-// Extracted Request State Transitions (mirrors ImageUpload.tsx atomic logic)
-// ============================================================================
-
-export function startAnalysis(prevUploads, uploadId, requestToken) {
-    const cur = prevUploads[uploadId];
-    if (!cur) return prevUploads;
-    return {
-        ...prevUploads,
-        [uploadId]: {
-            ...cur,
-            status: "analyzing",
-            errorMessage: null,
-            activeRequestToken: requestToken,
-        },
-    };
-}
-
-export function commitSuccess(prevUploads, uploadId, requestToken, requestRevision, response) {
-    const cur = prevUploads[uploadId];
-    if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
-        return prevUploads;
-    }
-    return {
-        ...prevUploads,
-        [uploadId]: {
-            ...cur,
-            status: "analyzed",
-            result: response,
-            errorMessage: null,
-            activeRequestToken: null,
-        },
-    };
-}
-
-export function commitError(prevUploads, uploadId, requestToken, requestRevision, errorMessage) {
-    const cur = prevUploads[uploadId];
-    if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
-        return prevUploads;
-    }
-    return {
-        ...prevUploads,
-        [uploadId]: {
-            ...cur,
-            status: "error",
-            errorMessage,
-            activeRequestToken: null,
-        },
-    };
-}
-
-export function handleReconfigure(prevUploads, uploadId, updates) {
-    const cur = prevUploads[uploadId];
-    if (!cur) return prevUploads;
-    return {
-        ...prevUploads,
-        [uploadId]: {
-            ...cur,
-            ...updates,
-            status: "ready",
-            result: null,
-            errorMessage: null,
-            configRevision: cur.configRevision + 1,
-            activeRequestToken: null,
-        },
-    };
-}
-
-export function handleRemove(prevUploads, uploadId) {
-    if (!prevUploads[uploadId]) return prevUploads;
-    const next = { ...prevUploads };
-    delete next[uploadId];
-    return next;
-}
-
-export function cleanupController(controllers, uploadId, requestToken) {
-    if (controllers[uploadId]?.token === requestToken) {
-        delete controllers[uploadId];
-    }
-}
+import {
+    validateAnalysisConfiguration,
+    startAnalysis,
+    commitSuccess,
+    commitError,
+    handleReconfigure,
+    handleRemove,
+    cleanupController,
+} from "../lib/image-upload-state.ts";
 
 // ============================================================================
 // Test Suite Execution
@@ -262,13 +65,26 @@ function runTests() {
         const itemOutOfBounds = { ...createMockUpload(), rois: [{ roi_id: "dot-1", x: 0.9, y: 0.1, width: 0.2, height: 0.2 }] };
         assert.equal(
             validateAnalysisConfiguration(itemOutOfBounds),
-            'ROI "dot-1" exceeds image width boundary.'
+            "ROI dot-1 extends beyond the image boundaries."
+        );
+
+        // Explicitly verify production boundary tolerance (1.00001)
+        const itemWithinTolerance = { ...createMockUpload(), rois: [{ roi_id: "dot-1", x: 0.9, y: 0.1, width: 0.100005, height: 0.2 }] };
+        assert.equal(
+            validateAnalysisConfiguration(itemWithinTolerance),
+            null
+        );
+
+        const itemExceedingTolerance = { ...createMockUpload(), rois: [{ roi_id: "dot-1", x: 0.9, y: 0.1, width: 0.10002, height: 0.2 }] };
+        assert.equal(
+            validateAnalysisConfiguration(itemExceedingTolerance),
+            "ROI dot-1 extends beyond the image boundaries."
         );
 
         const itemNegativeScale = { ...createMockUpload(), mmPerPixel: -0.05 };
         assert.equal(
             validateAnalysisConfiguration(itemNegativeScale),
-            "Scale factor mm_per_pixel must be a positive number."
+            "Scale (mm per pixel) must be a positive finite number greater than 0."
         );
 
         const itemInvalidCov = {
@@ -278,7 +94,7 @@ function runTests() {
         };
         assert.equal(
             validateAnalysisConfiguration(itemInvalidCov),
-            "Min coverage ratio must be a number between 0.0 and 1.0."
+            "Min coverage ratio must be a finite number between 0 and 1."
         );
 
         const itemInvertedCov = {
@@ -299,7 +115,7 @@ function runTests() {
         };
         assert.equal(
             validateAnalysisConfiguration(itemInvalidRefMin),
-            "Min reference ratio must be greater than 0.0."
+            "Min reference ratio must be a finite number greater than 0 (> 0)."
         );
 
         testsPassed++;

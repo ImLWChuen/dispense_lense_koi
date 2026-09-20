@@ -22,143 +22,19 @@ import {
     UploadSnapshot,
 } from "@/types/image";
 
-interface InFlightController {
-    token: number;
-    controller: AbortController;
-}
+import {
+    validateAnalysisConfiguration,
+    startUploadAnalysis,
+    setUploadValidationError,
+    commitUploadSuccess,
+    commitUploadError,
+    reconfigureUpload,
+    removeUploadItem,
+    cleanupControllerEntry,
+    type InFlightController,
+} from "@/lib/image-upload-state";
 
-export function validateAnalysisConfiguration(item: UploadItem): string | null {
-    if (item.rois.length === 0) {
-        return "At least one target ROI must be defined before running analysis.";
-    }
-
-    for (const roi of item.rois) {
-        if (!roi.roi_id || !roi.roi_id.trim()) {
-            return "All ROIs must have a valid non-empty identifier.";
-        }
-        if (
-            !Number.isFinite(roi.x) || roi.x < 0 || roi.x > 1 ||
-            !Number.isFinite(roi.y) || roi.y < 0 || roi.y > 1 ||
-            !Number.isFinite(roi.width) || roi.width <= 0 || roi.width > 1 ||
-            !Number.isFinite(roi.height) || roi.height <= 0 || roi.height > 1
-        ) {
-            return `ROI ${roi.roi_id} has invalid coordinates. Coordinates must be bounded within [0, 1].`;
-        }
-        if (roi.x + roi.width > 1.00001 || roi.y + roi.height > 1.00001) {
-            return `ROI ${roi.roi_id} extends beyond the image boundaries.`;
-        }
-    }
-
-    if (item.mmPerPixel !== null && item.mmPerPixel !== undefined) {
-        if (!Number.isFinite(item.mmPerPixel) || item.mmPerPixel <= 0) {
-            return "Scale (mm per pixel) must be a positive finite number greater than 0.";
-        }
-    }
-
-    if (item.mode === "PROCESS_LIMITS") {
-        const limits = item.processLimits;
-        if (!limits) {
-            return "PROCESS_LIMITS mode requires at least one process limit threshold.";
-        }
-
-        const hasAnyLimit =
-            (limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined) ||
-            (limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined) ||
-            (limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined) ||
-            (limits.max_size_cv !== null && limits.max_size_cv !== undefined) ||
-            (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined);
-
-        if (!hasAnyLimit) {
-            return "PROCESS_LIMITS mode requires at least one process limit threshold.";
-        }
-
-        if (limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined) {
-            if (!Number.isFinite(limits.min_coverage_ratio) || limits.min_coverage_ratio < 0 || limits.min_coverage_ratio > 1) {
-                return "Min coverage ratio must be a finite number between 0 and 1.";
-            }
-        }
-
-        if (limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined) {
-            if (!Number.isFinite(limits.max_coverage_ratio) || limits.max_coverage_ratio < 0 || limits.max_coverage_ratio > 1) {
-                return "Max coverage ratio must be a finite number between 0 and 1.";
-            }
-        }
-
-        if (
-            limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined &&
-            limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined
-        ) {
-            if (limits.min_coverage_ratio > limits.max_coverage_ratio) {
-                return "Min coverage ratio cannot be greater than max coverage ratio.";
-            }
-        }
-
-        if (limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined) {
-            if (!Number.isFinite(limits.max_overflow_ratio) || limits.max_overflow_ratio < 0 || limits.max_overflow_ratio > 1) {
-                return "Max overflow ratio must be a finite number between 0 and 1.";
-            }
-        }
-
-        if (limits.max_size_cv !== null && limits.max_size_cv !== undefined) {
-            if (!Number.isFinite(limits.max_size_cv) || limits.max_size_cv < 0) {
-                return "Max size CV must be a non-negative finite number (>= 0).";
-            }
-        }
-
-        if (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined) {
-            if (!Number.isFinite(limits.min_presence_ratio) || limits.min_presence_ratio < 0 || limits.min_presence_ratio > 1) {
-                return "Min presence ratio must be a finite number between 0 and 1.";
-            }
-        }
-    } else if (item.mode === "REFERENCE_IMAGE") {
-        if (!item.referenceFile) {
-            return "REFERENCE_IMAGE mode requires a reference image to be uploaded.";
-        }
-
-        const rLimits = item.referenceLimits;
-        if (!rLimits) {
-            return "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.";
-        }
-
-        const hasRefLimit =
-            (rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined) ||
-            (rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined) ||
-            (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined);
-
-        if (!hasRefLimit) {
-            return "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.";
-        }
-
-        if (rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined) {
-            if (!Number.isFinite(rLimits.tolerance_ratio) || rLimits.tolerance_ratio < 0 || rLimits.tolerance_ratio > 1) {
-                return "Tolerance ratio must be a finite number between 0 and 1.";
-            }
-        }
-
-        if (rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined) {
-            if (!Number.isFinite(rLimits.min_reference_ratio) || rLimits.min_reference_ratio <= 0) {
-                return "Min reference ratio must be a finite number greater than 0 (> 0).";
-            }
-        }
-
-        if (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined) {
-            if (!Number.isFinite(rLimits.max_reference_ratio) || rLimits.max_reference_ratio <= 0) {
-                return "Max reference ratio must be a finite number greater than 0 (> 0).";
-            }
-        }
-
-        if (
-            rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined &&
-            rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined
-        ) {
-            if (rLimits.min_reference_ratio > rLimits.max_reference_ratio) {
-                return "Min reference ratio cannot be greater than max reference ratio.";
-            }
-        }
-    }
-
-    return null;
-}
+export { validateAnalysisConfiguration } from "@/lib/image-upload-state";
 
 interface ImageUploadProps {
     onSnapshotChange?: (snapshot: UploadSnapshot) => void;
@@ -280,16 +156,13 @@ export default function ImageUpload({
             pending.controller.abort();
         }
 
-        setUploads((prev) => {
-            const item = prev[uploadId];
-            if (item) {
-                if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-                if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
-            }
-            const next = { ...prev };
-            delete next[uploadId];
-            return next;
-        });
+        const item = uploads[uploadId];
+        if (item) {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
+        }
+
+        setUploads((prev) => removeUploadItem(prev, uploadId));
 
         if (expandedUploadId === uploadId) {
             setExpandedUploadId(null);
@@ -306,24 +179,7 @@ export default function ImageUpload({
                 pending.controller.abort();
             }
 
-            setUploads((prev) => {
-                const current = prev[uploadId];
-                if (!current) return prev;
-
-                // Invalidate existing result when configuration changes
-                return {
-                    ...prev,
-                    [uploadId]: {
-                        ...current,
-                        ...updates,
-                        status: "ready",
-                        result: null,
-                        errorMessage: null,
-                        configRevision: current.configRevision + 1,
-                        activeRequestToken: null,
-                    },
-                };
-            });
+            setUploads((prev) => reconfigureUpload(prev, uploadId, updates));
         },
         []
     );
@@ -342,18 +198,7 @@ export default function ImageUpload({
         // Validate all numeric limits and schema constraints before sending request
         const validationError = validateAnalysisConfiguration(item);
         if (validationError) {
-            setUploads((prev) => {
-                const cur = prev[uploadId];
-                if (!cur) return prev;
-                return {
-                    ...prev,
-                    [uploadId]: {
-                        ...cur,
-                        status: "ready",
-                        errorMessage: validationError,
-                    },
-                };
-            });
+            setUploads((prev) => setUploadValidationError(prev, uploadId, validationError));
             return;
         }
 
@@ -375,19 +220,7 @@ export default function ImageUpload({
             controller,
         };
 
-        setUploads((prev) => {
-            const cur = prev[uploadId];
-            if (!cur) return prev;
-            return {
-                ...prev,
-                [uploadId]: {
-                    ...cur,
-                    status: "analyzing",
-                    errorMessage: null,
-                    activeRequestToken: requestToken,
-                },
-            };
-        });
+        setUploads((prev) => startUploadAnalysis(prev, uploadId, requestToken));
 
         try {
             const response = await imagesApi.analyze(
@@ -399,22 +232,9 @@ export default function ImageUpload({
 
             // Commit result inside functional state update confirming upload exists,
             // configRevision matches, and request token matches
-            setUploads((prev) => {
-                const cur = prev[uploadId];
-                if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    [uploadId]: {
-                        ...cur,
-                        status: "analyzed",
-                        result: response,
-                        errorMessage: null,
-                        activeRequestToken: null,
-                    },
-                };
-            });
+            setUploads((prev) =>
+                commitUploadSuccess(prev, uploadId, requestToken, requestRevision, response)
+            );
         } catch (err: unknown) {
             // Ignore abort exceptions
             if (err instanceof Error && err.name === "AbortError") {
@@ -422,26 +242,12 @@ export default function ImageUpload({
             }
 
             const message = err instanceof Error ? err.message : "Image analysis failed.";
-            setUploads((prev) => {
-                const cur = prev[uploadId];
-                if (!cur || cur.configRevision !== requestRevision || cur.activeRequestToken !== requestToken) {
-                    return prev;
-                }
-                return {
-                    ...prev,
-                    [uploadId]: {
-                        ...cur,
-                        status: "error",
-                        errorMessage: message,
-                        activeRequestToken: null,
-                    },
-                };
-            });
+            setUploads((prev) =>
+                commitUploadError(prev, uploadId, requestToken, requestRevision, message)
+            );
         } finally {
             // Delete controller only if stored controller still belongs to this request token
-            if (controllersRef.current[uploadId]?.token === requestToken) {
-                delete controllersRef.current[uploadId];
-            }
+            cleanupControllerEntry(controllersRef.current, uploadId, requestToken);
         }
     };
 

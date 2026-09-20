@@ -165,6 +165,7 @@ Expose a typed full snapshot, not add-only events. Each entry must at least iden
 
 - `frontend/lib/api/client.ts`
 - `frontend/lib/api/images.ts`
+- `frontend/lib/image-upload-state.ts`
 - `frontend/types/api.ts`
 - `frontend/types/image.ts`
 - `frontend/components/diagnosis/ImageUpload.tsx`
@@ -260,15 +261,16 @@ Proposed commit message: `fix(frontend): resolve correction review findings R1-R
 
 ### Summary
 
-Connected the calibrated image analysis API (`POST /api/v1/images/analyze`) into the technician new-diagnosis and dynamic analysis workflow, and resolved all reviewer correction findings R1–R7 from `.agents/handoff/reviews/DLK-M3-027-review.md`.
+Connected the calibrated image analysis API (`POST /api/v1/images/analyze`) into the technician new-diagnosis and dynamic analysis workflow, and resolved all reviewer correction findings R1–R8 from `.agents/handoff/reviews/DLK-M3-027-review.md`.
 1. Redesigned image request state in `ImageUpload.tsx`: stored `activeRequestToken: number | null` directly on `UploadItem` state. State transition updaters atomically verify upload existence, `configRevision`, and `activeRequestToken`. Controller lifecycle is maintained separately in `controllersRef`; `finally` cleans up only the matching controller token and cannot prevent deferred React state updates from committing (R1).
-2. Added committed, runnable regression script `frontend/scripts/test-image-upload-state.mjs` (executed with `node scripts/test-image-upload-state.mjs` without third-party test framework dependencies), verifying client-side validation, current success, current error, removal during in-flight, reconfiguration during in-flight, supersession, old-finally-versus-new-controller, and deferred React updater commit timing (R1 & R7).
-3. Corrected image API documentation in `docs/api/frontend-backend-contract.md` to document `id` on `POST /images/analyze` observations and reserved `observation_id` for durable `CaseObservationResponse` (R5).
-4. Mirrored backend-guaranteed response fields as required properties in `frontend/types/api.ts` and `frontend/types/image.ts`, including required `channels`, `calibrated_diameter_mm: number | null`, `is_missing: boolean`, aggregate metrics, required observation properties (`id`, `observation_type`, `value`, `statement_type`, `source`, `confidence: number | null`, `metadata`, `timestamp`), required `CauseEvidence`, `CandidateCause`, `DiagnosticQuestion`, `DiagnosticCheck`, `DiagnosisResult`, and `AnalysisRevision` properties (`defect_code: string | null`), while keeping legacy compatibility fields optional and clearly separated (R6).
-5. Resolved all ESLint errors in `questions/page.tsx` and `troubleshooting/page.tsx` (fixing `react-hooks/set-state-in-effect` by using `casesApi.getCase` promise chains in `useEffect` and replacing `any` casts with explicit types), making all 16 changed frontend files 100% lint-clean and reducing repository-wide lint problems from 34 to 26 (R7).
-6. Executed all required repository verification checks and documented their exact commands and outputs (R7).
+2. Extracted pure analysis configuration validation and request-state transitions into shared production module `frontend/lib/image-upload-state.ts`, imported and used by `ImageUpload.tsx` and directly imported and executed by the runnable regression script `frontend/scripts/test-image-upload-state.mjs` (R8).
+3. Maintained dependency-free regression script `frontend/scripts/test-image-upload-state.mjs` (executed with `node scripts/test-image-upload-state.mjs`), exercising the exact production module across configuration validation, boundary tolerance (`1.00001`), current success, current error, removal during in-flight, reconfiguration during in-flight, supersession, old-finally-versus-new-controller, and deferred React updater commit timing (R1, R7, R8).
+4. Corrected image API documentation in `docs/api/frontend-backend-contract.md` to document `id` on `POST /images/analyze` observations and reserved `observation_id` for durable `CaseObservationResponse` (R5).
+5. Mirrored backend-guaranteed response fields as required properties in `frontend/types/api.ts` and `frontend/types/image.ts`, including required `channels`, `calibrated_diameter_mm: number | null`, `is_missing: boolean`, aggregate metrics, required observation properties (`id`, `observation_type`, `value`, `statement_type`, `source`, `confidence: number | null`, `metadata`, `timestamp`), required `CauseEvidence`, `CandidateCause`, `DiagnosticQuestion`, `DiagnosticCheck`, `DiagnosisResult`, and `AnalysisRevision` properties (`defect_code: string | null`), while keeping legacy compatibility fields optional and clearly separated (R6).
+6. Resolved all ESLint errors in `questions/page.tsx` and `troubleshooting/page.tsx` (fixing `react-hooks/set-state-in-effect` by using `casesApi.getCase` promise chains in `useEffect` and replacing `any` casts with explicit types), making all 17 changed frontend files 100% lint-clean and reducing repository-wide lint problems from 34 to 26 (R7).
+7. Executed all required repository verification checks and documented their exact commands and outputs (R7, R8).
 
-### Review Corrections Applied (R1–R7)
+### Review Corrections Applied (R1–R8)
 
 - **R1 (P1) Atomic Request State & Deferred Commit Safety**: Re-engineered `ImageUpload.tsx` to store `activeRequestToken: number | null` in `UploadItem` state. On analysis start, `activeRequestToken: requestToken` is committed to React state and an `AbortController` stored in `controllersRef.current[uploadId] = { token, controller }`. In success and error catch blocks, functional `setUploads` updaters verify `cur.configRevision === requestRevision && cur.activeRequestToken === requestToken` directly against React state, resetting `activeRequestToken: null`. In `finally`, `controllersRef` deletes the entry only if `controllersRef.current[uploadId]?.token === requestToken`. Even if React defers the functional updater until after `finally`, the commit succeeds reliably without depending on ref presence.
 - **R2 (P1) Committed Regression Script**: Created `frontend/scripts/test-image-upload-state.mjs` covering: (1) client-side configuration validation, (2) current request success, (3) current request error, (4) upload removal during in-flight, (5) upload reconfiguration during in-flight, (6) request supersession, (7) old request finishing after newer request starts without deleting newer controller, and (8) deferred React updater execution after `finally` cleanup.
@@ -277,24 +279,26 @@ Connected the calibrated image analysis API (`POST /api/v1/images/analyze`) into
 - **R5 (P2) Image Contract Observation ID**: Corrected Section 3.4 of `docs/api/frontend-backend-contract.md` to specify `id` for `POST /images/analyze` observations and reserved `observation_id` for `CaseObservationResponse`.
 - **R6 (P2) Required Response Types & Input Separation**: Aligned `frontend/types/api.ts` and `frontend/types/image.ts` with backend Pydantic models. Separated `ObservationInput` from `Observation`. Made backend-guaranteed fields required (nullable where Pydantic permits null) across `Observation`, `RoiMeasurement`, `AggregateMeasurements`, `ImageDimensions`, `CauseEvidence`, `CandidateCause`, `DiagnosticQuestion`, `DiagnosticCheck`, `DiagnosisResult`, and `AnalysisRevision` (`defect_code: string | null`).
 - **R7 (P2) Lint Cleanliness & Reproducible Verification**: Fixed pre-existing `react-hooks/set-state-in-effect` and `@typescript-eslint/no-explicit-any` errors in `questions/page.tsx` and `troubleshooting/page.tsx`. Every changed frontend file is 100% clean under focused ESLint. Provided exact runnable verification commands reproducible directly from the repository.
+- **R8 (P2) Shared Production State Transitions & Regression Alignment**: Extracted pure analysis configuration validation (`validateAnalysisConfiguration`) and request-state transitions (`startUploadAnalysis`, `setUploadValidationError`, `commitUploadSuccess`, `commitUploadError`, `reconfigureUpload`, `removeUploadItem`, `cleanupControllerEntry`) into shared module `frontend/lib/image-upload-state.ts`. `ImageUpload.tsx` imports and delegates to these shared functions while managing component-specific controller refs and network dispatch. `scripts/test-image-upload-state.mjs` imports and tests the exact same production functions, eliminating duplicate code and asserting the production ROI boundary tolerance (`1.00001`) and validation messages.
 
 ### Files changed
 
+- `frontend/lib/image-upload-state.ts`: Shared pure configuration validation and upload request-state transitions (`startUploadAnalysis`, `commitUploadSuccess`, `commitUploadError`, `reconfigureUpload`, `removeUploadItem`, `cleanupControllerEntry`, `setUploadValidationError`).
+- `frontend/components/diagnosis/ImageUpload.tsx`: Uses shared functions from `@/lib/image-upload-state`; maintains synchronous `controllersRef`, atomic `activeRequestToken` React state verification, and safe `finally` cleanup.
+- `frontend/scripts/test-image-upload-state.mjs`: Dependency-free regression suite importing and verifying the shared production module (`../lib/image-upload-state.ts`) across all 7 scenarios with production ROI boundary tolerance (`1.00001`).
 - `frontend/types/image.ts`: Required response properties (`channels`, `calibrated_diameter_mm: number | null`, `is_missing`, aggregate fields); added `activeRequestToken: number | null` to `UploadItem`.
 - `frontend/types/api.ts`: Separated `ObservationInput` and `Observation`; required backend fields on `CauseEvidence`, `CandidateCause`, `DiagnosticQuestion`, `DiagnosticCheck`, `DiagnosisResult`, and `AnalysisRevision` (`defect_code: string | null`).
-- `frontend/components/diagnosis/ImageUpload.tsx`: Synchronous `controllersRef`, atomic `activeRequestToken` React state verification, safe `finally` cleanup, pre-request numeric validation.
-- `frontend/scripts/test-image-upload-state.mjs`: Small committed regression suite covering validation, success, error, removal, reconfiguration, supersession, old-finally-vs-new-controller, and deferred commit timing.
 - `frontend/app/(dashboard)/diagnosis/new/page.tsx`: Uses `(Observation | ObservationInput)[]` to submit active calibrated observations and canonical manual observations.
 - `frontend/app/(dashboard)/diagnosis/[id]/questions/page.tsx`: Lint-clean promise-based effect, explicit error typing, and purpose fallback.
 - `frontend/app/(dashboard)/diagnosis/[id]/troubleshooting/page.tsx`: Lint-clean promise-based effect, typed status mapping, and check fallbacks.
 - `frontend/components/diagnosis/CauseRanking.tsx`: Retained fallback for optional `CandidateCause.description`.
 - `docs/api/frontend-backend-contract.md`: Documented `id` on image analysis observations and reserved `observation_id` for `CaseObservationResponse`.
-- `.agents/handoff/QUEUE.md`: Updated `DLK-M3-027` status and review notes.
-- `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`: Completed implementation report and added regression script to allowed paths.
+- `.agents/handoff/QUEUE.md`: Updated `DLK-M3-027` status and review notes for R8.
+- `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`: Completed implementation report and added `frontend/lib/image-upload-state.ts` to allowed paths.
 
 ### Verification results
 
-1. **Deterministic Regression Suite**: Clean pass (all 7 tests passed):
+1. **Deterministic Regression Suite**: Clean pass (all 7 tests passed executing shared production module):
    `node scripts/test-image-upload-state.mjs` (from `frontend/`)
    Output:
    - ✓ Test 1 Passed: Client-side configuration validation catches invalid limits and boundaries.
@@ -305,17 +309,17 @@ Connected the calibrated image analysis API (`POST /api/v1/images/analyze`) into
    - ✓ Test 6 Passed: Superseded request cannot commit result or delete newer controller.
    - ✓ Test 7 Passed: Deferred state updater commits reliably even when finally runs first.
    All 7 regression tests passed successfully.
-2. **Focused ESLint**: Clean pass (0 errors, 0 warnings across all 16 changed files):
-   `npx eslint "lib/api/client.ts" "lib/api/images.ts" "types/api.ts" "types/image.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageRoiEditor.tsx" "components/diagnosis/ImageCalibrationPanel.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "components/diagnosis/ProblemForm.tsx" "components/diagnosis/CauseRanking.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx" "app/(dashboard)/diagnosis/[id]/questions/page.tsx" "app/(dashboard)/diagnosis/[id]/troubleshooting/page.tsx" "scripts/test-image-upload-state.mjs"`
+2. **Focused ESLint**: Clean pass (0 errors, 0 warnings across all 17 changed files):
+   `npx eslint "lib/api/client.ts" "lib/api/images.ts" "lib/image-upload-state.ts" "types/api.ts" "types/image.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageRoiEditor.tsx" "components/diagnosis/ImageCalibrationPanel.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "components/diagnosis/ProblemForm.tsx" "components/diagnosis/CauseRanking.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx" "app/(dashboard)/diagnosis/[id]/questions/page.tsx" "app/(dashboard)/diagnosis/[id]/troubleshooting/page.tsx" "scripts/test-image-upload-state.mjs"`
 3. **Production Next.js Build & Type Check**: Clean pass with code 0:
    `npm run build` (from `frontend/`)
-   Output: Compiled successfully; TypeScript finished in 2.8s; all 13 routes generated and statically optimized. Generated `frontend/next-env.d.ts` restored.
+   Output: Compiled successfully; TypeScript finished in 2.3s; all 13 routes generated and statically optimized. Generated `frontend/next-env.d.ts` restored.
 4. **Repository-Wide Lint Comparison**:
    `npm run lint` (from `frontend/`)
    Output: 26 problems (16 errors, 10 warnings), down from 34 problems (24 errors, 10 warnings). All 26 remaining problems are located exclusively in pre-existing out-of-scope files (`knowledge-base`, `CaseDetails`, `SimilarCases`, `TroubleshootingChecklist`, `AuthContext`, `verification`).
 5. **Static Hardcoded Strings Search**:
-   `git grep -En "127\.0\.0\.1|DSP-2026-0185|0\.8mm|1\.2mm|Undersized, flat profile|Smooth, no bubbles|Nozzle Restriction|Air / Supply|Pressure Instability|Parameter Issue" -- lib/api/images.ts components/diagnosis/ImageUpload.tsx components/diagnosis/ImageAnalysis.tsx components/diagnosis/EvidenceGraph.tsx app/(dashboard)/diagnosis/new/page.tsx app/(dashboard)/diagnosis/[id]/analysis/page.tsx`
-   Output: No hardcoded string matches found (exit code 0).
+   `git grep -En "127\.0\.0\.1|DSP-2026-0185|0\.8mm|1\.2mm|Undersized, flat profile|Smooth, no bubbles|Nozzle Restriction|Air / Supply|Pressure Instability|Parameter Issue" -- "lib/api/images.ts" "components/diagnosis/ImageUpload.tsx" "components/diagnosis/ImageAnalysis.tsx" "components/diagnosis/EvidenceGraph.tsx" "app/(dashboard)/diagnosis/new/page.tsx" "app/(dashboard)/diagnosis/[id]/analysis/page.tsx"`
+   Output: No hardcoded string matches found (exit code 1 / zero matches).
 6. **Task Validation**:
    `python .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md` (from repository root)
    Output: VALID.
@@ -325,4 +329,4 @@ Connected the calibrated image analysis API (`POST /api/v1/images/analyze`) into
 
 ### Proposed commit message
 
-`fix(frontend): resolve correction review findings R1-R7 for calibrated image workflow`
+`fix(frontend): extract shared upload state transitions and resolve R8`
