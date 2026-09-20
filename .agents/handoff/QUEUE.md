@@ -6,7 +6,7 @@ Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support p
 
 ## Active task
 
-- `DLK-M3-028` — Truthful dynamic dashboard, reports, analytics, and evidence-support labels — **implemented**
+- `DLK-M3-028` — Truthful dynamic dashboard, reports, analytics, and evidence-support labels — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-027`
@@ -17,7 +17,9 @@ Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support p
   - corrections resolved (R1–R7): comparable trend cohorts (dashboard operational trends return null); first-time resolution derived strictly from explicit verification lifecycle events (ignores revisions, returns null when evidence unsupported); resolution durations measure only cases with persisted resolution events (excluded from buckets, nullable averages); mutually exclusive loading, error, empty, and data states in dashboard, analytics, and reports (initial failure displays dedicated error card, refresh failure retains data with stale banner); canonical `machine_context.equipment` key read alongside compatibility keys; distinct case counts in cause distributions via `func.distinct(case_id)`; insight trend aligned to `"% of defect-recorded cases"` and defect trend queries cases with defect codes over 6-month window
   - corrections resolved (R8–R11): empty chart arrays instead of zero-filled placeholder rows (`defect_trend=[]` and `resolution_time_distribution=[]` when no observed data); deterministic defect distribution sorting (`count desc, defect_name asc`) and decoupled scoped aggregate insight wording without unwarranted causal or recency claims; nullable defect breakdown code without invented `D00`; reachable reports header refresh button and reload failure state preserving loaded reports with stale warning banner, backed by dependency-free regression suite `test-reports-state.mjs`
   - corrections resolved (R12–R15): resolved report styling and icon derived strictly from `isResolved`; production reports page driven by tested `deriveReportsView` flags without JSX duplication; missing/invalid timestamps return `Not recorded` (never `Recent` or `Invalid Date`); authorized `frontend/lib/reports-state.ts` and `frontend/scripts/test-reports-state.mjs` in Allowed paths
-  - reviewer verification: all 14 focused PostgreSQL analytics checks passed; 480 full backend tests passed; 9 reports state regression tests passed; 7 image upload regression tests passed; focused ESLint passed with zero findings; production build passed with all 13 static pages generated
+  - reviewed commit: `6e33cf3550d3670d660d731c4e87ed5b6093260a`
+  - reviewer verification: all 14 focused PostgreSQL analytics checks passed; 480 full backend tests passed; 9 reports state regression tests passed; 7 image upload regression tests passed; focused ESLint passed with zero findings; production build passed with all 13 static pages generated; task validation and whitespace checks passed
+  - next step: return to the planner before publication/integration or beginning Phase 3B
   - explicit exclusions: troubleshooting/check outcomes, cause-confirmation/recovery/verification UI, rejection/exhaustion behavior, protected case-detail integration, dependencies, migrations, authentication, and remote Git operations
 
 ## Accepted Phase 2 dependency
