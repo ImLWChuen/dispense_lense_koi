@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -11,6 +11,7 @@ import QuestionProgress from "@/components/diagnosis/QuestionProgress";
 import DiagnosticQuestion from "@/components/diagnosis/DiagnosticQuestion";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
+import { deriveQuestionsView } from "@/lib/diagnostic-workflow-state";
 
 export default function QuestionsPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
@@ -19,10 +20,10 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Track previously answered questions to display them in the history
     const history = caseData?.previous_answers || [];
 
     const fetchCase = useCallback(async () => {
+        setIsLoading(true);
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
@@ -62,28 +63,59 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
 
     const handleAnswer = async (questionId: string, value: string) => {
         if (!caseData?.diagnosis?.analysis_revision) return;
-        
+
         setIsSubmitting(true);
         try {
-            await casesApi.submitAnswer(
-                caseData.case_id, 
-                questionId, 
-                value, 
+            const res = await casesApi.submitAnswer(
+                caseData.case_id,
+                questionId,
+                value,
                 caseData.diagnosis.analysis_revision.revision_number
             );
-            
-            // Refresh to get the next question
-            await fetchCase();
+            setCaseData(res);
+            setError(null);
         } catch (err: unknown) {
             console.error("Failed to submit answer", err);
             const message = err instanceof Error ? err.message : "Failed to submit answer.";
             setError(message);
+            // Refresh to synchronize with latest persisted case state
+            await fetchCase();
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    if (isLoading && !caseData) {
+    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const nextQuestion = diagnosis?.next_question;
+
+    const derived = deriveQuestionsView({
+        isLoading,
+        error,
+        caseData,
+        hasNextQuestion: Boolean(nextQuestion),
+    });
+
+    const normalizeOptions = (options?: string[]) => {
+        if (!options || options.length === 0) {
+            return [
+                { value: "YES", label: "Yes" },
+                { value: "NO", label: "No" },
+                { value: "UNKNOWN", label: "Unknown" },
+            ];
+        }
+        return options.map((opt) => {
+            if (typeof opt === "string") {
+                return {
+                    value: opt,
+                    label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, " "),
+                };
+            }
+            return opt;
+        });
+    };
+
+    // 1. Initial Loading
+    if (derived.showInitialLoading) {
         return (
             <div className="min-h-screen">
                 <Sidebar />
@@ -99,29 +131,60 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
         );
     }
 
-    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
-    const nextQuestion = diagnosis?.next_question;
-    const isDone = !nextQuestion && !isLoading;
+    // 2. Dedicated Error (Initial request failure)
+    if (derived.showDedicatedError) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-[#6d5dfc]">
+                                    Diagnostic workflow · {resolvedParams.id.split("-")[0]}
+                                </p>
+                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                                    Diagnostic Questions
+                                </h1>
+                            </div>
+                            <Link
+                                href={`/diagnosis/${resolvedParams.id}`}
+                                className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                            >
+                                ← Back to Diagnosis
+                            </Link>
+                        </div>
 
-    const normalizeOptions = (options?: string[]) => {
-        if (!options || options.length === 0) {
-            return [
-                { value: "YES", label: "Yes" },
-                { value: "NO", label: "No" },
-                { value: "UNKNOWN", label: "Unknown" }
-            ];
-        }
-        return options.map(opt => {
-            if (typeof opt === 'string') {
-                return { 
-                    value: opt, 
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1).toLowerCase().replace(/_/g, ' ') 
-                };
-            }
-            return opt;
-        });
-    };
+                        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+                            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
+                            <h3 className="text-lg font-semibold text-red-800">Failed to load questions</h3>
+                            <p className="mt-2 text-sm text-red-700">
+                                {error || "Unable to retrieve diagnostic questions for this case."}
+                            </p>
+                            <div className="mt-5 flex justify-center gap-4">
+                                <button
+                                    onClick={fetchCase}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                                >
+                                    <RefreshCw size={16} />
+                                    Retry
+                                </button>
+                                <Link
+                                    href={`/diagnosis/${resolvedParams.id}`}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                    Return to Diagnosis
+                                </Link>
+                            </div>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
 
+    // 3. Loaded state (with active question or no next question)
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -133,7 +196,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split('-')[0]}
+                                Diagnostic workflow · {resolvedParams.id.split("-")[0]}
                             </p>
 
                             <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
@@ -141,8 +204,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                             </h1>
 
                             <p className="mt-2 text-sm text-gray-500">
-                                Answer these questions to refine the cause
-                                ranking and improve diagnostic accuracy.
+                                Answer these questions to refine the cause ranking and improve diagnostic accuracy.
                             </p>
                         </div>
 
@@ -154,28 +216,52 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         </Link>
                     </div>
 
-                    {error && (
-                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-                            {error}
+                    {/* Stale / mutation error banner */}
+                    {derived.showStaleBanner && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Update Failed</p>
+                                <p className="mt-0.5">{error}. Persisted case data has been re-synchronized.</p>
+                            </div>
+                            <button
+                                onClick={fetchCase}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                            >
+                                <RefreshCw size={14} />
+                                Refresh
+                            </button>
                         </div>
                     )}
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="space-y-4 xl:col-span-2">
+                            {/* Question history */}
                             {history.map((q, index) => (
                                 <DiagnosticQuestion
                                     key={`hist-${q.question_id}-${index}`}
                                     questionId={q.question_id}
                                     text={q.text || q.answer_text || `Question ${q.question_id}`}
                                     purpose={q.reasoning || "Historical answer retrieved from diagnostic engine."}
-                                    options={q.options ? normalizeOptions(q.options) : [{ value: q.answer_value, label: q.answer_value.charAt(0).toUpperCase() + q.answer_value.slice(1).toLowerCase().replace(/_/g, ' ') }]}
+                                    options={
+                                        q.options
+                                            ? normalizeOptions(q.options)
+                                            : [
+                                                  {
+                                                      value: q.answer_value,
+                                                      label:
+                                                          q.answer_value.charAt(0).toUpperCase() +
+                                                          q.answer_value.slice(1).toLowerCase().replace(/_/g, " "),
+                                                  },
+                                              ]
+                                    }
                                     selectedValue={q.answer_value}
                                     onAnswer={() => {}}
                                     isAnswered={true}
                                 />
                             ))}
 
-                            {nextQuestion && (
+                            {/* Active Next Question */}
+                            {derived.showActiveQuestion && nextQuestion && (
                                 <DiagnosticQuestion
                                     key={nextQuestion.question_id}
                                     questionId={nextQuestion.question_id}
@@ -188,31 +274,33 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                                 />
                             )}
 
-                            {isDone && (
-                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
-                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
-                                    <h3 className="text-lg font-semibold text-emerald-800">No more questions</h3>
-                                    <p className="mt-2 text-sm text-emerald-700">
-                                        The diagnostic engine has gathered enough evidence from questions.
-                                        You should now proceed to physical troubleshooting checks.
+                            {/* Truthful Neutral Completion: No more questions available */}
+                            {derived.showNoNextQuestion && (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+                                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-[#6d5dfc]" />
+                                    <h3 className="text-lg font-semibold text-gray-900">No Additional Questions</h3>
+                                    <p className="mt-2 text-sm text-gray-600">
+                                        No additional questions are currently recommended by the diagnostic engine.
+                                        Proceeding to physical troubleshooting checks is a technician choice.
                                     </p>
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/troubleshooting`}
-                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8]"
                                     >
-                                        Continue to Troubleshooting
+                                        Proceed to Troubleshooting Checks
                                         <ArrowRight size={16} />
                                     </Link>
                                 </div>
                             )}
 
-                            {history.length > 0 && !isDone && (
+                            {/* Option to skip remaining questions if active question is present */}
+                            {derived.showActiveQuestion && (
                                 <div className="flex justify-end pt-4">
                                     <Link
                                         href={`/diagnosis/${resolvedParams.id}/troubleshooting`}
                                         className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                                     >
-                                        Skip remaining questions
+                                        Proceed to Troubleshooting Checks
                                         <ArrowRight size={16} />
                                     </Link>
                                 </div>
@@ -220,7 +308,6 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         </div>
 
                         <div>
-                            {/* In a real app we'd track total questions vs answered, but engine provides dynamically */}
                             <QuestionProgress
                                 current={history.length}
                                 total={history.length + (nextQuestion ? 1 : 0)}

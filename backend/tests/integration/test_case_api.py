@@ -137,6 +137,8 @@ def test_create_and_retrieve_durable_case_happy_path(tracked_cases):
         "diagnosis",
         "previous_answers",
         "previous_check_results",
+        "previous_confirmations",
+        "lifecycle_events",
     ]:
         assert get_data[field] == post_data[field], f"Mismatch in field: {field}"
 
@@ -696,3 +698,185 @@ def test_inconclusive_diagnosis_behavior_difference():
             select(CaseModel).where(CaseModel.description == inconclusive_payload["description"])
         ).all()
         assert len(cases) == 0
+
+
+# ===========================================================================
+# 13. Scenario 13: GET Case Hydrates Complete Confirmation & Lifecycle History
+# ===========================================================================
+
+def test_get_case_returns_ordered_confirmations_and_lifecycle_events(tracked_cases: list[str]):
+    """
+    Verify that advancing a case through:
+    1. Cause confirmation
+    2. Recovery action
+    3. Failed recovery verification (returns issue condition to UNRESOLVED)
+    4. Second recovery action
+    5. Passed recovery verification (transitions issue condition to RESOLVED)
+    6. Recurrence (transitions issue condition to RECURRED)
+
+    returns complete, deterministically ordered previous_confirmations and
+    lifecycle_events from a fresh GET /cases/{id} request without diagnostic
+    recalculation or mutating revision state.
+    """
+    # 1. Create durable case
+    create_payload = {
+        "description": "The dispensing dots become smaller after prolonged operation on the line.",
+        "material": "Epoxy-300",
+        "method": "time_pressure",
+        "machine_context": {"nozzle_id": "NZ-01", "pressure_bar": 2.4},
+    }
+    create_res = client.post("/api/v1/cases", json=create_payload)
+    assert create_res.status_code == 201
+    case_data = create_res.json()
+    case_id = case_data["case_id"]
+    tracked_cases.append(case_id)
+
+    assert case_data["issue_condition"] == "UNRESOLVED"
+    assert case_data["previous_confirmations"] == []
+    assert case_data["lifecycle_events"] == []
+    top_cause_id = case_data["initial_diagnosis"]["ranked_causes"][0]["cause_id"]
+
+    # 2. Confirm root cause (Rev 1 -> 2)
+    conf_res = client.post(
+        f"/api/v1/cases/{case_id}/cause-confirmations",
+        json={
+            "cause_id": top_cause_id,
+            "expected_revision": 1,
+            "confirmed_by": "lead_technician",
+            "notes": "Verified restriction under microscope.",
+        },
+    )
+    assert conf_res.status_code == 200
+    assert conf_res.json()["current_revision"] == 2
+    assert conf_res.json()["issue_condition"] == "UNRESOLVED"
+
+    # 3. Submit recovery action 1 (Rev 2 -> 3)
+    rec1_res = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": 2,
+            "recovery_details": "Cleaned nozzle orifice with ultrasonic bath.",
+            "performed_by": "maintenance_tech",
+        },
+    )
+    assert rec1_res.status_code == 200
+    assert rec1_res.json()["current_revision"] == 3
+    assert rec1_res.json()["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+
+    # 4. Submit failed recovery verification (Rev 3 -> 4)
+    ver1_res = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 3,
+            "verification_passed": False,
+            "verification_details": "Dispense volume test failed; dots still 30% undersized.",
+            "verified_by": "quality_tech",
+        },
+    )
+    assert ver1_res.status_code == 200
+    assert ver1_res.json()["current_revision"] == 4
+    assert ver1_res.json()["issue_condition"] == "UNRESOLVED"
+
+    # 5. Submit recovery action 2 (Rev 4 -> 5)
+    rec2_res = client.post(
+        f"/api/v1/cases/{case_id}/recovery-actions",
+        json={
+            "expected_revision": 4,
+            "recovery_details": "Replaced nozzle tip with new verified component.",
+            "performed_by": "maintenance_tech",
+        },
+    )
+    assert rec2_res.status_code == 200
+    assert rec2_res.json()["current_revision"] == 5
+    assert rec2_res.json()["issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+
+    # 6. Submit passed recovery verification (Rev 5 -> 6)
+    ver2_res = client.post(
+        f"/api/v1/cases/{case_id}/recovery-verifications",
+        json={
+            "expected_revision": 5,
+            "verification_passed": True,
+            "verification_details": "Test shot pattern nominal; 50 consecutive dots within tolerance.",
+            "verified_by": "quality_tech",
+        },
+    )
+    assert ver2_res.status_code == 200
+    assert ver2_res.json()["current_revision"] == 6
+    assert ver2_res.json()["issue_condition"] == "RESOLVED"
+
+    # 7. Submit recurrence (Rev 6 -> 7)
+    recur_res = client.post(
+        f"/api/v1/cases/{case_id}/recurrences",
+        json={
+            "expected_revision": 6,
+            "recurrence_details": "Dots became undersized again during next production shift.",
+            "reported_by": "shift_operator",
+        },
+    )
+    assert recur_res.status_code == 200
+    assert recur_res.json()["current_revision"] == 7
+    assert recur_res.json()["issue_condition"] == "RECURRED"
+
+    # 8. GET /api/v1/cases/{case_id} — verify complete populated histories and no mutation
+    get_res = client.get(f"/api/v1/cases/{case_id}")
+    assert get_res.status_code == 200
+    get_data = get_res.json()
+
+    assert get_data["case_id"] == case_id
+    assert get_data["issue_condition"] == "RECURRED"
+
+    # Verify previous_confirmations
+    confirmations = get_data["previous_confirmations"]
+    assert len(confirmations) == 1
+    assert confirmations[0]["cause_id"] == top_cause_id
+    assert confirmations[0]["confirmed_by"] == "lead_technician"
+    assert confirmations[0]["notes"] == "Verified restriction under microscope."
+    assert confirmations[0]["resulting_revision_number"] == 2
+
+    # Verify lifecycle_events (ordered by revision number ascending)
+    events = get_data["lifecycle_events"]
+    assert len(events) == 5
+
+    # Event 1: Recovery Action 1 (Rev 3)
+    assert events[0]["event_type"] == "RECOVERY_ACTION"
+    assert events[0]["prior_issue_condition"] == "UNRESOLVED"
+    assert events[0]["resulting_issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+    assert events[0]["resulting_revision_number"] == 3
+    assert events[0]["actor"] == "maintenance_tech"
+    assert events[0]["details"] == "Cleaned nozzle orifice with ultrasonic bath."
+
+    # Event 2: Verification Failed (Rev 4)
+    assert events[1]["event_type"] == "RECOVERY_VERIFICATION"
+    assert events[1]["prior_issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+    assert events[1]["resulting_issue_condition"] == "UNRESOLVED"
+    assert events[1]["resulting_revision_number"] == 4
+    assert events[1]["verification_passed"] is False
+    assert events[1]["actor"] == "quality_tech"
+
+    # Event 3: Recovery Action 2 (Rev 5)
+    assert events[2]["event_type"] == "RECOVERY_ACTION"
+    assert events[2]["prior_issue_condition"] == "UNRESOLVED"
+    assert events[2]["resulting_issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+    assert events[2]["resulting_revision_number"] == 5
+    assert events[2]["actor"] == "maintenance_tech"
+
+    # Event 4: Verification Passed (Rev 6)
+    assert events[3]["event_type"] == "RECOVERY_VERIFICATION"
+    assert events[3]["prior_issue_condition"] == "RECOVERY_PENDING_VERIFICATION"
+    assert events[3]["resulting_issue_condition"] == "RESOLVED"
+    assert events[3]["resulting_revision_number"] == 6
+    assert events[3]["verification_passed"] is True
+    assert events[3]["actor"] == "quality_tech"
+
+    # Event 5: Recurrence (Rev 7)
+    assert events[4]["event_type"] == "RECURRENCE"
+    assert events[4]["prior_issue_condition"] == "RESOLVED"
+    assert events[4]["resulting_issue_condition"] == "RECURRED"
+    assert events[4]["resulting_revision_number"] == 7
+    assert events[4]["actor"] == "shift_operator"
+    assert events[4]["details"] == "Dots became undersized again during next production shift."
+
+    # Verify that a second GET is idempotent and does not mutate anything
+    get_res2 = client.get(f"/api/v1/cases/{case_id}")
+    assert get_res2.status_code == 200
+    assert get_res2.json() == get_data

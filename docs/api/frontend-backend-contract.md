@@ -9,9 +9,9 @@
 
 | Category | Count | Description |
 |---|---|---|
-| **Supported & Wired** | 12 | Frontend actively calls backend with matching routes and parameters (cases, images, reports, analytics). |
-| **Available but Not Wired** | 3 | Backend endpoints fully operational; frontend has placeholders or direct UI flows yet to wire. |
-| **Call / Type Mismatch (Member 1 Action)** | 2 | Frontend types or request field names differ slightly from accepted backend schema. |
+| **Supported & Wired** | 15 | Frontend actively calls backend with matching routes, schemas, and parameters (cases, checks, lifecycle, images, reports, analytics). |
+| **Available but Not Wired** | 2 | Backend endpoints fully operational; service probe and stateless diagnosis. |
+| **Call / Type Mismatch (Member 1 Action)** | 0 | Fully aligned; all frontend client methods, parameters, and return types match accepted backend schemas. |
 | **Deferred / Optional UI Features** | 5 | Features intentionally excluded from core MVP (e.g., vector search, LLM narration, auth). |
 
 ---
@@ -22,15 +22,15 @@
 |---|---|---|---|---|---|
 | 1 | `GET /api/v1/health` | `HealthResponse` (`200 OK`) | None directly in `casesApi` | **Available (Not Wired)** | Service health probe. Ready for UI status bar / health check polling. |
 | 2 | `POST /api/v1/diagnoses` | `InitialDiagnosisRequest` &rarr; `DiagnosisResult` (`200 OK`, `422`) | None in `casesApi` | **Available (Not Wired)** | Stateless one-shot diagnostic evaluation. Frontend prefers durable case creation (`POST /cases`). |
-| 3 | `POST /api/v1/cases` | `CreateCaseRequest` &rarr; `DurableCaseResponse` (`201 Created`, `422`, `500`) | `casesApi.createCase` (`frontend/lib/api/cases.ts:9`) | **Supported & Wired** | Used by `frontend/app/(dashboard)/diagnosis/new/page.tsx`. Submits canonical manual and calibrated image observations. Fully aligned. |
-| 4 | `GET /api/v1/cases` | `list[DurableCaseResponse]` (`200 OK`, `500`) | `casesApi.listCases` (`frontend/lib/api/cases.ts:5`) | **Supported & Wired** | Used by `frontend/app/(dashboard)/cases/page.tsx:35`. Fully aligned. Returns all persisted cases. Equipment falls back to `Not recorded`. |
-| 5 | `GET /api/v1/cases/{case_id}` | `DurableCaseResponse` (`200 OK`, `404`, `422`, `500`) | `casesApi.getCase` (`frontend/lib/api/cases.ts:13`) | **Supported & Wired** | Used by diagnosis analysis, verification, questions, and troubleshooting pages. Fully aligned. |
-| 6 | `POST /api/v1/cases/{case_id}/answers` | `SubmitAnswerRequest` &rarr; `CaseAnswerResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitAnswer` (`frontend/lib/api/cases.ts:17`) | **Supported & Wired** | Used by `questions/page.tsx:46`. Advances case revision atomically. |
-| 7 | `POST /api/v1/cases/{case_id}/check-results` | `SubmitCheckResultRequest` &rarr; `CaseCheckResultResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitCheckResult` (`frontend/lib/api/cases.ts:26`) | **Type Mismatch** | **Member 1 Action (Phase 3 Audit):**<br>1. Return type in frontend is typed as `Promise<DiagnosisResult>`, but backend returns `CaseCheckResultResponse` (which embeds `diagnosis`, `current_revision`, `check_result`).<br>2. Frontend sends `finding_text?: string`, but backend `SubmitCheckResultRequest` configures `extra="forbid"`. Supplying `finding_text` causes backend validation to fail with **HTTP 422 Unprocessable Entity** (`extra_forbidden`); extra fields are **not** ignored. Member 1 must remove `finding_text` (or pass it as `finding_details`) and supply `outcome` for structured evidence evaluation.<br>3. **Check Outcome Value Mismatch:** In `backend/app/knowledge/actions.json`, actions expect specific outcome keys mapping to evidence rules (e.g., ACT01 expects `blockage_found`, `no_blockage`, or `damage_found`). In `frontend/components/diagnosis/TroubleshootingChecklist.tsx`, lines 80-85 map outcomes to `"CONTRADICTS"` or `"SUPPORTS"`. Member 1 must align the frontend checklist outcome buttons with the action's configured evidence outcomes in Phase 3. |
-| 8 | `POST /api/v1/cases/{case_id}/cause-confirmations` | `SubmitCauseConfirmationRequest` &rarr; `CaseCauseConfirmationResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitCauseConfirmation` (`frontend/lib/api/cases.ts:59`) | **Supported & Wired** | Used by `verification/page.tsx:46`. Confirms candidate root cause. |
-| 9 | `POST /api/v1/cases/{case_id}/recovery-actions` | `SubmitRecoveryActionRequest` &rarr; `CaseRecoveryActionResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitRecoveryAction` (`frontend/lib/api/cases.ts:68`) | **Supported & Wired** | Used by `verification/page.tsx:57`. Transitions issue condition to `RECOVERY_PENDING_VERIFICATION`. |
-| 10 | `POST /api/v1/cases/{case_id}/recovery-verifications` | `SubmitRecoveryVerificationRequest` &rarr; `CaseRecoveryVerificationResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.verifyCase` (`frontend/lib/api/cases.ts:45`) | **Type Mismatch** | **Member 1 Action:**<br>1. Frontend method name is `verifyCase(caseId, status, notes, expectedRevision)` (`frontend/lib/api/cases.ts:45`).<br>2. Frontend declares return type `Promise<DiagnosisResult>`, but backend returns `CaseRecoveryVerificationResponse` (which extends `DurableCaseResponse` with `current_revision`, `submitted_event: LifecycleEventRecord`, and `lifecycle_events: list[LifecycleEventRecord]`). Frontend callers should consume `response.diagnosis` or update the return type to `Promise<CaseRecoveryVerificationResponse>`.<br>3. Frontend passes `{ verification_passed: status === 'RESOLVED', verification_details: notes, expected_revision: expectedRevision }`, matching backend schema. Optional `verified_by` defaults to `"technician"` (max 64 chars). |
-| 11 | `POST /api/v1/cases/{case_id}/recurrences` | `SubmitRecurrenceRequest` &rarr; `CaseRecurrenceResponse` (`200 OK`, `404`, `409`, `422`, `500`) | Not wired in `cases.ts` | **Available (Not Wired)** | **Member 1 Action:** Add `submitRecurrence(caseId, details, expectedRevision, reportedBy)` to `casesApi` to support re-opening resolved cases when defects recur. |
+| 3 | `POST /api/v1/cases` | `CreateCaseRequest` &rarr; `DurableCaseResponse` (`201 Created`, `422`, `500`) | `casesApi.createCase` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Used by `frontend/app/(dashboard)/diagnosis/new/page.tsx`. Submits canonical manual and calibrated image observations. Fully aligned. |
+| 4 | `GET /api/v1/cases` | `list[DurableCaseResponse]` (`200 OK`, `500`) | `casesApi.listCases` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Used by `frontend/app/(dashboard)/cases/page.tsx`. Fully aligned. Returns all persisted cases. Equipment falls back to `Not recorded`. |
+| 5 | `GET /api/v1/cases/{case_id}` | `DurableCaseResponse` (`200 OK`, `404`, `422`, `500`) | `casesApi.getCase` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Hydrates `previous_confirmations` and `lifecycle_events` ordered ascending by revision number for restart-safe resume without engine re-computation. |
+| 6 | `POST /api/v1/cases/{case_id}/answers` | `SubmitAnswerRequest` &rarr; `CaseAnswerResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitAnswer` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Returns typed `CaseAnswerResponse`. Mutually exclusive question view handles initial errors, stale mutation errors, and neutral completion. |
+| 7 | `POST /api/v1/cases/{case_id}/check-results` | `SubmitCheckResultRequest` &rarr; `CaseCheckResultResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitCheckResult` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Fully aligned: returns `Promise<CaseCheckResultResponse>`, submits canonical `outcome` keys from `actions.json` (e.g. `blockage_found`), explicit findings (`SUPPORTS`, `CONTRADICTS`, `INCONCLUSIVE`, `UNKNOWN`), un-optimistic UI state awaiting API response. |
+| 8 | `POST /api/v1/cases/{case_id}/cause-confirmations` | `SubmitCauseConfirmationRequest` &rarr; `CaseCauseConfirmationResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitCauseConfirmation` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Returns typed `CaseCauseConfirmationResponse`. Independent from resolution; confirms candidate cause with technician notes. |
+| 9 | `POST /api/v1/cases/{case_id}/recovery-actions` | `SubmitRecoveryActionRequest` &rarr; `CaseRecoveryActionResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitRecoveryAction` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Returns typed `CaseRecoveryActionResponse`. Transitions issue condition to `RECOVERY_PENDING_VERIFICATION` with real technician text. Does not require prior cause confirmation. |
+| 10 | `POST /api/v1/cases/{case_id}/recovery-verifications` | `SubmitRecoveryVerificationRequest` &rarr; `CaseRecoveryVerificationResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.verifyCase` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Fully aligned: returns `Promise<CaseRecoveryVerificationResponse>`. Supports passed (transitions to `RESOLVED`) and failed (returns to `UNRESOLVED`) verifications with entered details. |
+| 11 | `POST /api/v1/cases/{case_id}/recurrences` | `SubmitRecurrenceRequest` &rarr; `CaseRecurrenceResponse` (`200 OK`, `404`, `409`, `422`, `500`) | `casesApi.submitRecurrence` (`frontend/lib/api/cases.ts`) | **Supported & Wired** | Authority: `DLK-M3-029`. Fully wired in client and UI (`EngineerVerification.tsx`). Transitions resolved case to `RECURRED` with technician details. |
 | 12 | `GET /api/v1/cases/{case_id}/report` | `CaseReportResponse` (`200 OK`, `404`, `422`, `500`) | `reportsApi.getCaseReport` (`frontend/lib/api/reports.ts:18`) | **Supported & Wired** | Used by `frontend/app/(dashboard)/reports/[id]/page.tsx` and `ReportPreview.tsx`. Strictly renders persisted case facts without mock reports. |
 | 13 | `GET /api/v1/cases/{case_id}/report.pdf` | `application/pdf` binary stream (`200 OK`, `404`, `422`, `500`) | `reportsApi.downloadReportPdf` (`frontend/lib/api/reports.ts:24`) | **Supported & Wired** | Wired in `ReportPreview.tsx` and `ReportActions.tsx`. Downloads dynamic PDF binary directly from backend endpoint. |
 | 14 | `POST /api/v1/images/analyze` | Multipart Form Data &rarr; `ImageAnalysisResponse` (`200 OK`, `400`, `413`, `422`, `500`) | `imagesApi.analyze` (`frontend/lib/api/images.ts:25`) | **Supported & Wired** | Authority: `DLK-M3-026` / commit `6e52628f4e6e192a5044dc9de07b0f01b9cdc213`. Wired via `ImageUpload.tsx`. Analyzes ROIs across `FEATURES_ONLY`, `PROCESS_LIMITS`, and `REFERENCE_IMAGE` modes. |
@@ -127,10 +127,13 @@ When creating a case (`POST /api/v1/cases`), manual observations submitted from 
   - `random_locations`
   - `varies_across_points`
 
-### 3.6 Phase 3 Action & Check Outcomes Audit
-- **Issue:** In `backend/app/knowledge/actions.json`, troubleshooting actions map observations through action-specific outcome keys (e.g. ACT01 maps `blockage_found`, `no_blockage`, `damage_found`).
-- **Frontend Deviation:** `frontend/components/diagnosis/TroubleshootingChecklist.tsx` lines 80-85 currently maps user selection to generic strings `"CONTRADICTS"` or `"SUPPORTS"`.
-- **Status:** Audited follow-up action for Member 1 in Phase 3. No edits were made to `TroubleshootingChecklist.tsx` in `DLK-M3-027` to preserve Phase 3 file boundaries.
+### 3.6 Physical Checks & Canonical Outcome Alignment (DLK-M3-029)
+- **Resolved in DLK-M3-029:** The frontend adapter (`casesApi.submitCheckResult`) and checklist component (`TroubleshootingChecklist.tsx`) submit canonical outcome keys defined in `backend/app/knowledge/actions.json` (e.g. `blockage_found`, `no_blockage`, `damage_found` for ACT01) mapped to human-readable technician labels.
+- **Canonical Payloads:**
+  - For `COMPLETED` checks with `SUPPORTS` or `CONTRADICTS` findings, an explicit canonical `outcome` string is required and submitted.
+  - For `INCONCLUSIVE` completed checks, `outcome` is omitted (`null`).
+  - For non-completed checks (`BLOCKED`, `FAILED`, `SKIPPED`, `UNKNOWN`, `NOT_APPLICABLE`), `finding` is forced to `"UNKNOWN"` and `outcome` is omitted (`null`), preserving the technician's notes without claiming evidence support or diagnostic score shifts.
+- **Safe UI State:** Check results are un-optimistic; the UI awaits API resolution and reconciles state from the durable response rather than marking checks saved prematurely.
 
 ### 3.7 Analytics, Reports & Truthful Evidence-Support Contract
 - **Authoritative Reference:** `DLK-M3-028`.
@@ -190,6 +193,42 @@ When creating a case (`POST /api/v1/cases`), manual observations submitted from 
 - **Report Data Integrity:**
   - `GET /api/v1/cases/{case_id}/report` and `ReportPreview` render only real persisted case data and lifecycle events.
   - Mock fallback reports (`mockFallbackReports`), synthetic defect descriptions ("A particle or debris..."), invented measurements, and canned recommendations are forbidden. Missing sections explicitly state "Not recorded" or display neutral empty states.
+
+### 3.8 Restart-Safe Technician Troubleshooting and Lifecycle Workflow (DLK-M3-029)
+- **Authoritative Reference:** `DLK-M3-029`.
+- **Additive GET-Case History Fields:**
+  - `GET /api/v1/cases/{case_id}` includes `previous_confirmations: list[CauseConfirmationRecord]` and `lifecycle_events: list[LifecycleEventRecord]` populated from repository reads at the latest revision boundary.
+  - Sorted deterministically in ascending revision/creation order.
+  - Operation is strictly read-only: no diagnostic recalculation, no state mutation, and returns `[]` when no history exists.
+- **Typed Mutation Responses:**
+  - `POST /cases/{id}/answers` &rarr; `CaseAnswerResponse`
+  - `POST /cases/{id}/check-results` &rarr; `CaseCheckResultResponse`
+  - `POST /cases/{id}/cause-confirmations` &rarr; `CaseCauseConfirmationResponse`
+  - `POST /cases/{id}/recovery-actions` &rarr; `CaseRecoveryActionResponse`
+  - `POST /cases/{id}/recovery-verifications` &rarr; `CaseRecoveryVerificationResponse`
+  - `POST /cases/{id}/recurrences` &rarr; `CaseRecurrenceResponse`
+  - All responses extend `DurableCaseResponse` and contain `current_revision`, the submitted record, and updated history.
+- **Truthful Workflow Views & Mutex States:**
+  - Questions and Troubleshooting views enforce mutual exclusion: initial loading, initial error, active question/check, and completion.
+  - Initial load failure renders a dedicated error card with retry; it **never** renders completion or empty lists.
+  - When no additional questions or checks are available, neutral completion text is displayed. The UI must **never** claim "The engine has gathered sufficient evidence" or that a root cause is proven.
+- **Lifecycle Transitions & Legal Actions:**
+  - Transitions adhere strictly to:
+    ```text
+    UNRESOLVED or RECURRED --recovery action--> RECOVERY_PENDING_VERIFICATION
+    RECOVERY_PENDING_VERIFICATION --verification passed--> RESOLVED
+    RECOVERY_PENDING_VERIFICATION --verification failed--> UNRESOLVED
+    RESOLVED --recurrence--> RECURRED
+    ```
+  - `UNRESOLVED` or `RECURRED`: Cause confirmation and/or recovery action are permitted. Cause confirmation is an independent record and does not transition issue condition.
+  - `RECOVERY_PENDING_VERIFICATION`: Pass or fail recovery verification is permitted.
+  - `RESOLVED`: Recurrence reporting is permitted.
+- **Independent Operations & No Fake Rejection:**
+  - The chained one-click flow is eliminated. Each action is performed and persisted independently.
+  - Cause confirmation is optional; cases may be recovered and resolved directly without a confirmed cause.
+  - The backend provides no cause-rejection endpoint. Controls implying persisted cause rejection are removed, replaced by an informative note that technicians can continue gathering evidence or perform recovery directly.
+- **Stale Concurrency & Error Recovery:**
+  - On `409 Conflict` or mutation error, the UI preserves the last persisted state with a top warning banner and automatically re-synchronizes with the latest server revision. Mutations are **never** automatically replayed.
 
 ---
 

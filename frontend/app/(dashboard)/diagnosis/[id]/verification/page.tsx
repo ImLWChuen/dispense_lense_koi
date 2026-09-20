@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -14,83 +14,158 @@ import { DurableCaseResponse } from "@/types/api";
 
 export default function VerificationPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params);
-    const router = useRouter();
     const [caseData, setCaseData] = useState<DurableCaseResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const fetchCase = useCallback(async () => {
+        setIsLoading(true);
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
-        } catch (err: any) {
+            setError(null);
+        } catch (err: unknown) {
             console.error("Failed to fetch case", err);
-            setError(err.message || "Failed to load case data.");
+            const message = err instanceof Error ? err.message : "Failed to load case data.";
+            setError(message);
         } finally {
             setIsLoading(false);
         }
     }, [resolvedParams.id]);
 
     useEffect(() => {
-        fetchCase();
-    }, [fetchCase]);
-
-    const handleVerificationSubmit = async (status: string, notes: string, recoveryAction?: string) => {
-        if (!caseData?.diagnosis?.analysis_revision) return;
-        
-        try {
-            let currentRevision = caseData.diagnosis.analysis_revision.revision_number;
-
-            if (status === "RESOLVED") {
-                // 1. Confirm the root cause
-                const confirmResponse = await casesApi.submitCauseConfirmation(
-                    caseData.case_id,
-                    topCause!.cause_id,
-                    currentRevision,
-                    "engineer",
-                    notes
-                );
-                currentRevision = (confirmResponse as any).current_revision;
-
-                // 2. Submit the recovery action
-                if (recoveryAction) {
-                    const actionResponse = await casesApi.submitRecoveryAction(
-                        caseData.case_id,
-                        recoveryAction,
-                        currentRevision,
-                        "engineer"
-                    );
-                    currentRevision = (actionResponse as any).current_revision;
+        let isCurrent = true;
+        casesApi
+            .getCase(resolvedParams.id)
+            .then((data) => {
+                if (isCurrent) {
+                    setCaseData(data);
+                    setError(null);
+                    setIsLoading(false);
                 }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    const message = err instanceof Error ? err.message : "Failed to load case data.";
+                    setError(message);
+                    setIsLoading(false);
+                }
+            });
 
-                // 3. Verify the case
-                await casesApi.verifyCase(
-                    caseData.case_id,
-                    status,
-                    "Tests passed. Issue fixed.",
-                    currentRevision
-                );
-            } else {
-                // For UNRESOLVED, maybe just confirm the cause with UNRESOLVED status?
-                // Wait, the API requires a recovery action to reach verification.
-                // If the user clicks 'Reject', they are rejecting the cause.
-                // Does the backend support rejecting a cause?
-                // For now, just log an error or handle it as best as possible.
-                // Actually, let's just use the cause confirmation with notes for rejected cause.
-                // Actually, there is no reject cause endpoint in the backend. 
-                // Let's just alert for now or just go back to case view.
-                console.warn("Reject cause is not fully implemented in backend");
-            }
-            
-            // Navigate back to the case details page after verification
-            router.push(`/diagnosis/${resolvedParams.id}`);
-        } catch (err: any) {
-            console.error("Failed to verify case", err);
-            setError(err.message || "Failed to verify case.");
+        return () => {
+            isCurrent = false;
+        };
+    }, [resolvedParams.id]);
+
+    const getCurrentRevision = (): number => {
+        return (
+            caseData?.current_revision ??
+            caseData?.diagnosis?.analysis_revision?.revision_number ??
+            1
+        );
+    };
+
+    const handleConfirmCause = async (causeId: string, notes?: string) => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            const revision = getCurrentRevision();
+            const res = await casesApi.submitCauseConfirmation(
+                caseData.case_id,
+                causeId,
+                revision,
+                "technician",
+                notes
+            );
+            setCaseData(res);
+            setError(null);
+        } catch (err: unknown) {
+            console.error("Failed to confirm cause", err);
+            const message = err instanceof Error ? err.message : "Failed to confirm cause.";
+            setError(message);
+            // Refresh to sync latest persisted case state
+            await fetchCase();
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    if (isLoading && !caseData) {
+    const handleSubmitRecoveryAction = async (recoveryDetails: string) => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            const revision = getCurrentRevision();
+            const res = await casesApi.submitRecoveryAction(
+                caseData.case_id,
+                recoveryDetails,
+                revision,
+                "technician"
+            );
+            setCaseData(res);
+            setError(null);
+        } catch (err: unknown) {
+            console.error("Failed to submit recovery action", err);
+            const message = err instanceof Error ? err.message : "Failed to submit recovery action.";
+            setError(message);
+            // Refresh to sync latest persisted case state
+            await fetchCase();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSubmitRecoveryVerification = async (passed: boolean, details?: string) => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            const revision = getCurrentRevision();
+            const res = await casesApi.verifyCase(
+                caseData.case_id,
+                passed,
+                details || "",
+                revision,
+                "technician"
+            );
+            setCaseData(res);
+            setError(null);
+        } catch (err: unknown) {
+            console.error("Failed to verify recovery", err);
+            const message = err instanceof Error ? err.message : "Failed to verify recovery.";
+            setError(message);
+            // Refresh to sync latest persisted case state
+            await fetchCase();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSubmitRecurrence = async (details: string) => {
+        if (!caseData) return;
+        setIsSubmitting(true);
+        try {
+            const revision = getCurrentRevision();
+            const res = await casesApi.submitRecurrence(
+                caseData.case_id,
+                details,
+                revision,
+                "technician"
+            );
+            setCaseData(res);
+            setError(null);
+        } catch (err: unknown) {
+            console.error("Failed to submit recurrence", err);
+            const message = err instanceof Error ? err.message : "Failed to report recurrence.";
+            setError(message);
+            // Refresh to sync latest persisted case state
+            await fetchCase();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // 1. Initial Loading
+    if (isLoading && !caseData && !error) {
         return (
             <div className="min-h-screen">
                 <Sidebar />
@@ -98,7 +173,7 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     <Header />
                     <PageContainer>
                         <div className="flex h-64 items-center justify-center">
-                            <p className="text-gray-500">Loading case data...</p>
+                            <p className="text-gray-500">Loading case lifecycle data...</p>
                         </div>
                     </PageContainer>
                 </div>
@@ -106,9 +181,60 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
         );
     }
 
-    const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
-    const topCause = diagnosis?.ranked_causes?.[0];
+    // 2. Dedicated Error (Initial request failure)
+    if (!isLoading && error && !caseData) {
+        return (
+            <div className="min-h-screen">
+                <Sidebar />
+                <div className="ml-64">
+                    <Header />
+                    <PageContainer>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-[#6d5dfc]">
+                                    Diagnostic workflow · {resolvedParams.id.split("-")[0]}
+                                </p>
+                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
+                                    Lifecycle Verification
+                                </h1>
+                            </div>
+                            <Link
+                                href={`/diagnosis/${resolvedParams.id}`}
+                                className="text-sm font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                            >
+                                ← Back to Diagnosis
+                            </Link>
+                        </div>
 
+                        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+                            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-500" />
+                            <h3 className="text-lg font-semibold text-red-800">Failed to load case data</h3>
+                            <p className="mt-2 text-sm text-red-700">
+                                {error || "Unable to retrieve case lifecycle details."}
+                            </p>
+                            <div className="mt-5 flex justify-center gap-4">
+                                <button
+                                    onClick={fetchCase}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                                >
+                                    <RefreshCw size={16} />
+                                    Retry
+                                </button>
+                                <Link
+                                    href={`/diagnosis/${resolvedParams.id}`}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                    Return to Diagnosis
+                                </Link>
+                            </div>
+                        </div>
+                    </PageContainer>
+                </div>
+            </div>
+        );
+    }
+
+    // 3. Loaded state
     return (
         <div className="min-h-screen">
             <Sidebar />
@@ -120,16 +246,15 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-[#6d5dfc]">
-                                Diagnostic workflow · {resolvedParams.id.split('-')[0]}
+                                Diagnostic workflow · {resolvedParams.id.split("-")[0]}
                             </p>
 
                             <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                                Engineer Verification
+                                Lifecycle Verification
                             </h1>
 
                             <p className="mt-2 text-sm text-gray-500">
-                                Review the diagnostic conclusion and provide
-                                your engineering verification.
+                                Review candidate cause support, record recovery actions, and verify case lifecycle state.
                             </p>
                         </div>
 
@@ -141,31 +266,39 @@ export default function VerificationPage({ params }: { params: Promise<{ id: str
                         </Link>
                     </div>
 
-                    {error && (
-                        <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-                            {error}
+                    {/* Stale / Mutation Error Banner */}
+                    {error && caseData && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            <div>
+                                <p className="font-semibold">Lifecycle Action Failed</p>
+                                <p className="mt-0.5">{error}. Persisted case state has been re-synchronized.</p>
+                            </div>
+                            <button
+                                onClick={fetchCase}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                            >
+                                <RefreshCw size={14} />
+                                Refresh
+                            </button>
                         </div>
                     )}
 
                     <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                         <div className="xl:col-span-2">
-                            {topCause ? (
-                                <EngineerVerification 
-                                    causeName={topCause.cause_name.replace(/_/g, " ")}
-                                    causeDescription={topCause.description}
-                                    confidence={Math.round(topCause.score)}
-                                    onConfirm={(notes, recoveryAction) => handleVerificationSubmit("RESOLVED", notes, recoveryAction)}
-                                    onReject={(notes) => handleVerificationSubmit("UNRESOLVED", notes)}
+                            {caseData && (
+                                <EngineerVerification
+                                    caseData={caseData}
+                                    onConfirmCause={handleConfirmCause}
+                                    onSubmitRecoveryAction={handleSubmitRecoveryAction}
+                                    onSubmitRecoveryVerification={handleSubmitRecoveryVerification}
+                                    onSubmitRecurrence={handleSubmitRecurrence}
+                                    isSubmitting={isSubmitting}
                                 />
-                            ) : (
-                                <div className="rounded-xl bg-gray-50 p-6 text-center text-gray-500">
-                                    No candidate causes available to verify.
-                                </div>
                             )}
                         </div>
 
                         <div>
-                            <DiagnosisSummary status="Pending Verification" />
+                            {caseData && <DiagnosisSummary caseData={caseData} />}
                         </div>
                     </div>
                 </PageContainer>

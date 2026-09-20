@@ -2,9 +2,21 @@
 
 ## Current milestone
 
-Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support presentation
+Phase 3B: restart-safe technician troubleshooting and lifecycle workflow
 
 ## Active task
+
+- `DLK-M3-029` — Restart-safe technician troubleshooting and lifecycle workflow — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-029-technician-lifecycle-workflow.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-028`
+  - outcome: make questions, physical checks, cause confirmation, recovery action, recovery verification, and recurrence truthful, independent, revision-safe, and resumable after refresh or partial failure
+  - authorized backend contract: additive confirmation and lifecycle histories in `GET /api/v1/cases/{case_id}` only; no database or diagnostic-semantic changes
+  - protected overlap: do not modify or stage the existing uncommitted `frontend/app/(dashboard)/cases/[id]/page.tsx`
+  - review stop: return to ChatGPT after one local implementation commit; do not begin final end-to-end acceptance or remote Git operations
+  - explicit exclusions: diagnostic engine/knowledge/weights, durable rejection semantics, migrations, image workflow, dashboard/analytics/reports, authentication, dependencies, deployment, protected case-detail integration, and remote Git operations
+
+## Accepted Phase 3A dependency
 
 - `DLK-M3-028` — Truthful dynamic dashboard, reports, analytics, and evidence-support labels — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md`
