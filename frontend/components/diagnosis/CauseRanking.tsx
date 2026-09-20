@@ -38,7 +38,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                     const cardData = {
                         id: cause.cause_id,
                         name: cause.cause_name,
-                        description: cause.description,
+                        description: cause.description || "",
                         score: Math.round(cause.score),
                         conclusion: cause.conclusion,
                         evidenceCount: (cause.supporting_evidence?.length || 0) + (cause.contradicting_evidence?.length || 0) + (cause.neutral_evidence?.length || 0),

@@ -75,8 +75,8 @@ function CasesContent() {
             (c.defect_name && c.defect_name.toLowerCase().includes(q)) ||
             (c.defect_code && c.defect_code.toLowerCase().includes(q));
         const matchesEquipment =
-            c.machine_context?.equipment &&
-            c.machine_context.equipment.toLowerCase().includes(q);
+            c.machine_context?.equipment != null &&
+            String(c.machine_context.equipment).toLowerCase().includes(q);
         const matchesStatus = c.issue_condition.toLowerCase().includes(q);
 
         return matchesId || matchesDefect || matchesEquipment || matchesStatus;

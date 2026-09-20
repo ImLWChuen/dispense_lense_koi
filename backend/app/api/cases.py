@@ -167,7 +167,6 @@ def create_durable_case(
             detail="An unexpected error occurred during case creation.",
         )
 
-
 @router.get(
     "",
     response_model=list[DurableCaseResponse],
@@ -2681,23 +2680,23 @@ def generate_case_ai_summary(
             raw_condition = getattr(report.issue_condition, "value", str(report.issue_condition))
             condition_display = raw_condition.replace("IssueCondition.", "").replace("Issuecondition.", "").replace("_", " ").title()
             confirmed_display = ", ".join(confirmed_causes) if confirmed_causes else "None confirmed yet"
-            
+
             lines = [
                 f"Diagnostic Case Report for {defect_title} (Case ID: {report.case_id}).",
                 f"Initial problem observed: {report.description or 'No initial description provided.'}",
             ]
             if report.material or report.method:
                 lines.append(f"Operating Context: Material '{report.material or 'N/A'}', dispensing method '{report.method or 'N/A'}'.")
-            
+
             if confirmed_causes:
                 lines.append(f"Root cause confirmed: {confirmed_display}.")
             elif report.current_diagnosis and report.current_diagnosis.ranked_causes:
                 top = report.current_diagnosis.ranked_causes[0]
                 lines.append(f"Top diagnostic candidate is '{top.cause_name}' with evidence support score {top.score:.0f}/100.")
-            
+
             if report.check_results:
                 lines.append(f"A total of {len(report.check_results)} troubleshooting check(s) have been conducted across {report.current_revision} diagnostic revision(s).")
-            
+
             lines.append(f"Current Issue Condition: {condition_display}.")
             summary_text = " ".join(lines)
             source = "deterministic"
@@ -2716,4 +2715,3 @@ def generate_case_ai_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while generating the AI summary.",
         )
-

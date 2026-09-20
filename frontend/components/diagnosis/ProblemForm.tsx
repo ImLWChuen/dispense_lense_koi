@@ -11,6 +11,16 @@ import {
     Wind,
 } from "lucide-react";
 
+export interface ProblemFormData {
+    defect: string | null;
+    description: string;
+    equipment: string;
+    material: string;
+    depositSize: string;
+    frequency: string;
+    location: string;
+}
+
 const defectTypes = [
     {
         code: "D01_TOO_LITTLE",
@@ -58,34 +68,33 @@ const equipmentOptions = [
 ];
 
 const depositSizeOptions = [
-    "undersized",
-    "oversized",
-    "inconsistent",
-    "normal",
+    { label: "Undersized (smaller than target)", value: "undersized" },
+    { label: "Oversized (larger than target)", value: "oversized" },
+    { label: "Inconsistent (shot-to-shot variance)", value: "inconsistent" },
 ];
 
 const frequencyOptions = [
-    "Every shot",
-    "Intermittent",
-    "After prolonged operation",
-    "First shots only",
+    { label: "Consistent (occurs steadily / every shot)", value: "consistent" },
+    { label: "Intermittent (occurs sporadically / occasionally)", value: "intermittent" },
 ];
 
 const locationOptions = [
-    "All dispensing points",
-    "Specific nozzle",
-    "Random locations",
-    "Edge positions only",
+    { label: "All dispensing points (systemic)", value: "all_points" },
+    { label: "Specific nozzle (localized)", value: "specific_nozzle" },
+    { label: "Random locations", value: "random_locations" },
+    { label: "Varies across points", value: "varies_across_points" },
 ];
 
 interface ProblemFormProps {
-    onSubmit?: (data: Record<string, unknown>) => void;
+    onSubmit?: (data: ProblemFormData) => void;
+    isSubmitting?: boolean;
 }
 
-export default function ProblemForm({ onSubmit }: ProblemFormProps) {
+export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemFormProps) {
     const [selectedDefect, setSelectedDefect] = useState<string | null>(null);
     const [description, setDescription] = useState("");
     const [equipment, setEquipment] = useState("");
+    const [material, setMaterial] = useState("");
     const [depositSize, setDepositSize] = useState("");
     const [frequency, setFrequency] = useState("");
     const [location, setLocation] = useState("");
@@ -95,6 +104,7 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
             defect: selectedDefect,
             description,
             equipment,
+            material,
             depositSize,
             frequency,
             location,
@@ -156,6 +166,8 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
 
                             <input
                                 type="text"
+                                value={material}
+                                onChange={(e) => setMaterial(e.target.value)}
                                 placeholder="e.g. Epoxy adhesive, Solder paste"
                                 className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:bg-white"
                             />
@@ -182,6 +194,7 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
                         return (
                             <button
                                 key={defect.code}
+                                type="button"
                                 onClick={() => setSelectedDefect(defect.code)}
                                 className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
                                     isSelected
@@ -223,11 +236,11 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
             {/* Observations */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-base font-semibold text-gray-900">
-                    Observations
+                    Manual Observations
                 </h2>
 
                 <p className="mt-1 text-xs text-gray-500">
-                    Provide additional details to improve diagnostic accuracy
+                    Provide additional canonical observations to improve diagnostic accuracy
                 </p>
 
                 <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -241,11 +254,11 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
                             onChange={(e) => setDepositSize(e.target.value)}
                             className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">Select observation</option>
+                            <option value="">No observation (unremarkable / normal)</option>
 
                             {depositSizeOptions.map((opt) => (
-                                <option key={opt} value={opt}>
-                                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
                                 </option>
                             ))}
                         </select>
@@ -261,11 +274,11 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
                             onChange={(e) => setFrequency(e.target.value)}
                             className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">Select pattern</option>
+                            <option value="">Select pattern (optional)</option>
 
                             {frequencyOptions.map((opt) => (
-                                <option key={opt} value={opt}>
-                                    {opt}
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
                                 </option>
                             ))}
                         </select>
@@ -281,11 +294,11 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
                             onChange={(e) => setLocation(e.target.value)}
                             className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">Select pattern</option>
+                            <option value="">Select pattern (optional)</option>
 
                             {locationOptions.map((opt) => (
-                                <option key={opt} value={opt}>
-                                    {opt}
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
                                 </option>
                             ))}
                         </select>
@@ -296,12 +309,13 @@ export default function ProblemForm({ onSubmit }: ProblemFormProps) {
             {/* Submit */}
             <div className="flex justify-end">
                 <button
+                    type="button"
                     onClick={handleSubmit}
-                    disabled={!selectedDefect || !description}
+                    disabled={!selectedDefect || !description.trim() || isSubmitting}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#5848e8] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <AlertTriangle size={16} />
-                    Start Diagnosis
+                    {isSubmitting ? "Submitting Case..." : "Start Diagnosis"}
                 </button>
             </div>
         </div>

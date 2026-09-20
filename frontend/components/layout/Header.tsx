@@ -153,7 +153,7 @@ export default function Header() {
               c.case_id.toLowerCase().includes(query) ||
               (c.defect_name && c.defect_name.toLowerCase().includes(query)) ||
               (c.defect_code && c.defect_code.toLowerCase().includes(query)) ||
-              (c.machine_context?.equipment && c.machine_context.equipment.toLowerCase().includes(query)) ||
+              (c.machine_context?.equipment != null && String(c.machine_context.equipment).toLowerCase().includes(query)) ||
               c.issue_condition.toLowerCase().includes(query)
           ).slice(0, 4)
         : [];

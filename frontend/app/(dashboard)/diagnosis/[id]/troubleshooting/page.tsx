@@ -25,19 +25,39 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
         try {
             const data = await casesApi.getCase(resolvedParams.id);
             setCaseData(data);
-            
-
-        } catch (err: any) {
+            setError(null);
+        } catch (err: unknown) {
             console.error("Failed to fetch case", err);
-            setError(err.message || "Failed to load case data.");
+            const message = err instanceof Error ? err.message : "Failed to load case data.";
+            setError(message);
         } finally {
             setIsLoading(false);
         }
     }, [resolvedParams.id]);
 
     useEffect(() => {
-        fetchCase();
-    }, [fetchCase]);
+        let isCurrent = true;
+        casesApi
+            .getCase(resolvedParams.id)
+            .then((data) => {
+                if (isCurrent) {
+                    setCaseData(data);
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    const message = err instanceof Error ? err.message : "Failed to load case data.";
+                    setError(message);
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [resolvedParams.id]);
 
     const handleCheckSubmit = async (checkId: string, status: string, findingDetails: string, outcome: string) => {
         if (!caseData?.diagnosis?.analysis_revision) return;
@@ -56,9 +76,10 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
             
             // Refresh to get the next check or transition to verification
             await fetchCase();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to submit check result", err);
-            setError(err.message || "Failed to submit check result.");
+            const message = err instanceof Error ? err.message : "Failed to submit check result.";
+            setError(message);
         } finally {
             setIsSubmitting(false);
         }
@@ -97,7 +118,15 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     })) || [];
     
     if (nextCheck) {
-        checks.push(nextCheck);
+        checks.push({
+            check_id: nextCheck.check_id,
+            name: nextCheck.name,
+            description: nextCheck.description || "Recommended troubleshooting check.",
+            procedure: nextCheck.procedure || "Inspect according to standard operating procedure.",
+            effort_level: nextCheck.effort_level || "medium",
+            target_causes: nextCheck.target_causes || [],
+            status: nextCheck.status || "pending",
+        });
     }
 
     // Deduplicate checks by check_id (keep latest)
@@ -109,9 +138,9 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
         name: c.name,
         description: c.description,
         procedure: c.procedure,
-        effortLevel: c.effort_level as "low" | "medium" | "high",
+        effortLevel: (c.effort_level === "low" || c.effort_level === "high" ? c.effort_level : "medium") as "low" | "medium" | "high",
         applicableCauses: c.target_causes || [],
-        status: c.status as any,
+        status: (c.status || "pending") as "pending" | "completed" | "blocked" | "skipped",
     }));
 
     return (
