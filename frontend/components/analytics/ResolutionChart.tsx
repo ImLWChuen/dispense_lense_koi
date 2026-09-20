@@ -10,20 +10,15 @@ import {
     YAxis,
 } from "recharts";
 import { ResolutionDistributionItem } from "@/lib/api/analytics";
+import { AlertCircle } from "lucide-react";
 
 interface ResolutionChartProps {
     data?: ResolutionDistributionItem[];
 }
 
 export default function ResolutionChart({ data }: ResolutionChartProps) {
-    const chartData = data ?? [
-        { range: "0-5 min", count: 0 },
-        { range: "5-10 min", count: 0 },
-        { range: "10-15 min", count: 0 },
-        { range: "15-20 min", count: 0 },
-        { range: "20-30 min", count: 0 },
-        { range: "30+ min", count: 0 },
-    ];
+    const chartData = data ?? [];
+    const hasData = chartData.length > 0 && chartData.some((d) => d.count > 0);
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -36,50 +31,57 @@ export default function ResolutionChart({ data }: ResolutionChartProps) {
             </p>
 
             <div className="mt-6 h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData}>
-                        <CartesianGrid
-                            strokeDasharray="3 3"
-                            vertical={false}
-                            stroke="#f1f5f9"
-                        />
+                {hasData ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="#f1f5f9"
+                            />
 
-                        <XAxis
-                            dataKey="range"
-                            tickLine={false}
-                            axisLine={false}
-                            fontSize={11}
-                            tick={{ fill: "#64748b" }}
-                        />
+                            <XAxis
+                                dataKey="range"
+                                tickLine={false}
+                                axisLine={false}
+                                fontSize={11}
+                                tick={{ fill: "#64748b" }}
+                            />
 
-                        <YAxis
-                            tickLine={false}
-                            axisLine={false}
-                            fontSize={11}
-                            tick={{ fill: "#64748b" }}
-                            allowDecimals={false}
-                            domain={[0, "auto"]}
-                        />
+                            <YAxis
+                                tickLine={false}
+                                axisLine={false}
+                                fontSize={11}
+                                tick={{ fill: "#64748b" }}
+                                allowDecimals={false}
+                                domain={[0, "auto"]}
+                            />
 
-                        <Tooltip
-                            formatter={(val) => [`${val} cases`, "Resolved Cases"]}
-                            contentStyle={{
-                                backgroundColor: "#ffffff",
-                                borderRadius: "12px",
-                                border: "1px solid #e2e8f0",
-                                boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.05)",
-                                fontSize: "12px",
-                            }}
-                        />
+                            <Tooltip
+                                formatter={(val: unknown) => [`${val} cases`, "Resolved Cases"]}
+                                contentStyle={{
+                                    backgroundColor: "#ffffff",
+                                    borderRadius: "12px",
+                                    border: "1px solid #e2e8f0",
+                                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.05)",
+                                    fontSize: "12px",
+                                }}
+                            />
 
-                        <Bar
-                            dataKey="count"
-                            fill="#8b7ff7"
-                            radius={[6, 6, 0, 0]}
-                            barSize={32}
-                        />
-                    </BarChart>
-                </ResponsiveContainer>
+                            <Bar
+                                dataKey="count"
+                                fill="#8b7ff7"
+                                radius={[6, 6, 0, 0]}
+                                barSize={32}
+                            />
+                        </BarChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex h-full flex-col items-center justify-center text-center">
+                        <AlertCircle className="h-7 w-7 text-gray-300 mb-2" />
+                        <p className="text-xs font-medium text-gray-500">No resolution duration data available</p>
+                    </div>
+                )}
             </div>
         </div>
     );

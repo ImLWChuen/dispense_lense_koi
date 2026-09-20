@@ -12,7 +12,7 @@ interface CaseRow {
     equipment: string;
     cause: string;
     status: "Resolved" | "In Progress" | "Needs Review";
-    confidence: number;
+    evidenceSupport?: number | null;
     time: string;
     engineer: string;
 }
@@ -56,11 +56,11 @@ export default function CaseTable({ cases }: CaseTableProps) {
                             </th>
 
                             <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                Probable Cause
+                                Identified Cause
                             </th>
 
                             <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                Confidence
+                                Evidence Support
                             </th>
 
                             <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -79,7 +79,7 @@ export default function CaseTable({ cases }: CaseTableProps) {
 
                     <tbody>
                         {cases.map((item) => {
-                            const statusCfg = statusConfig[item.status];
+                            const statusCfg = statusConfig[item.status] || statusConfig["In Progress"];
                             const Icon = statusCfg.icon;
 
                             return (
@@ -89,7 +89,7 @@ export default function CaseTable({ cases }: CaseTableProps) {
                                 >
                                     <td className="px-6 py-4">
                                         <Link
-                                            href={`/cases/${item.id}`}
+                                            href={`/diagnosis/${item.id}`}
                                             className="text-sm font-semibold text-gray-900 hover:text-[#5848e8]"
                                         >
                                             {item.caseNumber}
@@ -111,20 +111,24 @@ export default function CaseTable({ cases }: CaseTableProps) {
                                     </td>
 
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
-                                                <div
-                                                    className="h-full rounded-full bg-[#6d5dfc]"
-                                                    style={{
-                                                        width: `${item.confidence}%`,
-                                                    }}
-                                                />
-                                            </div>
+                                        {item.evidenceSupport != null ? (
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                                                    <div
+                                                        className="h-full rounded-full bg-[#6d5dfc]"
+                                                        style={{
+                                                            width: `${Math.max(0, Math.min(100, item.evidenceSupport))}%`,
+                                                        }}
+                                                    />
+                                                </div>
 
-                                            <span className="text-xs font-semibold text-gray-700">
-                                                {item.confidence}%
-                                            </span>
-                                        </div>
+                                                <span className="text-xs font-semibold text-gray-700">
+                                                    {item.evidenceSupport}/100
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-400">N/A</span>
+                                        )}
                                     </td>
 
                                     <td className="px-6 py-4">
@@ -163,10 +167,6 @@ export default function CaseTable({ cases }: CaseTableProps) {
 
                     <button className="rounded-lg bg-[#6d5dfc] px-3 py-1.5 text-xs font-medium text-white">
                         1
-                    </button>
-
-                    <button className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50">
-                        2
                     </button>
 
                     <button className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50">

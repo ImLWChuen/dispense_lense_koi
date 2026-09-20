@@ -11,8 +11,8 @@ interface AiInsightsProps {
 }
 
 export default function AiInsights({ insightText, trendText }: AiInsightsProps) {
-    const text = insightText || "Continuous diagnostic monitoring active across all equipment. AI patterns and root-cause trends will populate automatically as cases progress.";
-    const trend = trendText || "Real-time analysis";
+    const text = insightText || "Diagnostic monitoring active. Verified patterns and confirmed root-cause aggregates will populate automatically as cases progress.";
+    const hasActiveInsight = Boolean(insightText);
 
     return (
         <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6">
@@ -24,28 +24,36 @@ export default function AiInsights({ insightText, trendText }: AiInsightsProps) 
                 <div className="flex-1">
                     <div className="flex items-center gap-2">
                         <h2 className="text-base font-semibold text-gray-900">
-                            AI Insight
+                            Diagnostic Insight
                         </h2>
 
-                        <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[10px] font-semibold text-[#5848e8]">
-                            PATTERN DETECTED
-                        </span>
+                        {hasActiveInsight ? (
+                            <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[10px] font-semibold text-[#5848e8]">
+                                OBSERVED PATTERN
+                            </span>
+                        ) : (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                                MONITORING ACTIVE
+                            </span>
+                        )}
                     </div>
 
                     <p className="mt-2 text-sm leading-6 text-gray-600">
                         {text}
                     </p>
 
-                    <div className="mt-4 flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
-                            <TrendingUp size={14} />
-                            {trend}
-                        </div>
+                    {trendText && (
+                        <div className="mt-4 flex items-center gap-3">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                                <TrendingUp size={14} />
+                                {trendText}
+                            </div>
 
-                        <span className="text-xs text-gray-400">
-                            computed from active cases
-                        </span>
-                    </div>
+                            <span className="text-xs text-gray-400">
+                                computed from active cases
+                            </span>
+                        </div>
+                    )}
 
                     <Link
                         href="/cases"

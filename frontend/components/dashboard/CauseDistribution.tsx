@@ -23,11 +23,11 @@ export default function CauseDistribution({ data = [] }: CauseDistributionProps)
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div>
                 <h2 className="text-base font-semibold text-gray-900">
-                    Top Probable Causes
+                    Top Confirmed Causes
                 </h2>
 
                 <p className="mt-1 text-xs text-gray-500">
-                    Most frequently identified root-cause categories
+                    Confirmed root causes across cases
                 </p>
             </div>
 
@@ -67,7 +67,7 @@ export default function CauseDistribution({ data = [] }: CauseDistributionProps)
                             />
 
                             <Tooltip
-                                formatter={(value) => [`${value} cases`, "Cases"]}
+                                formatter={(value: unknown) => [`${value} cases`, "Cases"]}
                                 contentStyle={{
                                     backgroundColor: "#ffffff",
                                     borderRadius: "12px",
@@ -88,7 +88,7 @@ export default function CauseDistribution({ data = [] }: CauseDistributionProps)
                 ) : (
                     <div className="flex h-full flex-col items-center justify-center text-center">
                         <AlertCircle className="h-7 w-7 text-gray-300 mb-2" />
-                        <p className="text-xs font-medium text-gray-500">No root causes recorded yet</p>
+                        <p className="text-xs font-medium text-gray-500">No confirmed root causes recorded yet</p>
                     </div>
                 )}
             </div>

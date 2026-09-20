@@ -5,16 +5,24 @@ interface KpiCardProps {
     value: string;
     description: string;
     icon: ReactNode;
-    trend?: string;
+    trend?: string | null;
 }
 
 export default function KpiCard({
-                                    title,
-                                    value,
-                                    description,
-                                    icon,
-                                    trend,
-                                }: KpiCardProps) {
+    title,
+    value,
+    description,
+    icon,
+    trend,
+}: KpiCardProps) {
+    const isPositive = trend?.startsWith("+");
+    const isNegative = trend?.startsWith("-");
+    const trendColor = isPositive
+        ? "text-emerald-600 bg-emerald-50"
+        : isNegative
+        ? "text-rose-600 bg-rose-50"
+        : "text-gray-600 bg-gray-50";
+
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between">
@@ -34,15 +42,15 @@ export default function KpiCard({
             </div>
 
             <div className="mt-4 flex items-center gap-2 text-xs">
-                {trend && (
-                    <span className="font-semibold text-green-600">
-            {trend}
-          </span>
+                {trend != null && trend !== "" && (
+                    <span className={`inline-flex rounded px-1.5 py-0.5 font-semibold ${trendColor}`}>
+                        {trend}
+                    </span>
                 )}
 
                 <span className="text-gray-500">
-          {description}
-        </span>
+                    {description}
+                </span>
             </div>
         </div>
     );

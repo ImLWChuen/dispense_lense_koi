@@ -18,7 +18,7 @@ interface DefectChartProps {
 
 export default function DefectChart({ data }: DefectChartProps) {
     const chartData = data ?? [];
-    const hasData = chartData.length > 0;
+    const hasData = chartData.length > 0 && chartData.some((d) => d.defects > 0);
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -51,7 +51,7 @@ export default function DefectChart({ data }: DefectChartProps) {
                                 domain={[0, "auto"]}
                             />
                             <Tooltip
-                                formatter={(val) => [`${val} defects`, "Defects"]}
+                                formatter={(val: unknown) => [`${val} defects`, "Defects"]}
                                 contentStyle={{
                                     backgroundColor: "#ffffff",
                                     borderRadius: "12px",

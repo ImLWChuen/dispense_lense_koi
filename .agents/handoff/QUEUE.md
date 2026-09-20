@@ -2,9 +2,20 @@
 
 ## Current milestone
 
-Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
+Phase 3A: truthful dynamic dashboard, reports, analytics, and evidence-support presentation
 
 ## Active task
+
+- `DLK-M3-028` — Truthful dynamic dashboard, reports, analytics, and evidence-support labels — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-028-truthful-dynamic-demo-surfaces.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-027`
+  - outcome: remove fabricated analytics/report fallbacks, derive workflow metrics from persisted data, present deterministic scores as Evidence Support /100, and make dashboard/case/report/analytics states truthful
+  - protected overlap: do not touch the existing uncommitted `frontend/app/(dashboard)/cases/[id]/page.tsx`
+  - review stop: return to ChatGPT after the local implementation commit; do not begin Phase 3B lifecycle corrections
+  - explicit exclusions: troubleshooting/check outcomes, cause-confirmation/recovery/verification UI, rejection/exhaustion behavior, protected case-detail integration, dependencies, migrations, authentication, and remote Git operations
+
+## Accepted Phase 2 dependency
 
 - `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`

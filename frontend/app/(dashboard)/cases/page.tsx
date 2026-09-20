@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search, Filter, X, RefreshCw, AlertCircle } from "lucide-react";
@@ -25,39 +25,61 @@ const formatStatus = (status: string) => {
 
 function CasesContent() {
     const searchParams = useSearchParams();
-    const initialSearch = searchParams.get("search") || "";
 
     const [cases, setCases] = useState<DurableCaseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Search and filter state
-    const [searchQuery, setSearchQuery] = useState(initialSearch);
+    const searchParam = searchParams.get("search") || "";
+    const [searchQuery, setSearchQuery] = useState(searchParam);
+    const [prevSearchParam, setPrevSearchParam] = useState(searchParam);
+
+    if (searchParam !== prevSearchParam) {
+        setPrevSearchParam(searchParam);
+        setSearchQuery(searchParam);
+    }
+
     const [statusFilter, setStatusFilter] = useState("ALL");
 
-    useEffect(() => {
-        const queryFromUrl = searchParams.get("search");
-        if (queryFromUrl !== null) {
-            setSearchQuery(queryFromUrl);
-        }
-    }, [searchParams]);
-
-    const fetchCases = async () => {
+    const loadCases = useCallback(() => {
         setIsLoading(true);
         setError(null);
-        try {
-            const data = await casesApi.listCases();
-            setCases(data);
-        } catch (err: any) {
-            console.error("Failed to fetch cases:", err);
-            setError(err.message || "Failed to load cases.");
-        } finally {
-            setIsLoading(false);
-        }
-    };
+        casesApi
+            .listCases()
+            .then((data) => {
+                setCases(data);
+                setError(null);
+            })
+            .catch((err: unknown) => {
+                console.error("Failed to fetch cases:", err);
+                setError(err instanceof Error ? err.message : "Failed to load cases.");
+            })
+            .finally(() => {
+                setIsLoading(false);
+            });
+    }, []);
 
     useEffect(() => {
-        fetchCases();
+        let isCurrent = true;
+        casesApi
+            .listCases()
+            .then((data) => {
+                if (isCurrent) {
+                    setCases(data);
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    console.error("Failed to fetch cases:", err);
+                    setError(err instanceof Error ? err.message : "Failed to load cases.");
+                    setIsLoading(false);
+                }
+            });
+        return () => {
+            isCurrent = false;
+        };
     }, []);
 
     // Filtered cases
@@ -74,9 +96,12 @@ function CasesContent() {
         const matchesDefect =
             (c.defect_name && c.defect_name.toLowerCase().includes(q)) ||
             (c.defect_code && c.defect_code.toLowerCase().includes(q));
-        const matchesEquipment =
-            c.machine_context?.equipment != null &&
-            String(c.machine_context.equipment).toLowerCase().includes(q);
+        const eq =
+            (c.machine_context?.machine_id as string) ||
+            (c.machine_context?.equipment_id as string) ||
+            (c.machine_context?.equipment as string) ||
+            "";
+        const matchesEquipment = eq.toLowerCase().includes(q);
         const matchesStatus = c.issue_condition.toLowerCase().includes(q);
 
         return matchesId || matchesDefect || matchesEquipment || matchesStatus;
@@ -97,7 +122,7 @@ function CasesContent() {
 
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={fetchCases}
+                        onClick={loadCases}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
                         title="Refresh cases"
                     >
@@ -236,40 +261,48 @@ function CasesContent() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredCases.map((caseItem) => (
-                                    <tr key={caseItem.case_id} className="transition hover:bg-gray-50/80">
-                                        <td className="px-6 py-4 font-mono font-medium text-gray-900">
-                                            #{caseItem.case_id.split("-")[0]}
-                                        </td>
-                                        <td className="px-6 py-4 font-medium text-gray-900">
-                                            {caseItem.defect_name || caseItem.defect_code || "Unknown Defect"}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-600">
-                                            {caseItem.machine_context?.equipment || "Dispensing Line"}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span
-                                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                                                    statusColors[caseItem.issue_condition as keyof typeof statusColors] ||
-                                                    "bg-gray-100 text-gray-700"
-                                                }`}
-                                            >
-                                                {formatStatus(caseItem.issue_condition)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-xs text-gray-500">
-                                            {new Date(caseItem.created_at).toLocaleDateString()}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <Link
-                                                href={`/diagnosis/${caseItem.case_id}`}
-                                                className="inline-flex items-center gap-1 font-medium text-[#5848e8] hover:text-[#6d5dfc]"
-                                            >
-                                                View Details
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))
+                                filteredCases.map((caseItem) => {
+                                    const eq =
+                                        (caseItem.machine_context?.machine_id as string) ||
+                                        (caseItem.machine_context?.equipment_id as string) ||
+                                        (caseItem.machine_context?.equipment as string) ||
+                                        "Not recorded";
+
+                                    return (
+                                        <tr key={caseItem.case_id} className="transition hover:bg-gray-50/80">
+                                            <td className="px-6 py-4 font-mono font-medium text-gray-900">
+                                                #{caseItem.case_id.split("-")[0]}
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-gray-900">
+                                                {caseItem.defect_name || caseItem.defect_code || "Unknown Defect"}
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-600">
+                                                {eq}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span
+                                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+                                                        statusColors[caseItem.issue_condition as keyof typeof statusColors] ||
+                                                        "bg-gray-100 text-gray-700"
+                                                    }`}
+                                                >
+                                                    {formatStatus(caseItem.issue_condition)}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-xs text-gray-500">
+                                                {new Date(caseItem.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <Link
+                                                    href={`/diagnosis/${caseItem.case_id}`}
+                                                    className="inline-flex items-center gap-1 font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                                                >
+                                                    View Details
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

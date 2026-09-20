@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
     BarChart3,
     Clock3,
     CheckCircle2,
     TrendingUp,
     RefreshCw,
-    Radio,
     ShieldCheck,
     Layers,
     Loader2,
+    AlertCircle,
 } from "lucide-react";
 
 import Header from "@/components/layout/Header";
@@ -34,27 +34,58 @@ export default function AnalyticsPage() {
     const [selectedPeriod, setSelectedPeriod] = useState("30d");
     const [analytics, setAnalytics] = useState<AnalyticsPerformanceResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<string>("Just now");
 
     const periodRef = useRef(selectedPeriod);
-    periodRef.current = selectedPeriod;
-
-    const fetchAnalytics = async (period: string, showLoading: boolean = true) => {
-        try {
-            if (showLoading) setIsLoading(true);
-            const data = await analyticsApi.getPerformanceAnalytics(period);
-            setAnalytics(data);
-            setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-        } catch (err) {
-            console.error("Failed to fetch performance analytics:", err);
-        } finally {
-            if (showLoading) setIsLoading(false);
-        }
-    };
 
     useEffect(() => {
-        fetchAnalytics(selectedPeriod, true);
+        periodRef.current = selectedPeriod;
+    }, [selectedPeriod]);
+
+    const refreshAnalytics = useCallback((period: string, showLoading: boolean = false) => {
+        if (showLoading) setIsLoading(true);
+        analyticsApi
+            .getPerformanceAnalytics(period)
+            .then((data) => {
+                setAnalytics(data);
+                setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+                setError(null);
+            })
+            .catch((err: unknown) => {
+                console.error("Failed to fetch performance analytics:", err);
+                setError(err instanceof Error ? err.message : "Failed to load analytics");
+            })
+            .finally(() => {
+                setIsLoading(false);
+                setIsSyncing(false);
+            });
+    }, []);
+
+    useEffect(() => {
+        let isCurrent = true;
+        analyticsApi
+            .getPerformanceAnalytics(selectedPeriod)
+            .then((data) => {
+                if (isCurrent) {
+                    setAnalytics(data);
+                    setLastSyncTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+                    setError(null);
+                    setIsLoading(false);
+                }
+            })
+            .catch((err: unknown) => {
+                if (isCurrent) {
+                    console.error("Failed to fetch performance analytics:", err);
+                    setError(err instanceof Error ? err.message : "Failed to load analytics");
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
     }, [selectedPeriod]);
 
     // Global real-time SSE listener + 15s heartbeat fallback sync
@@ -62,29 +93,29 @@ export default function AnalyticsPage() {
         const unsubscribe = analyticsApi.subscribeToEvents((event) => {
             console.log("Global real-time sync event received:", event);
             setIsSyncing(true);
-            fetchAnalytics(periodRef.current, false);
+            refreshAnalytics(periodRef.current, false);
             setTimeout(() => setIsSyncing(false), 1500);
         });
 
         // 15-second heartbeat poll to ensure guaranteed multi-account global sync
         const pollInterval = setInterval(() => {
-            fetchAnalytics(periodRef.current, false);
+            refreshAnalytics(periodRef.current, false);
         }, 15000);
 
         return () => {
             unsubscribe();
             clearInterval(pollInterval);
         };
-    }, []);
+    }, [refreshAnalytics]);
 
     const handleManualRefresh = () => {
         setIsSyncing(true);
-        fetchAnalytics(selectedPeriod, false).finally(() => {
-            setTimeout(() => setIsSyncing(false), 800);
-        });
+        refreshAnalytics(selectedPeriod, false);
     };
 
     const kpis = analytics?.kpis;
+    const firstTimeRate = kpis?.first_time_resolution_rate;
+    const confirmationRate = kpis?.cause_confirmation_rate;
 
     return (
         <div className="min-h-screen bg-[#f8fafc]">
@@ -133,13 +164,33 @@ export default function AnalyticsPage() {
                         </div>
                     </div>
 
+                    {error && (
+                        <div className="mt-6 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle size={18} className="text-rose-600" />
+                                <span>{error}</span>
+                            </div>
+                            <button
+                                onClick={() => refreshAnalytics(selectedPeriod, true)}
+                                className="rounded-lg bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200 transition"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    )}
+
                     {/* Interactive Date Filter Bar */}
                     <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
                             {periods.map((p) => (
                                 <button
                                     key={p.value}
-                                    onClick={() => setSelectedPeriod(p.value)}
+                                    onClick={() => {
+                                        if (selectedPeriod !== p.value) {
+                                            setIsLoading(true);
+                                            setSelectedPeriod(p.value);
+                                        }
+                                    }}
                                     className={`rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${
                                         selectedPeriod === p.value
                                             ? "bg-[#6d5dfc] text-white shadow-sm font-semibold"
@@ -165,7 +216,7 @@ export default function AnalyticsPage() {
                             title="Total Cases"
                             value={isLoading ? "..." : String(kpis?.total_cases ?? 0)}
                             description={`${kpis?.resolved_cases ?? 0} resolved in this period`}
-                            trend={kpis?.total_cases_trend || "0%"}
+                            trend={kpis?.total_cases_trend}
                             icon={<BarChart3 size={20} />}
                         />
 
@@ -173,23 +224,35 @@ export default function AnalyticsPage() {
                             title="Avg. Resolution Time"
                             value={isLoading ? "..." : `${kpis?.avg_resolution_time_minutes ?? 0} min`}
                             description="from issue detection to closure"
-                            trend={kpis?.avg_resolution_trend || "0%"}
+                            trend={kpis?.avg_resolution_trend}
                             icon={<Clock3 size={20} />}
                         />
 
                         <KpiCard
                             title="First-Time Resolution"
-                            value={isLoading ? "..." : `${kpis?.first_time_resolution_rate ?? 0}%`}
+                            value={
+                                isLoading
+                                    ? "..."
+                                    : firstTimeRate != null
+                                    ? `${firstTimeRate}%`
+                                    : "Not available"
+                            }
                             description="resolved without re-diagnosis"
-                            trend={kpis?.first_time_resolution_trend || "0%"}
+                            trend={kpis?.first_time_resolution_trend}
                             icon={<CheckCircle2 size={20} />}
                         />
 
                         <KpiCard
-                            title="Diagnostic Accuracy"
-                            value={isLoading ? "..." : `${kpis?.diagnostic_accuracy_rate ?? 0}%`}
-                            description="confirmed vs engine hypothesis"
-                            trend={kpis?.diagnostic_accuracy_trend || "0%"}
+                            title="Cause Confirmation Coverage"
+                            value={
+                                isLoading
+                                    ? "..."
+                                    : confirmationRate != null
+                                    ? `${confirmationRate}%`
+                                    : "Not available"
+                            }
+                            description="cases with confirmed cause"
+                            trend={kpis?.cause_confirmation_trend}
                             icon={<TrendingUp size={20} />}
                         />
                     </div>
@@ -230,7 +293,7 @@ export default function AnalyticsPage() {
                                                 <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
                                                     <div
                                                         className="h-full rounded-full bg-[#6d5dfc] transition-all duration-500"
-                                                        style={{ width: `${Math.min(100, dt.percentage)}%` }}
+                                                        style={{ width: `${Math.min(100, Math.max(0, dt.percentage))}%` }}
                                                     />
                                                 </div>
                                             </div>

@@ -12,14 +12,24 @@ export default function DiagnosisSummary({
     status: externalStatus,
 }: DiagnosisSummaryProps) {
     const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
-    const defect = diagnosis?.defect_name || diagnosis?.defect || "Foreign Object Debris (FOD) on Sensor";
-    const defectDescription = caseData?.description || "A particle or debris is obscuring the sensor field of view.";
-    const confidence = diagnosis?.ranked_causes?.[0]?.score ? Math.round(diagnosis.ranked_causes[0].score) : 92;
-    const computedStatus = caseData?.issue_condition === "RECOVERY_PENDING_VERIFICATION" ? "Pending Verification" : caseData?.issue_condition === "RESOLVED" ? "Resolved" : caseData?.issue_condition === "UNRESOLVED" ? "In Progress" : caseData?.issue_condition;
-    const status = externalStatus || computedStatus || "Pending Verification";
-    const causesCount = diagnosis?.ranked_causes?.length || 3;
-    const observationsCount = caseData?.observations?.length || 5;
-    const caseIdText = caseData?.case_id ? `Case ${caseData.case_id.split('-').slice(0, 2).join('-')}` : "Case DSP-2026";
+    const defect = diagnosis?.defect_name || diagnosis?.defect || "No defect identified";
+    const defectDescription = caseData?.description || "No problem description recorded.";
+    const topScore = typeof diagnosis?.ranked_causes?.[0]?.score === "number"
+        ? Math.round(diagnosis.ranked_causes[0].score)
+        : null;
+    const computedStatus = caseData?.issue_condition === "RECOVERY_PENDING_VERIFICATION"
+        ? "Pending Verification"
+        : caseData?.issue_condition === "RESOLVED"
+        ? "Resolved"
+        : caseData?.issue_condition === "UNRESOLVED"
+        ? "In Progress"
+        : caseData?.issue_condition === "RECURRENCE_CONFIRMED"
+        ? "Recurrence Confirmed"
+        : caseData?.issue_condition;
+    const status = externalStatus || computedStatus || "Not recorded";
+    const causesCount = diagnosis?.ranked_causes?.length ?? 0;
+    const observationsCount = caseData?.observations?.length ?? 0;
+    const caseIdText = caseData?.case_id ? `Case ${caseData.case_id}` : "Case not recorded";
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -62,11 +72,15 @@ export default function DiagnosisSummary({
 
                 <div className="mt-5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                        Diagnostic Confidence
+                        Top Evidence Support
                     </p>
 
                     <div className="mt-2">
-                        <ConfidenceScore score={confidence} size="lg" />
+                        {topScore !== null ? (
+                            <ConfidenceScore score={topScore} size="lg" label="Evidence Support" />
+                        ) : (
+                            <p className="text-sm text-gray-500">No ranked causes evaluated</p>
+                        )}
                     </div>
                 </div>
 
