@@ -97,7 +97,15 @@ export default function TroubleshootingPage({ params }: { params: Promise<{ id: 
     })) || [];
     
     if (nextCheck) {
-        checks.push(nextCheck);
+        checks.push({
+            check_id: nextCheck.check_id,
+            name: nextCheck.name,
+            description: nextCheck.description || "Recommended troubleshooting check.",
+            procedure: nextCheck.procedure || "Inspect according to standard operating procedure.",
+            effort_level: nextCheck.effort_level || "medium",
+            target_causes: nextCheck.target_causes || [],
+            status: nextCheck.status || "pending",
+        });
     }
 
     // Deduplicate checks by check_id (keep latest)

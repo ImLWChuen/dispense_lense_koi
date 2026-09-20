@@ -38,18 +38,49 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
                 <div className="mt-5 space-y-3">
                     {imageObservations.map((obs) => {
                         const meta = (obs.metadata || {}) as Record<string, unknown>;
+                        const status = typeof meta.status === "string" ? meta.status : null;
                         const roiId = typeof meta.roi_id === "string" ? meta.roi_id : null;
                         const mode = typeof meta.mode === "string" ? meta.mode : null;
-                        const coverageRatio = typeof meta.coverage_ratio === "number" ? meta.coverage_ratio : null;
-                        const overflowRatio = typeof meta.overflow_ratio === "number" ? meta.overflow_ratio : null;
-                        const referenceRatio = typeof meta.reference_ratio === "number" ? meta.reference_ratio : null;
-                        const equivDiameterPx = typeof meta.equivalent_diameter_px === "number" ? meta.equivalent_diameter_px : null;
+                        const coverageRatio =
+                            typeof meta.coverage_ratio === "number" && Number.isFinite(meta.coverage_ratio)
+                                ? meta.coverage_ratio
+                                : null;
+                        const overflowRatio =
+                            typeof meta.overflow_ratio === "number" && Number.isFinite(meta.overflow_ratio)
+                                ? meta.overflow_ratio
+                                : null;
+                        const currentCoverage =
+                            typeof meta.current_coverage === "number" && Number.isFinite(meta.current_coverage)
+                                ? meta.current_coverage
+                                : null;
+                        const referenceCoverage =
+                            typeof meta.reference_coverage === "number" && Number.isFinite(meta.reference_coverage)
+                                ? meta.reference_coverage
+                                : null;
+                        const coverageRatioToReference =
+                            typeof meta.coverage_ratio_to_reference === "number" &&
+                            Number.isFinite(meta.coverage_ratio_to_reference)
+                                ? meta.coverage_ratio_to_reference
+                                : null;
+                        const equivDiameterPx =
+                            typeof meta.equivalent_diameter_px === "number" &&
+                            Number.isFinite(meta.equivalent_diameter_px)
+                                ? meta.equivalent_diameter_px
+                                : null;
                         const calibratedDiameterMm =
-                            typeof meta.calibrated_diameter_mm === "number" && isFinite(meta.calibrated_diameter_mm)
+                            typeof meta.calibrated_diameter_mm === "number" &&
+                            Number.isFinite(meta.calibrated_diameter_mm)
                                 ? meta.calibrated_diameter_mm
                                 : null;
-                        const segQuality = typeof meta.segmentation_quality === "number" ? meta.segmentation_quality : null;
-                        const sizeCv = typeof meta.size_cv === "number" ? meta.size_cv : null;
+                        const segQuality =
+                            typeof meta.segmentation_quality === "number" &&
+                            Number.isFinite(meta.segmentation_quality)
+                                ? meta.segmentation_quality
+                                : null;
+                        const sizeCv =
+                            typeof meta.size_cv === "number" && Number.isFinite(meta.size_cv)
+                                ? meta.size_cv
+                                : null;
                         const warnings = Array.isArray(meta.warnings)
                             ? (meta.warnings.filter((w) => typeof w === "string") as string[])
                             : [];
@@ -67,9 +98,24 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
                                         </span>
                                     </div>
 
-                                    <span className="rounded-full bg-[#eeebff] px-2.5 py-0.5 font-bold text-[#5848e8]">
-                                        {obs.value}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                        {status && (
+                                            <span
+                                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                                    status === "CALIBRATED"
+                                                        ? "bg-green-100 text-green-700"
+                                                        : status === "UNRELIABLE"
+                                                        ? "bg-amber-100 text-amber-700"
+                                                        : "bg-blue-100 text-blue-700"
+                                                }`}
+                                            >
+                                                {status}
+                                            </span>
+                                        )}
+                                        <span className="rounded-full bg-[#eeebff] px-2.5 py-0.5 font-bold text-[#5848e8]">
+                                            {obs.value}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {obs.original_text && (
@@ -80,6 +126,13 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
 
                                 {/* Metadata Breakdown */}
                                 <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-100 bg-white p-2.5 text-[11px] text-gray-700">
+                                    {status && (
+                                        <div>
+                                            <span className="text-gray-400">Status: </span>
+                                            <span className="font-semibold text-gray-800">{status}</span>
+                                        </div>
+                                    )}
+
                                     {roiId && (
                                         <div>
                                             <span className="text-gray-400">ROI Target: </span>
@@ -112,11 +165,29 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
                                         </div>
                                     )}
 
-                                    {referenceRatio !== null && (
+                                    {currentCoverage !== null && (
+                                        <div>
+                                            <span className="text-gray-400">Current Coverage: </span>
+                                            <span className="font-medium text-gray-800">
+                                                {(currentCoverage * 100).toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {referenceCoverage !== null && (
+                                        <div>
+                                            <span className="text-gray-400">Ref Coverage: </span>
+                                            <span className="font-medium text-gray-800">
+                                                {(referenceCoverage * 100).toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {coverageRatioToReference !== null && (
                                         <div>
                                             <span className="text-gray-400">Ref Ratio: </span>
                                             <span className="font-medium text-gray-800">
-                                                {referenceRatio.toFixed(3)}
+                                                {coverageRatioToReference.toFixed(3)}
                                             </span>
                                         </div>
                                     )}

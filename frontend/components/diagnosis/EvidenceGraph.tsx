@@ -36,44 +36,29 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
     }
 
     const chartData = rankedCauses.map((cause) => {
-        let support = 0;
-        let contradict = 0;
+        let supports = 0;
+        let contradicts = 0;
 
-        if (cause.score_breakdown) {
-            if (typeof cause.score_breakdown.positive_evidence === "number") {
-                support = cause.score_breakdown.positive_evidence;
-            } else if (typeof cause.score_breakdown.support === "number") {
-                support = cause.score_breakdown.support;
-            }
-
-            if (typeof cause.score_breakdown.contradiction_penalty === "number") {
-                contradict = cause.score_breakdown.contradiction_penalty;
-            } else if (typeof cause.score_breakdown.contradict === "number") {
-                contradict = cause.score_breakdown.contradict;
+        if (Array.isArray(cause.supporting_evidence)) {
+            for (const ev of cause.supporting_evidence) {
+                if (typeof ev.score_contribution === "number" && Number.isFinite(ev.score_contribution)) {
+                    supports += ev.score_contribution;
+                }
             }
         }
 
-        // Fallback: derive directly from score_contribution of evaluated evidence
-        if (support === 0 && Array.isArray(cause.supporting_evidence)) {
-            cause.supporting_evidence.forEach((ev) => {
-                if (typeof ev.score_contribution === "number") {
-                    support += ev.score_contribution;
+        if (Array.isArray(cause.contradicting_evidence)) {
+            for (const ev of cause.contradicting_evidence) {
+                if (typeof ev.score_contribution === "number" && Number.isFinite(ev.score_contribution)) {
+                    contradicts += ev.score_contribution;
                 }
-            });
-        }
-
-        if (contradict === 0 && Array.isArray(cause.contradicting_evidence)) {
-            cause.contradicting_evidence.forEach((ev) => {
-                if (typeof ev.score_contribution === "number") {
-                    contradict += ev.score_contribution;
-                }
-            });
+            }
         }
 
         return {
-            cause: cause.cause_name,
-            supports: Number(support.toFixed(2)),
-            contradicts: Number(contradict.toFixed(2)),
+            cause: cause.cause_name || cause.name || cause.cause_id,
+            supports: Number(supports.toFixed(2)),
+            contradicts: Number(contradicts.toFixed(2)),
             finalScore: Number(cause.score.toFixed(1)),
         };
     });

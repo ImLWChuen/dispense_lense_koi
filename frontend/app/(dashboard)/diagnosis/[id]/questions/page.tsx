@@ -157,7 +157,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                                     key={nextQuestion.question_id}
                                     questionId={nextQuestion.question_id}
                                     text={nextQuestion.text}
-                                    purpose={nextQuestion.reasoning}
+                                    purpose={nextQuestion.purpose || nextQuestion.reasoning || ""}
                                     options={normalizeOptions(nextQuestion.options)}
                                     selectedValue={null}
                                     onAnswer={(value) => handleAnswer(nextQuestion.question_id, value)}

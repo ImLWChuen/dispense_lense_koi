@@ -55,52 +55,62 @@ export interface CauseEvidence {
 export interface CandidateCause {
     cause_id: string;
     cause_name: string;
-    description: string;
-    base_probability?: number;
     score: number;
-    score_breakdown?: Record<string, number>;
     conclusion: "SUSPECTED" | "CONFIRMED" | "UNRESOLVED";
     supporting_evidence: CauseEvidence[];
     contradicting_evidence: CauseEvidence[];
     neutral_evidence: CauseEvidence[];
     missing_evidence?: string[];
-    missing_expected_evidence?: string[];
+    score_breakdown?: Record<string, number>;
+    // Legacy / UI display compatibility fields (optional, not guaranteed by backend)
+    name?: string;
+    description?: string;
+    base_probability?: number;
     explanation?: CauseScoreExplanation;
+    missing_expected_evidence?: string[];
 }
 
 export interface DiagnosticQuestion {
     question_id: string;
     text: string;
     purpose?: string;
-    reasoning: string;
     usefulness_score?: number;
     target_causes?: string[];
     already_answered?: boolean;
     options?: string[];
+    // Legacy / UI display compatibility fields (optional)
+    reasoning?: string;
 }
 
 export interface DiagnosticCheck {
     check_id: string;
     name: string;
-    description: string;
-    procedure: string;
+    description?: string;
+    procedure?: string;
+    priority_score?: number;
+    target_causes?: string[];
+    reasoning?: string;
     required_access?: string;
-    effort_level: string;
-    target_causes: string[];
+    effort_level?: string;
+    possible_outcomes?: string[];
+    // Legacy / UI display compatibility fields (optional)
+    status?: string;
     applicable_defects?: string[];
-    status: string;
 }
 
 export interface DiagnosisResult {
     case_id: string;
-    defect: string;
-    defect_name: string;
-    defect_confidence: number;
+    defect?: string | null;
+    defect_name?: string | null;
     ranked_causes: CandidateCause[];
     next_question?: DiagnosticQuestion | null;
     next_check?: DiagnosticCheck | null;
+    explanation?: string;
     issue_condition: "UNRESOLVED" | "RECOVERY_PENDING_VERIFICATION" | "RESOLVED" | "RECURRED";
     analysis_revision?: AnalysisRevision;
+    warnings?: string[];
+    // Legacy / UI display compatibility fields (optional)
+    defect_confidence?: number;
 }
 
 export interface QuestionAnswerRecord {

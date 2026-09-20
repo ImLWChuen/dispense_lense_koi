@@ -22,6 +22,145 @@ import {
     UploadSnapshot,
 } from "@/types/image";
 
+interface InFlightRequest {
+    token: number;
+    controller: AbortController;
+    configRevision: number;
+}
+
+export function validateAnalysisConfiguration(item: UploadItem): string | null {
+    if (item.rois.length === 0) {
+        return "At least one target ROI must be defined before running analysis.";
+    }
+
+    for (const roi of item.rois) {
+        if (!roi.roi_id || !roi.roi_id.trim()) {
+            return "All ROIs must have a valid non-empty identifier.";
+        }
+        if (
+            !Number.isFinite(roi.x) || roi.x < 0 || roi.x > 1 ||
+            !Number.isFinite(roi.y) || roi.y < 0 || roi.y > 1 ||
+            !Number.isFinite(roi.width) || roi.width <= 0 || roi.width > 1 ||
+            !Number.isFinite(roi.height) || roi.height <= 0 || roi.height > 1
+        ) {
+            return `ROI ${roi.roi_id} has invalid coordinates. Coordinates must be bounded within [0, 1].`;
+        }
+        if (roi.x + roi.width > 1.00001 || roi.y + roi.height > 1.00001) {
+            return `ROI ${roi.roi_id} extends beyond the image boundaries.`;
+        }
+    }
+
+    if (item.mmPerPixel !== null && item.mmPerPixel !== undefined) {
+        if (!Number.isFinite(item.mmPerPixel) || item.mmPerPixel <= 0) {
+            return "Scale (mm per pixel) must be a positive finite number greater than 0.";
+        }
+    }
+
+    if (item.mode === "PROCESS_LIMITS") {
+        const limits = item.processLimits;
+        if (!limits) {
+            return "PROCESS_LIMITS mode requires at least one process limit threshold.";
+        }
+
+        const hasAnyLimit =
+            (limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined) ||
+            (limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined) ||
+            (limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined) ||
+            (limits.max_size_cv !== null && limits.max_size_cv !== undefined) ||
+            (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined);
+
+        if (!hasAnyLimit) {
+            return "PROCESS_LIMITS mode requires at least one process limit threshold.";
+        }
+
+        if (limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined) {
+            if (!Number.isFinite(limits.min_coverage_ratio) || limits.min_coverage_ratio < 0 || limits.min_coverage_ratio > 1) {
+                return "Min coverage ratio must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined) {
+            if (!Number.isFinite(limits.max_coverage_ratio) || limits.max_coverage_ratio < 0 || limits.max_coverage_ratio > 1) {
+                return "Max coverage ratio must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (
+            limits.min_coverage_ratio !== null && limits.min_coverage_ratio !== undefined &&
+            limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined
+        ) {
+            if (limits.min_coverage_ratio > limits.max_coverage_ratio) {
+                return "Min coverage ratio cannot be greater than max coverage ratio.";
+            }
+        }
+
+        if (limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined) {
+            if (!Number.isFinite(limits.max_overflow_ratio) || limits.max_overflow_ratio < 0 || limits.max_overflow_ratio > 1) {
+                return "Max overflow ratio must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (limits.max_size_cv !== null && limits.max_size_cv !== undefined) {
+            if (!Number.isFinite(limits.max_size_cv) || limits.max_size_cv < 0) {
+                return "Max size CV must be a non-negative finite number (>= 0).";
+            }
+        }
+
+        if (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined) {
+            if (!Number.isFinite(limits.min_presence_ratio) || limits.min_presence_ratio < 0 || limits.min_presence_ratio > 1) {
+                return "Min presence ratio must be a finite number between 0 and 1.";
+            }
+        }
+    } else if (item.mode === "REFERENCE_IMAGE") {
+        if (!item.referenceFile) {
+            return "REFERENCE_IMAGE mode requires a reference image to be uploaded.";
+        }
+
+        const rLimits = item.referenceLimits;
+        if (!rLimits) {
+            return "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.";
+        }
+
+        const hasRefLimit =
+            (rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined) ||
+            (rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined) ||
+            (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined);
+
+        if (!hasRefLimit) {
+            return "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.";
+        }
+
+        if (rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined) {
+            if (!Number.isFinite(rLimits.tolerance_ratio) || rLimits.tolerance_ratio < 0 || rLimits.tolerance_ratio > 1) {
+                return "Tolerance ratio must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined) {
+            if (!Number.isFinite(rLimits.min_reference_ratio) || rLimits.min_reference_ratio <= 0) {
+                return "Min reference ratio must be a finite number greater than 0 (> 0).";
+            }
+        }
+
+        if (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined) {
+            if (!Number.isFinite(rLimits.max_reference_ratio) || rLimits.max_reference_ratio <= 0) {
+                return "Max reference ratio must be a finite number greater than 0 (> 0).";
+            }
+        }
+
+        if (
+            rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined &&
+            rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined
+        ) {
+            if (rLimits.min_reference_ratio > rLimits.max_reference_ratio) {
+                return "Min reference ratio cannot be greater than max reference ratio.";
+            }
+        }
+    }
+
+    return null;
+}
+
 interface ImageUploadProps {
     onSnapshotChange?: (snapshot: UploadSnapshot) => void;
     // Retained for backward compatibility if callers expect it
@@ -38,7 +177,8 @@ export default function ImageUpload({
     const [globalError, setGlobalError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const controllersRef = useRef<Record<string, AbortController>>({});
+    const requestStateRef = useRef<Record<string, InFlightRequest>>({});
+    const nextTokenRef = useRef<number>(1);
     const uploadsRef = useRef<UploadSnapshot>({});
 
     // Keep uploadsRef updated outside of render
@@ -63,9 +203,9 @@ export default function ImageUpload({
 
     // Cleanup all object URLs and abort pending requests on unmount
     useEffect(() => {
-        const controllers = controllersRef.current;
         return () => {
-            Object.values(controllers).forEach((ctrl) => ctrl.abort());
+            Object.values(requestStateRef.current).forEach((req) => req.controller.abort());
+            requestStateRef.current = {};
             Object.values(uploadsRef.current).forEach((item) => {
                 if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
                 if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
@@ -133,19 +273,19 @@ export default function ImageUpload({
     };
 
     const removeUpload = (uploadId: string) => {
-        // Abort running request if any
-        if (controllersRef.current[uploadId]) {
-            controllersRef.current[uploadId].abort();
-            delete controllersRef.current[uploadId];
-        }
-
-        const item = uploads[uploadId];
-        if (item) {
-            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-            if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
+        // Synchronously invalidate and abort running request
+        const pending = requestStateRef.current[uploadId];
+        if (pending) {
+            delete requestStateRef.current[uploadId];
+            pending.controller.abort();
         }
 
         setUploads((prev) => {
+            const item = prev[uploadId];
+            if (item) {
+                if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+                if (item.referencePreviewUrl) URL.revokeObjectURL(item.referencePreviewUrl);
+            }
             const next = { ...prev };
             delete next[uploadId];
             return next;
@@ -159,15 +299,16 @@ export default function ImageUpload({
     // Helper to update upload configuration and invalidate stale results
     const updateUploadConfig = useCallback(
         (uploadId: string, updates: Partial<UploadItem>) => {
+            // Synchronously invalidate and abort running request
+            const pending = requestStateRef.current[uploadId];
+            if (pending) {
+                delete requestStateRef.current[uploadId];
+                pending.controller.abort();
+            }
+
             setUploads((prev) => {
                 const current = prev[uploadId];
                 if (!current) return prev;
-
-                // Abort any ongoing request for this upload
-                if (controllersRef.current[uploadId]) {
-                    controllersRef.current[uploadId].abort();
-                    delete controllersRef.current[uploadId];
-                }
 
                 // Invalidate existing result when configuration changes
                 return {
@@ -190,103 +331,29 @@ export default function ImageUpload({
         const item = uploads[uploadId];
         if (!item || item.status === "analyzing") return;
 
-        // Validation 1: At least 1 ROI
-        if (item.rois.length === 0) {
-            setUploads((prev) => ({
-                ...prev,
-                [uploadId]: {
-                    ...prev[uploadId],
-                    errorMessage: "At least one target ROI must be defined before running analysis.",
-                },
-            }));
-            return;
+        // Abort any existing in-flight request for this upload
+        const existingReq = requestStateRef.current[uploadId];
+        if (existingReq) {
+            delete requestStateRef.current[uploadId];
+            existingReq.controller.abort();
         }
 
-        // Validation 2: Mode requirements
-        if (item.mode === "PROCESS_LIMITS") {
-            const limits = item.processLimits;
-            const hasAnyLimit =
-                limits &&
-                (limits.min_coverage_ratio !== null ||
-                    limits.max_coverage_ratio !== null ||
-                    limits.max_overflow_ratio !== null ||
-                    limits.max_size_cv !== null ||
-                    limits.min_presence_ratio !== null);
-
-            if (!hasAnyLimit) {
-                setUploads((prev) => ({
+        // Validate all numeric limits and schema constraints before sending request
+        const validationError = validateAnalysisConfiguration(item);
+        if (validationError) {
+            setUploads((prev) => {
+                const cur = prev[uploadId];
+                if (!cur) return prev;
+                return {
                     ...prev,
                     [uploadId]: {
-                        ...prev[uploadId],
-                        errorMessage: "PROCESS_LIMITS mode requires at least one process limit threshold.",
+                        ...cur,
+                        status: "ready",
+                        errorMessage: validationError,
                     },
-                }));
-                return;
-            }
-
-            if (
-                limits?.min_coverage_ratio !== null &&
-                limits?.max_coverage_ratio !== null &&
-                limits.min_coverage_ratio !== undefined &&
-                limits.max_coverage_ratio !== undefined &&
-                limits.min_coverage_ratio > limits.max_coverage_ratio
-            ) {
-                setUploads((prev) => ({
-                    ...prev,
-                    [uploadId]: {
-                        ...prev[uploadId],
-                        errorMessage: "Min coverage ratio cannot be greater than max coverage ratio.",
-                    },
-                }));
-                return;
-            }
-        } else if (item.mode === "REFERENCE_IMAGE") {
-            if (!item.referenceFile) {
-                setUploads((prev) => ({
-                    ...prev,
-                    [uploadId]: {
-                        ...prev[uploadId],
-                        errorMessage: "REFERENCE_IMAGE mode requires a reference image to be uploaded.",
-                    },
-                }));
-                return;
-            }
-
-            const rLimits = item.referenceLimits;
-            const hasRefLimit =
-                rLimits &&
-                (rLimits.tolerance_ratio !== null ||
-                    rLimits.min_reference_ratio !== null ||
-                    rLimits.max_reference_ratio !== null);
-
-            if (!hasRefLimit) {
-                setUploads((prev) => ({
-                    ...prev,
-                    [uploadId]: {
-                        ...prev[uploadId],
-                        errorMessage:
-                            "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.",
-                    },
-                }));
-                return;
-            }
-
-            if (
-                rLimits?.min_reference_ratio !== null &&
-                rLimits?.max_reference_ratio !== null &&
-                rLimits.min_reference_ratio !== undefined &&
-                rLimits.max_reference_ratio !== undefined &&
-                rLimits.min_reference_ratio > rLimits.max_reference_ratio
-            ) {
-                setUploads((prev) => ({
-                    ...prev,
-                    [uploadId]: {
-                        ...prev[uploadId],
-                        errorMessage: "Min reference ratio cannot be greater than max reference ratio.",
-                    },
-                }));
-                return;
-            }
+                };
+            });
+            return;
         }
 
         // Build typed AnalysisProfile
@@ -298,18 +365,28 @@ export default function ImageUpload({
             reference_limits: item.mode === "REFERENCE_IMAGE" ? item.referenceLimits || null : null,
         };
 
+        const requestToken = nextTokenRef.current++;
+        const requestRevision = item.configRevision;
         const controller = new AbortController();
-        controllersRef.current[uploadId] = controller;
-        const currentRevision = item.configRevision;
 
-        setUploads((prev) => ({
-            ...prev,
-            [uploadId]: {
-                ...prev[uploadId],
-                status: "analyzing",
-                errorMessage: null,
-            },
-        }));
+        requestStateRef.current[uploadId] = {
+            token: requestToken,
+            controller,
+            configRevision: requestRevision,
+        };
+
+        setUploads((prev) => {
+            const cur = prev[uploadId];
+            if (!cur) return prev;
+            return {
+                ...prev,
+                [uploadId]: {
+                    ...cur,
+                    status: "analyzing",
+                    errorMessage: null,
+                },
+            };
+        });
 
         try {
             const response = await imagesApi.analyze(
@@ -319,43 +396,62 @@ export default function ImageUpload({
                 controller.signal
             );
 
-            // Check if still current (not aborted, not superseded by newer configuration)
-            if (
-                uploadsRef.current[uploadId] &&
-                uploadsRef.current[uploadId].configRevision === currentRevision
-            ) {
-                setUploads((prev) => ({
+            // Synchronous check outside delayed effects
+            const activeReq = requestStateRef.current[uploadId];
+            if (!activeReq || activeReq.token !== requestToken || activeReq.configRevision !== requestRevision) {
+                return;
+            }
+
+            // Commit result inside functional state update confirming upload exists,
+            // configRevision matches, and request token matches
+            setUploads((prev) => {
+                const cur = prev[uploadId];
+                const active = requestStateRef.current[uploadId];
+                if (!cur || cur.configRevision !== requestRevision || active?.token !== requestToken) {
+                    return prev;
+                }
+                return {
                     ...prev,
                     [uploadId]: {
-                        ...prev[uploadId],
+                        ...cur,
                         status: "analyzed",
                         result: response,
                         errorMessage: null,
                     },
-                }));
-            }
+                };
+            });
         } catch (err: unknown) {
             // Ignore abort exceptions
             if (err instanceof Error && err.name === "AbortError") {
                 return;
             }
 
-            if (
-                uploadsRef.current[uploadId] &&
-                uploadsRef.current[uploadId].configRevision === currentRevision
-            ) {
-                const message = err instanceof Error ? err.message : "Image analysis failed.";
-                setUploads((prev) => ({
+            const activeReq = requestStateRef.current[uploadId];
+            if (!activeReq || activeReq.token !== requestToken || activeReq.configRevision !== requestRevision) {
+                return;
+            }
+
+            const message = err instanceof Error ? err.message : "Image analysis failed.";
+            setUploads((prev) => {
+                const cur = prev[uploadId];
+                const active = requestStateRef.current[uploadId];
+                if (!cur || cur.configRevision !== requestRevision || active?.token !== requestToken) {
+                    return prev;
+                }
+                return {
                     ...prev,
                     [uploadId]: {
-                        ...prev[uploadId],
+                        ...cur,
                         status: "error",
                         errorMessage: message,
                     },
-                }));
-            }
+                };
+            });
         } finally {
-            delete controllersRef.current[uploadId];
+            // Delete controller only if stored request still belongs to this request token
+            if (requestStateRef.current[uploadId]?.token === requestToken) {
+                delete requestStateRef.current[uploadId];
+            }
         }
     };
 

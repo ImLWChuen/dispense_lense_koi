@@ -8,10 +8,13 @@ Phase 2: calibrated image frontend workflow and dynamic diagnosis analysis
 
 - `DLK-M3-027` — Calibrated image workflow and dynamic diagnosis analysis — **implemented (ready for review)**
   - task: `.agents/handoff/tasks/DLK-M3-027-calibrated-image-frontend-workflow.md`
+  - review: `.agents/handoff/reviews/DLK-M3-027-review.md`
+  - reviewed commit: `3e222b31241ee56034674d24744780a432bea8e6`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-026`
   - outcome: typed multipart image client, stable upload/ROI/calibration state, calibrated-only case evidence, persisted image evidence presentation, backend-derived evidence analysis, and canonical new-diagnosis form values
-  - stop point: return for ChatGPT review after one local implementation commit; do not begin Phase 3
+  - corrections addressed (R1–R6): synchronous request-specific token tracking and stale-response rejection; evidence chart bars derived solely from signed evidence contributions; numeric limit validation before request; rendering of actual persisted metadata keys (status, coverage_ratio_to_reference, current_coverage, reference_coverage); contract document aligned with backend Pydantic schemas; diagnosis TypeScript contracts aligned with backend schemas with explicit legacy UI fallbacks
+  - stop point: return for ChatGPT review; do not begin Phase 3
   - explicit exclusions: backend changes, dashboard/reports/cases/analytics, troubleshooting/verification corrections, dependencies, raw image persistence, and remote Git operations
 
 ## Accepted calibrated-vision task

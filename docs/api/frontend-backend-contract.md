@@ -74,32 +74,32 @@ All actor, confirmer, verifier, and reporter string fields enforce max length of
   - `file`: Required `UploadFile`. Supported image MIME types: `image/jpeg`, `image/png`. Max file size: 10 MiB (10,485,760 bytes).
   - `profile`: Required `str` (JSON string serialized from `AnalysisProfile`):
     - `mode`: `"FEATURES_ONLY"` | `"PROCESS_LIMITS"` | `"REFERENCE_IMAGE"`
-    - `rois`: `list[NormalizedROI]` where each ROI has `{ roi_id: string, x: number, y: number, width: number, height: number }` with normalized coordinates in `[0.0, 1.0]`. Minimum dimension: 0.01.
-    - `process_limits`: Optional `{ min_coverage_ratio?: number, max_coverage_ratio?: number, max_overflow_ratio?: number, max_size_cv?: number, min_presence_ratio?: number }`. Required when `mode == "PROCESS_LIMITS"`.
-    - `reference_limits`: Optional `{ min_reference_ratio?: number, max_reference_ratio?: number, tolerance_ratio?: number }`. Required when `mode == "REFERENCE_IMAGE"`.
+    - `rois`: `list[NormalizedROI]` where each ROI has `{ roi_id: string, x: number, y: number, width: number, height: number }` with normalized coordinates in `[0.0, 1.0]`, non-blank `roi_id`, and `x + width <= 1.0`, `y + height <= 1.0`.
+    - `process_limits`: Optional `ProcessLimits` (`{ min_coverage_ratio?: number, max_coverage_ratio?: number, max_overflow_ratio?: number, max_size_cv?: number, min_presence_ratio?: number }`). Required when `mode == "PROCESS_LIMITS"`.
+    - `reference_limits`: Optional `ReferenceLimits` (`{ min_reference_ratio?: number, max_reference_ratio?: number, tolerance_ratio?: number }`). Required when `mode == "REFERENCE_IMAGE"`.
     - `mm_per_pixel`: Optional `number` (> 0.0). Calibrated physical scale factor.
   - `reference_file`: Optional `UploadFile`. Required when `mode == "REFERENCE_IMAGE"`. Subject to identical 10 MiB and JPEG/PNG constraints.
 - **Responses:**
   - `200 OK`: `ImageAnalysisResponse`
-    - `status`: `"CALIBRATED"` | `"UNRELIABLE"` | `"PROCESSING_FAILED"`
-    - `mode`: `ImageAnalysisMode`
-    - `image_dimensions`: `{ width: number, height: number }`
-    - `roi_measurements`: `list[RoiMeasurement]` (each containing `roi_index`, `label`, `bounding_box`, `area_pixels`, `equivalent_diameter_pixels`, `calibrated_diameter_mm`, `circularity`, `mean_intensity`, `aspect_ratio`, `presence_ratio`, `similarity_ratio`)
-    - `aggregate_measurements`: `AggregateMeasurements` (`deposit_count`, `mean_diameter_pixels`, `mean_calibrated_diameter_mm`, `mean_circularity`, `diameter_std_dev_pixels`)
-    - `observations`: `list[DiagnosticObservation]` (structured observations with `source: "IMAGE"`, `evidence_type: "AI_INFERENCE"`, `category: "IMAGE"`, and metadata)
+    - `status`: `"CALIBRATED"` | `"UNCALIBRATED"` | `"UNRELIABLE"`
+    - `mode`: `ImageAnalysisMode` (`"FEATURES_ONLY"` | `"PROCESS_LIMITS"` | `"REFERENCE_IMAGE"`)
+    - `image_dimensions`: `{ width: number, height: number, channels: number }`
+    - `roi_measurements`: `list[RoiMeasurement]` (each containing `roi_id`, `deposit_area_px`, `target_area_px`, `coverage_ratio`, `overflow_ratio`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `aspect_ratio`, `hole_void_ratio`, `segmentation_quality`, `is_missing`)
+    - `aggregate_measurements`: `AggregateMeasurements` (`mean_coverage`, `size_cv`, `missing_roi_ids`, `warnings`)
+    - `observations`: `list[Observation]` (structured observations with `observation_id`, `observation_type`, `value`, `confidence`, `source: "IMAGE"`, `statement_type: "AI_INFERENCE"`, `original_text`, and `metadata`)
     - `warnings`: `list[str]`
-  - `400 Bad Request`: Missing `reference_file` when required, or malformed `profile_json`.
-  - `413 Payload Too Large`: Uploaded file exceeds 10 MiB.
-  - `422 Unprocessable Entity`: Invalid file type or invalid ROI boundary values.
-  - `500 Internal Server Error`: Unhandled analysis pipeline failure.
+  - `400 Bad Request`: Missing `reference_file` when required, or malformed `profile` JSON.
+  - `413 Payload Too Large`: Uploaded file exceeds 10 MiB limit.
+  - `422 Unprocessable Entity`: Invalid file type, invalid ROI boundary values, or contradictory numeric limits.
+  - `500 Internal Server Error`: Sanitized unhandled analysis pipeline failure.
 - **Non-Persistence of Raw Images:**
   - Raw image bytes, base64 strings, or object URLs are strictly transient client-side artifacts. They are **never** persisted to the database or stored on the backend filesystem.
-  - When a case is created (`POST /api/v1/cases`), only the extracted `DiagnosticObservation` records (with `source: "IMAGE"` and structured `metadata`) are transmitted and persisted.
+  - When a case is created (`POST /api/v1/cases`), only the extracted canonical `Observation` records (with `source: "IMAGE"` and structured `metadata`) are transmitted and persisted.
 - **Evidence Gating:**
-  - Only `CALIBRATED` analysis results may contribute observations to case creation. If status is `UNRELIABLE` or `PROCESSING_FAILED`, observations must not be submitted as case evidence.
-- **Request Cancellation & Cache Lifecycle:**
+  - Only `CALIBRATED` analysis results may contribute observations to case creation. If status is `UNCALIBRATED` (e.g. `FEATURES_ONLY` mode) or `UNRELIABLE` (ambiguous/uniform frames), results produce 0 diagnostic observations and must never be submitted as case evidence.
+- **Request Cancellation & Stale-Result Lifecycle:**
   - The client provides an `AbortSignal` for every analyze request.
-  - If an upload is removed or its configuration/ROIs change, in-flight requests are aborted immediately, generated object URLs are revoked (`URL.revokeObjectURL`), and any cached observations are cleared to prevent stale state.
+  - If an upload is removed or its configuration/ROIs change, in-flight requests are synchronously invalidated and aborted immediately, generated object URLs are revoked (`URL.revokeObjectURL`), and late responses are rejected so they cannot commit stale calibrated evidence or recreate removed uploads.
 
 ### 3.5 Canonical Form Values for Manual Case Observations
 When creating a case (`POST /api/v1/cases`), manual observations submitted from the initial problem form must conform strictly to canonical knowledge base values:
