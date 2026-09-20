@@ -24,13 +24,14 @@ Repeatable local demo startup and competition rehearsal readiness
     - post-startup identity verification script (`scripts/verify-demo.ps1`) confirming `dispense-lens-api` and `DispenseIQ` frontend and rejecting wrong local applications;
     - rewritten root `README.md` with complete three-layer quickstart, Node.js 20.9.0+ requirement, port 3001 instructions, port 3000 avoidance warning, health scope, and troubleshooting;
     - competition demo runbook (`docs/demo/local-demo-runbook.md`) with 6–10 minute timed walkthrough, truthful claims, failure fallbacks, and rehearsal tracking;
-    - resolved review findings R1–R4:
+    - resolved review findings R1–R5:
       - R1: rewrote timed runbook using only rendered controls and ordering from the checked-in UI (image analysis on `/diagnosis/new` before Start Diagnosis, Dispensing Line A, blockage_found, free-text recovery/boolean verification, no static score or ranking claims);
       - R2: replaced confidence-percentage, probability, and Bayesian terminology with the accepted deterministic `Evidence Support /100` meaning across README, runbook, and task packet;
       - R3: enforced Node.js `>=20.9.0` requirement in README and preflight (`Test-NodeVersionSupported`); verified across lower, exact, and higher versions;
-      - R4: ensured secret-safe database check (`Get-DatabaseConfigStatus`) strictly rejecting missing and blank `DATABASE_URL` values without leaking connection strings or credentials; verified missing, blank, and configured branches.
-  - verification: PowerShell AST parse (3/3 passed), Node-version checks (below/exact/above verified), secret-safe database checks (missing/blank/configured verified), static runbook terminology check (clean), health API test passed (2/2), frontend lint (0 errors, 0 warnings), frontend build (13/13 routes), task validation (VALID), git diff whitespace check passed;
-  - next step: submit local correction commit to ChatGPT reviewer for review; do not push or merge
+      - R4: ensured secret-safe database check (`Get-DatabaseConfigStatus`) strictly rejecting missing and blank `DATABASE_URL` values without leaking connection strings or credentials; verified missing, blank, and configured branches;
+      - R5: aligned runbook labels with exact rendered UI controls (`Analyze`, `Evidence`, `Submit Check Result`, `Submit Passed Verification` / `Submit Failed Verification`); explicitly prefixed all entered symptom, material, check, recovery, and verification details with `[SYNTHETIC DEMO]`; removed nonexistent editable operator example and explained generic technician actor.
+  - verification: PowerShell AST parse (3/3 passed), Node-version checks (below/exact/above verified), secret-safe database checks (missing/blank/configured verified), static runbook terminology & UI label check (clean), health API test passed (2/2), frontend lint (0 errors, 0 warnings), frontend build (13/13 routes), task validation (VALID), git diff whitespace check passed;
+  - next step: submit local documentation-only correction commit to ChatGPT reviewer for review; do not push or merge
 
 ## Explicitly deferred
 
@@ -47,4 +48,4 @@ Do not implement inside DLK-M3-031:
 
 Only DLK-M3-031 is authorized for implementation.
 
-DLK-M3-031 is not accepted until R1-R4 in its review are resolved. After acceptance, Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work should be final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.
+DLK-M3-031 is not accepted until R5 in its review is resolved. After acceptance, Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work should be final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.

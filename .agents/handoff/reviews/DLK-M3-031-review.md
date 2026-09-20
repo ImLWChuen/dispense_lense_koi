@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-031
-reviewed_commit: 5803f1a1f7ef909899f021ddcd77b85dc0c79f0e
+reviewed_commit: 4e868160d0701a8e904349f2d18c112a2e396c97
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -9,9 +9,39 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested. The PowerShell startup helpers are structurally sound and the accepted application code remains untouched, but the operator documentation is not yet a truthful executable walkthrough of the checked-in UI. The score description also contradicts the accepted evidence-support contract, and the preflight accepts an unsupported Node.js version while printing a complete example database URL.
+Changes requested for one remaining documentation correction. The correction commit resolves R2-R4 and the substantive workflow/order problems in R1. The runbook still names four buttons/panels differently from the checked-in UI and does not actually label its entered demo data as synthetic.
 
 Keep this as a correction round within DLK-M3-031. No new feature task is released.
+
+## Correction review: `4e868160d0701a8e904349f2d18c112a2e396c97`
+
+### Resolved
+
+- R1 workflow/order is substantively resolved: the runbook uses the actual new-diagnosis inputs, puts optional image analysis before `Start Diagnosis`, uses ACT01 only conditionally with `blockage_found`, and represents recovery/verification through their real free-text and pass/fail controls.
+- R2 is resolved: README, runbook, and normative task wording use `Evidence Support /100`, explicitly reject probability/Bayesian interpretation, and avoid fixed ranking scores.
+- R3 is resolved: README requires Node.js 20.9.0+, and preflight routes the actual/overridden version through `Test-NodeVersionSupported`. Reviewer replay observed rejection of v18.19.0 and acceptance of v20.9.0 and v22.12.0 at the Node decision.
+- R4 is resolved: missing/blank database configuration fails, configured input reports only its source, and reviewer replay with a synthetic credential marker found no password or complete PostgreSQL URL in output.
+
+### R5 — Runbook labels and synthetic-data instructions still do not match the demonstrable UI (medium)
+
+- `docs/demo/local-demo-runbook.md:79-80` says click `Analyze Image`; the rendered button is `Analyze`.
+- `docs/demo/local-demo-runbook.md:97` calls the rendered `Evidence` card `Evidence Panel`.
+- `docs/demo/local-demo-runbook.md:113` says click `Record Check Finding` (or an unspecified submit button); the rendered control is `Submit Check Result`.
+- `docs/demo/local-demo-runbook.md:138` says click `Submit Verification Result`; the selected-pass control renders `Submit Passed Verification` (`Submit Failed Verification` for the failed branch).
+- `docs/demo/local-demo-runbook.md:184` calls `Dispensing Line A` and `Lead Technician #104` synthetic identifiers. The first is an ordinary fixed select value, and the current UI has no editable operator field for the second. The actual entered symptom, material, check, recovery, and verification strings are not marked as synthetic.
+- Replace the four labels with their exact rendered text. Mark the data that can actually be entered as synthetic, for example by prefixing the symptom and free-text notes with `[SYNTHETIC DEMO]` and using a clearly synthetic material description. Remove the nonexistent operator-entry example and explain that the current prototype records a generic technician actor.
+
+### Correction verification
+
+- Exact correction commit and allowed-path diff inspected; no product code, dependency, schema, or diagnostic-semantic change.
+- PowerShell AST parse: 3/3 scripts passed.
+- Node decision replay: v18.19.0 rejected; v20.9.0 and v22.12.0 accepted at the production helper.
+- Database-output replay: blank override rejected; configured synthetic URL accepted without emitting its URL or password marker.
+- Focused backend health tests: 2 passed.
+- Frontend lint: passed with zero reported findings.
+- Frontend production build: passed TypeScript and generated all 13 routes.
+- Task validation: `VALID`; committed whitespace check passed.
+- Docker-backed positive startup remains unavailable to this reviewer because the local Docker engine cannot be accessed. The safe failure path remains correct.
 
 ## Acceptance evidence
 
@@ -62,14 +92,12 @@ Keep this as a correction round within DLK-M3-031. No new feature task is releas
 
 ## Follow-up
 
-Correct R1-R4 within DLK-M3-031 and update its implementation report with fresh evidence. Preserve the current safe startup behavior and do not change application product code, API/database contracts, diagnostic rules, weights, or dependencies.
+Correct R5 within DLK-M3-031 and update its implementation report with fresh evidence. Preserve the current safe startup behavior and resolved R1-R4 work. Do not change application product code, API/database contracts, diagnostic rules, weights, or dependencies.
 
 Required correction verification:
 
-1. PowerShell parse for all three scripts.
-2. Dependency-free Node-version checks covering below `20.9.0`, exactly `20.9.0`, and above it through the same production decision helper used by preflight.
-3. Secret-safe database-configuration checks for missing, blank, and nonblank values, proving no URL/password appears in output.
-4. Static cross-check that the runbook contains only actual form/workflow controls and contains no `confidence`, `% confidence`, `Bayesian`, `RESTRICTION_OBSERVED`, `VERIFY01`, or recovery action mislabelled as ACT01.
-5. Focused health tests, frontend lint/build, task validation, and whitespace check.
+1. Static cross-check against the rendered UI source for the four corrected control labels.
+2. Static check that the runbook's entered symptom/material/notes are explicitly marked synthetic and that it no longer suggests an editable operator identity.
+3. Frontend lint/build, task validation, and whitespace check. Product/backend tests do not need to be repeated for this documentation-only correction.
 
 The correction should be one local commit on `backend-database`. Do not push, merge, create/update a pull request, or touch unrelated untracked files. Review and queue updates from this review remain uncommitted for inclusion in that correction commit.

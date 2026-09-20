@@ -64,9 +64,9 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
   1. Click **New Diagnosis** in the sidebar navigation (`/diagnosis/new`).
   2. Fill in the **Problem Description** card (left column):
      - **Symptom Description** (textarea):
-       *"Dispensed adhesive deposits are visibly smaller than target after 45 minutes of continuous production run. Temperature is nominal at 22C."*
+       *"[SYNTHETIC DEMO] Dispensed adhesive deposits are visibly smaller than target after 45 minutes of continuous production run. Temperature is nominal at 22C."*
      - **Equipment / Line** (select): Select `Dispensing Line A` *(or any available line A–D)*.
-     - **Material Type** (input): `Epoxy adhesive`.
+     - **Material Type** (input): `[SYNTHETIC DEMO] Synthetic Epoxy Adhesive Lot-A1`.
   3. Select the **Observed Defect Type**:
      - Click the card for **Too Little Material** (Defect code `D01_TOO_LITTLE`).
   4. Provide **Manual Observations** (optional selects):
@@ -76,8 +76,8 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
   5. **Optional Image Inspection Evidence (Right Column):**
      - In the **Image Upload** panel on the right, drop or browse a test image (JPEG/PNG).
      - In the **Analysis Mode & Calibration** panel:
-       - To demonstrate calibrated evidence: Select `Process Limits`, configure process thresholds (e.g. Min Coverage Ratio `0.15`, Max Coverage Ratio `0.35`), and click `Analyze Image`. Once analyzed with status `CALIBRATED`, the resulting optical observation is automatically captured in the active case snapshot.
-       - To demonstrate uncalibrated neutrality: Select `Features Only` and click `Analyze Image`. Note that status returns `UNCALIBRATED` and issues an advisory notice without generating score-bearing evidence.
+       - To demonstrate calibrated evidence: Select `Process Limits`, configure process thresholds (e.g. Min Coverage Ratio `0.15`, Max Coverage Ratio `0.35`), and click `Analyze`. Once analyzed with status `CALIBRATED`, the resulting optical observation is automatically captured in the active case snapshot.
+       - To demonstrate uncalibrated neutrality: Select `Features Only` and click `Analyze`. Note that status returns `UNCALIBRATED` and issues an advisory notice without generating score-bearing evidence.
      - *Note for Narrator: State the actual measurements and status returned on screen rather than assuming fixed numbers.*
   6. Click **Start Diagnosis** at the bottom of the form.
 - **Result:** The case is persisted atomically to PostgreSQL with a unique `Case ID` at **Revision 1**, and the browser navigates directly to `/diagnosis/{case_id}`.
@@ -94,7 +94,7 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
      - Point out the top-ranked cause (e.g. `Nozzle Restriction` or whichever cause is ranked first by the engine for the chosen inputs).
      - Highlight the `Evidence Support /100` progress bar and score for each candidate cause.
      - Note the supporting and contradicting evidence counts (`X supports`, `Y contradicts`).
-  2. Highlight the **Evidence Panel**: Show the itemized list of manual context and image-derived observations linked to the top cause.
+  2. Highlight the **Evidence** card: Show the itemized list of manual context and image-derived observations linked to the top cause.
 
 ---
 
@@ -109,8 +109,8 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
      - **Check Execution Status**: Click `Completed` *(or another status if blocked/skipped)*.
      - **Evidence Finding**: Click `SUPPORTS`.
      - **Canonical Outcome Key**: Select the applicable canonical outcome from the rendered radio options (for `ACT01`, select `blockage_found`).
-     - **Technician Notes** (textarea): *"Cured epoxy deposit observed at nozzle orifice tip."*
-  4. Click **Record Check Finding** *(or submit button)*.
+     - **Technician Notes** (textarea): *"[SYNTHETIC DEMO] Cured epoxy deposit observed at nozzle orifice tip."*
+  4. Click **Submit Check Result**.
 - **Result:** The check result is atomically recorded. The case advances to **Revision 2**, recalculates evidence support scores, and updates cause rankings dynamically based on the verified finding.
 
 ---
@@ -123,19 +123,19 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
   2. **Step A — Confirm Candidate Root Cause (Optional):**
      - Click to select the top candidate cause card from the list.
      - In the **Confirm Cause Assessment** textarea, enter technician notes:
-       *"Visual nozzle inspection confirmed partial cured epoxy restriction."*
+       *"[SYNTHETIC DEMO] Visual nozzle inspection confirmed partial cured epoxy restriction."*
      - Click **Confirm Selected Cause**.
      - Point out: The confirmed cause record is saved, but the issue condition remains `Unresolved`.
   3. **Step B — Record Corrective / Recovery Action:**
      - In the **Record Corrective / Recovery Action** card, enter free-text action details in the textarea:
-       *"Replaced 25G dispensing tip with clean lot #8841 and executed 3 fluid purge test cycles."*
+       *"[SYNTHETIC DEMO] Replaced 25G dispensing tip with clean lot #8841 and executed 3 fluid purge test cycles."*
      - Click **Record Recovery Action**.
      - Point out: The issue condition transitions to `Recovery Pending Verification`.
   4. **Step C — Recovery Verification:**
      - In the **Recovery Verification** card, click the **Verification Passed** button.
      - In the **Verification Details / Test Observations** textarea, enter:
-       *"Dispensed 10 test dots; measured diameters are within nominal process tolerance."*
-     - Click **Submit Verification Result**.
+       *"[SYNTHETIC DEMO] Dispensed 10 test dots; measured diameters are within nominal process tolerance."*
+     - Click **Submit Passed Verification** *(if demonstrating an unsuccessful verification branch where Verification Failed was clicked, the button renders as **Submit Failed Verification**)*.
      - Point out: The issue condition transitions to **Resolved**.
 
 ---
@@ -181,7 +181,7 @@ During demonstrations and technical reviews, state these boundaries truthfully:
 ## 5. Reset-Free Rehearsal Policy
 
 - **Preserve Development Records:** Do **not** wipe the PostgreSQL database between rehearsal runs. Retaining prior cases demonstrates search, filtering, and dashboard trend charts realistically.
-- **Use Synthetic Input Tags:** Prefix demonstration lines and operators with synthetic identifiers (e.g. `Dispensing Line A`, `Lead Technician #104`).
+- **Use Synthetic Demo Data Tags:** Mark all entered free-text demonstration inputs with synthetic identifiers (e.g. prefixing symptom descriptions, material descriptions, check findings, cause confirmation notes, recovery actions, and verification observations with `[SYNTHETIC DEMO]`). Note that the checked-in UI exposes a fixed dropdown for line selection (`Dispensing Line A–D`) and does not expose an editable operator-identity field; the current prototype records a generic technician actor in the audit timeline.
 - **Never Test Against Development DB:** Never run automated pytest integration suites with `$env:DATABASE_URL` pointing to `dispenselens`. Automated tests require `$env:TEST_DATABASE_URL` pointing to the disposable `dispenselens_test` database.
 
 ---

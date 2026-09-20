@@ -262,7 +262,7 @@ Proposed commit message: `docs(demo): make local competition startup repeatable`
 
 ### Summary
 
-Delivered all local demo readiness and competition rehearsal requirements for DLK-M3-031 and resolved review findings R1–R4 from `.agents/handoff/reviews/DLK-M3-031-review.md`:
+Delivered all local demo readiness and competition rehearsal requirements for DLK-M3-031 and resolved review findings R1–R5 from `.agents/handoff/reviews/DLK-M3-031-review.md`:
 
 1. Initial local demo readiness delivery:
    - Refactored `scripts/start-db.ps1`: repository-path-independent via `$PSScriptRoot`, removed hardcoded developer paths, distinguishes Docker CLI/engine/Compose failures with actionable text, waits for container health check, and preserves development database volume.
@@ -271,7 +271,7 @@ Delivered all local demo readiness and competition rehearsal requirements for DL
    - Replaced root `README.md`: complete project quickstart, prerequisites, setup, migration, startup sequence, port 3000 avoidance warning, health scope, and troubleshooting.
    - Created `docs/demo/local-demo-runbook.md`: structured timed 6–10 minute competition demonstration script, truthful claims, failure fallbacks, and rehearsal tracking.
 
-2. Review correction round (R1–R4 resolution):
+2. Review correction round 1 (R1–R4 resolution):
    - **R1 (Executable runbook aligned with checked-in UI):**
      - Rewrote `docs/demo/local-demo-runbook.md` using only controls, labels, values, and ordering that exist in the checked-in UI.
      - Moved optional image upload/calibration to Phase 2 *before* `Start Diagnosis` on `/diagnosis/new` so that image observations are collected into the case request.
@@ -291,6 +291,15 @@ Delivered all local demo readiness and competition rehearsal requirements for DL
      - Implemented `Get-DatabaseConfigStatus` in `scripts/demo-preflight.ps1` to strictly reject missing and blank/whitespace-only `DATABASE_URL` values while accepting valid configurations in environment or `.env` files.
      - Added `-OverrideDatabaseUrl`, `-OverrideRootEnvPath`, and `-OverrideBackendEnvPath` parameters for controlled secret-safe verification of missing, blank, and valid states.
 
+3. Review correction round 2 (R5 resolution):
+   - **R5 (Exact UI control labels, synthetic tagging, and operator-identity clarity):**
+     - Replaced button label `Analyze Image` with exact rendered text `Analyze` on `/diagnosis/new` (`ImageUpload.tsx:409`).
+     - Replaced heading reference `Evidence Panel` with exact rendered card heading `Evidence` on `/diagnosis/{id}` (`EvidencePanel.tsx:48`).
+     - Replaced `Record Check Finding` with exact rendered button label `Submit Check Result` on `/diagnosis/{id}/troubleshooting` (`TroubleshootingChecklist.tsx:424`).
+     - Replaced `Submit Verification Result` with `Submit Passed Verification` for the passed branch and documented `Submit Failed Verification` for the failed branch on `/diagnosis/{id}/verification` (`EngineerVerification.tsx:456-457`).
+     - Explicitly tagged all entered demonstration text with `[SYNTHETIC DEMO]` prefixes across symptom descriptions, material descriptions (`[SYNTHETIC DEMO] Synthetic Epoxy Adhesive Lot-A1`), check notes, cause confirmation notes, recovery actions, and verification observations.
+     - Removed `Lead Technician #104` as an editable synthetic identifier; clarified that the checked-in UI exposes a fixed dropdown for lines (`Dispensing Line A–D`) and no editable operator-identity field, recording a generic technician actor in the audit timeline.
+
 ### Files changed
 
 Primary feature paths:
@@ -298,11 +307,11 @@ Primary feature paths:
 - `scripts/demo-preflight.ps1`: Added read-only preflight check for Docker, Python, Node.js (>=20.9.0), npm, dependencies, non-blank config presence, and ports 8000/3001; added `Test-NodeVersionSupported` and `Get-DatabaseConfigStatus` helpers with secret-safe reporting and test override parameters.
 - `scripts/verify-demo.ps1`: Added post-startup identity verification asserting backend `dispense-lens-api` and frontend `DispenseLens`/`DispenseIQ` presence.
 - `README.md`: Project quickstart, Node.js 20.9.0+ prerequisite, setup, startup sequence, port 3000 warning, health scope, deterministic offline operation, and `Evidence Support /100` terminology.
-- `docs/demo/local-demo-runbook.md`: Timed 6–10 minute competition demonstration script rewritten strictly from checked-in UI controls/order, truthful claims, failure fallbacks, rehearsal table, and `Evidence Support /100` terminology.
+- `docs/demo/local-demo-runbook.md`: Timed 6–10 minute competition demonstration script rewritten strictly from checked-in UI controls/order, exact button/card labels (`Analyze`, `Evidence`, `Submit Check Result`, `Submit Passed Verification` / `Submit Failed Verification`), explicit `[SYNTHETIC DEMO]` data tagging, operator-identity explanation, truthful claims, failure fallbacks, rehearsal table, and `Evidence Support /100` terminology.
 
 Handoff paths:
-- `.agents/handoff/QUEUE.md`: Updated DLK-M3-031 status to `implemented` with R1–R4 resolution details.
-- `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`: Corrected task requirements wording, completed implementation report with R1–R4 resolution and fresh verification evidence, and maintained `status: implemented`.
+- `.agents/handoff/QUEUE.md`: Updated DLK-M3-031 status to `implemented` with R1–R5 resolution details.
+- `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`: Corrected task requirements wording, completed implementation report with R1–R5 resolution and fresh verification evidence, and maintained `status: implemented`.
 - `.agents/handoff/reviews/DLK-M3-031-review.md`: Uncommitted review record included for atomic commit.
 
 ### Decisions made
@@ -312,6 +321,7 @@ Handoff paths:
 - Maintained strict zero-credential-leakage policy in `demo-preflight.ps1`: only reports the source (e.g. `.env file in repository root` or `$env:DATABASE_URL`) when configured, and refers to `.env.example` on failure without printing connection strings.
 - Kept optional test override parameters on `demo-preflight.ps1` to permit dependency-free testing of version and database branches without temporary script files or machine modifications.
 - Preserved existing development records in PostgreSQL volume `postgres_data` without running destructive volume wipes or automated tests against `dispenselens`.
+- Ensured all free-text demo strings carry clear `[SYNTHETIC DEMO]` prefixes so that observers and operators immediately recognize synthetic test inputs.
 
 ### Verification results
 
@@ -337,7 +347,13 @@ Handoff paths:
    - `README.md`: 0 occurrences of `confidence`, 0 occurrences of `% confidence`, 0 occurrences of `Bayesian`. Confirmed `Node.js 20.9.0+` requirement.
    - `DLK-M3-031-local-demo-readiness.md`: Task requirement updated to `Evidence Support /100`.
 
-5. Application Health, Lint, and Build Gates:
+5. Static Cross-Check for R5 Control Labels and Synthetic Tagging:
+   - Runbook verified free of outdated strings: 0 occurrences of `Analyze Image`, 0 occurrences of `Evidence Panel`, 0 occurrences of `Record Check Finding`, 0 occurrences of `Submit Verification Result`, and 0 occurrences of `Lead Technician`.
+   - Verified exact UI matches: `Analyze` (`ImageUpload.tsx:409`), `Evidence` (`EvidencePanel.tsx:48`), `Submit Check Result` (`TroubleshootingChecklist.tsx:424`), `Submit Passed Verification` / `Submit Failed Verification` (`EngineerVerification.tsx:456-457`).
+   - Verified `[SYNTHETIC DEMO]` prefix on entered symptom description, material type, check notes, cause confirmation notes, recovery actions, and verification observations.
+   - Verified explanation of generic technician actor in Section 5.
+
+6. Application Health, Lint, and Build Gates:
    - Backend health API integration test (`pytest tests/integration/test_health_api.py -q`): 2 passed.
    - Frontend lint (`npm run lint`): Passed with 0 errors, 0 warnings across all files.
    - Frontend production build (`npm run build`): Compiled successfully with Turbopack and TypeScript; all 13 routes generated.
@@ -351,4 +367,4 @@ Handoff paths:
 
 ### Proposed commit message
 
-`docs(demo): resolve DLK-M3-031 review findings R1-R4`
+`docs(demo): resolve DLK-M3-031 review finding R5`
