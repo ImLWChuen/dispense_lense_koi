@@ -163,6 +163,25 @@ def test_list_actions_catalog_endpoint(client: TestClient) -> None:
     assert "ACT_INSPECT_NOZZLE" in action_ids or any("ACT" in aid for aid in action_ids)
 
 
+def test_list_rules_catalog_endpoint(client: TestClient) -> None:
+    """GET /api/v1/rules returns all authorized evidence evaluation rules."""
+    response = client.get("/api/v1/rules")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 50
+    rule_ids = {r["id"] for r in data}
+    assert "R001" in rule_ids
+
+    # Test filtering by cause_id
+    filtered = client.get("/api/v1/rules?cause_id=nozzle_restriction")
+    assert filtered.status_code == 200
+    filtered_data = filtered.json()
+    assert len(filtered_data) > 0
+    for r in filtered_data:
+        assert r["cause_id"] == "nozzle_restriction"
+
+
 # ===========================================================================
 # 3. Settings & Zero-Dependency .env Loader
 # ===========================================================================

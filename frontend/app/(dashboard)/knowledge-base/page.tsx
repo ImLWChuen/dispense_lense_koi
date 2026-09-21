@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
     Search,
@@ -9,97 +9,39 @@ import {
     BookOpen,
     Link2,
     X,
+    HelpCircle,
+    RefreshCw,
+    CheckCircle2,
+    Database,
+    ExternalLink,
+    Tag,
 } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
+import {
+    getFullKnowledgeCatalog,
+    DefectDefinition,
+    CauseDefinition,
+    CheckDefinition,
+    EvidenceRuleDefinition,
+    QuestionDefinition,
+    FALLBACK_DEFECTS,
+    FALLBACK_CAUSES,
+    FALLBACK_ACTIONS,
+    FALLBACK_RULES,
+    FALLBACK_QUESTIONS,
+} from "@/lib/api/knowledge";
 
-const tabs = ["Defects", "Causes", "Actions", "Rules"];
-
-const defects = [
-    {
-        code: "D01",
-        name: "Too Little Material",
-        description:
-            "Dispensed volume is consistently less than the target amount, resulting in undersized deposits.",
-        causes: ["Nozzle Restriction", "Air Supply", "Material Condition", "Pressure", "Parameters", "Equipment"],
-    },
-    {
-        code: "D02",
-        name: "Too Much Material",
-        description:
-            "Dispensed volume is consistently more than the target amount, resulting in oversized deposits.",
-        causes: ["Parameters", "Pressure", "Material Condition", "Nozzle Condition", "Equipment", "Valve"],
-    },
-    {
-        code: "D03",
-        name: "Inconsistent Size",
-        description:
-            "Dispensed volume varies from shot to shot, producing deposits of different sizes.",
-        causes: ["Air Supply", "Nozzle Restriction", "Material Condition", "Pressure", "Parameters", "Equipment"],
-    },
-    {
-        code: "D04",
-        name: "Missing Dots",
-        description:
-            "One or more dispensing locations receive no material at all.",
-        causes: ["Nozzle Restriction", "Air Supply", "Valve", "Material Condition", "Equipment", "Pressure"],
-    },
-    {
-        code: "D05",
-        name: "Spreading",
-        description:
-            "Dispensed material spreads excessively on the substrate instead of forming a controlled dot.",
-        causes: ["Material Condition", "Parameters", "Temperature", "Substrate", "Nozzle Condition", "Equipment"],
-    },
-    {
-        code: "D06",
-        name: "Bubbles / Abnormal Shape",
-        description:
-            "Dispensed deposits contain trapped air bubbles or exhibit abnormal shapes.",
-        causes: ["Air Supply", "Material Condition", "Nozzle Condition", "Parameters", "Equipment", "Valve"],
-    },
-];
-
-const causes = [
-    { id: "air_supply_issue", name: "Air / Supply Issue", defectCount: 4, description: "Trapped air or inconsistent air pressure in the material supply path." },
-    { id: "nozzle_restriction", name: "Nozzle Restriction", defectCount: 3, description: "Partial or complete blockage of the dispensing nozzle." },
-    { id: "material_condition", name: "Material Condition", defectCount: 6, description: "Material properties outside acceptable range." },
-    { id: "pressure_instability", name: "Pressure Instability", defectCount: 4, description: "Inconsistent dispensing pressure from the supply system." },
-    { id: "parameter_issue", name: "Parameter Issue", defectCount: 5, description: "Dispensing parameters incorrectly configured." },
-    { id: "equipment_condition", name: "Equipment Condition", defectCount: 6, description: "Mechanical wear, misalignment, or calibration drift." },
-    { id: "valve_issue", name: "Valve Issue", defectCount: 3, description: "Dispensing valve malfunction or wear." },
-    { id: "temperature_issue", name: "Temperature Issue", defectCount: 1, description: "Temperature outside acceptable range affects viscosity." },
-    { id: "substrate_condition", name: "Substrate Condition", defectCount: 1, description: "Substrate surface affects wetting behaviour." },
-    { id: "nozzle_condition", name: "Nozzle Condition", defectCount: 3, description: "Nozzle tip damage or contamination." },
-];
-
-const actions = [
-    { id: "ACT01", name: "Inspect Nozzle", effort: "Low", causes: "Nozzle Restriction, Nozzle Condition", description: "Visual inspection under microscope to check for partial obstruction or residue." },
-    { id: "ACT02", name: "Check Material Supply", effort: "Low", causes: "Material Condition, Air Supply", description: "Inspect syringe barrel, fluid levels, and check for air bubble pockets." },
-    { id: "ACT03", name: "Perform Test Shots", effort: "Medium", causes: "Pressure, Parameters, Equipment", description: "Dispense test matrix on reference substrate and weigh on analytical balance." },
-    { id: "ACT04", name: "Verify Pressure Settings", effort: "Medium", causes: "Pressure, Parameters", description: "Check regulator gauge readings against recipe specification." },
-    { id: "ACT05", name: "Inspect Valve Assembly", effort: "High", causes: "Valve, Equipment", description: "Disassemble valve body, check seal integrity and diaphragm wear." },
-    { id: "ACT06", name: "Check Temperature", effort: "Low", causes: "Temperature, Material Condition", description: "Measure syringe heater and ambient cleanroom temperature." },
-    { id: "ACT07", name: "Inspect Substrate", effort: "Low", causes: "Substrate Condition", description: "Verify surface cleanliness and surface tension with dyne pens." },
-    { id: "ACT08", name: "Calibrate Equipment", effort: "High", causes: "Equipment Condition, Parameters", description: "Run automated nozzle offset calibration and height sensor check." },
-];
-
-const evidenceRules = [
-    { id: "R01", category: "Visual Observation", defect: "Too Little Material", observation: "Dot diameter < 80% nominal", inferredCause: "Nozzle Restriction, Low Pressure", weight: 0.85 },
-    { id: "R02", category: "Visual Observation", defect: "Too Much Material", observation: "Dot diameter > 120% nominal", inferredCause: "High Pressure, Excessive Open Time", weight: 0.80 },
-    { id: "R03", category: "Syringe Check", defect: "Missing Dots", observation: "Air bubble visible in fluid line", inferredCause: "Air Supply Issue", weight: 0.95 },
-    { id: "R04", category: "Pressure Check", defect: "Inconsistent Size", observation: "Pressure gauge fluctuates > 5%", inferredCause: "Pressure Instability", weight: 0.90 },
-    { id: "R05", category: "Environmental", defect: "Spreading", observation: "Cleanroom temperature > 24°C", inferredCause: "Temperature Issue / Viscosity Drop", weight: 0.75 },
-    { id: "R06", category: "Nozzle Inspection", defect: "Bubbles / Abnormal Shape", observation: "Dried adhesive buildup on tip", inferredCause: "Nozzle Condition", weight: 0.88 },
-];
+const tabs = ["Defects", "Causes", "Actions", "Rules", "Questions"] as const;
+type TabType = (typeof tabs)[number];
 
 function KnowledgeBaseContent() {
     const searchParams = useSearchParams();
 
-    const tabFromUrl = searchParams.get("tab");
+    const tabFromUrl = searchParams.get("tab") as TabType | null;
     const searchFromUrl = searchParams.get("search");
 
-    const [activeTab, setActiveTab] = useState(
+    const [activeTab, setActiveTab] = useState<TabType>(
         tabFromUrl && tabs.includes(tabFromUrl) ? tabFromUrl : "Defects"
     );
     const [search, setSearch] = useState(searchFromUrl || "");
@@ -107,9 +49,54 @@ function KnowledgeBaseContent() {
     const [prevTab, setPrevTab] = useState(tabFromUrl);
     const [prevSearch, setPrevSearch] = useState(searchFromUrl);
 
+    // Live catalog state loaded directly from REST API
+    const [defects, setDefects] = useState<DefectDefinition[]>(FALLBACK_DEFECTS);
+    const [causes, setCauses] = useState<CauseDefinition[]>(FALLBACK_CAUSES);
+    const [actions, setActions] = useState<CheckDefinition[]>(FALLBACK_ACTIONS);
+    const [rules, setRules] = useState<EvidenceRuleDefinition[]>(FALLBACK_RULES);
+    const [questions, setQuestions] = useState<QuestionDefinition[]>(FALLBACK_QUESTIONS);
+
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLiveApi, setIsLiveApi] = useState(false);
+    const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+    // Fetch live catalog from REST API
+    const loadCatalog = useCallback(async (showRefreshing = false) => {
+        if (showRefreshing) {
+            setIsRefreshing(true);
+        } else {
+            setIsLoading(true);
+        }
+
+        try {
+            const catalog = await getFullKnowledgeCatalog();
+            setDefects(catalog.defects);
+            setCauses(catalog.causes);
+            setActions(catalog.actions);
+            setRules(catalog.rules);
+            setQuestions(catalog.questions);
+            setIsLiveApi(catalog.isLive);
+            setLastSyncTime(
+                new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+            );
+        } catch (err) {
+            console.error("[KnowledgeBase] Failed to fetch live knowledge catalog:", err);
+            setIsLiveApi(false);
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadCatalog();
+    }, [loadCatalog]);
+
+    // Handle URL param synchronization
     if (tabFromUrl !== prevTab) {
         setPrevTab(tabFromUrl);
-        if (tabFromUrl && tabs.includes(tabFromUrl)) {
+        if (tabFromUrl && (tabs as readonly string[]).includes(tabFromUrl)) {
             setActiveTab(tabFromUrl);
         }
     }
@@ -123,14 +110,22 @@ function KnowledgeBaseContent() {
 
     const q = search.trim().toLowerCase();
 
-    // Filtered data for each tab
+    // Human-readable cause dictionary for mapping cause IDs to friendly names
+    const causeNameMap: Record<string, string> = causes.reduce((acc, c) => {
+        acc[c.id] = c.name;
+        return acc;
+    }, {} as Record<string, string>);
+
+    // Filtered data for each tab based on search query
     const filteredDefects = defects.filter((d) => {
         if (!q) return true;
+        const causeNames = (d.applicable_causes || []).map((cid) => (causeNameMap[cid] || cid).toLowerCase());
         return (
             d.name.toLowerCase().includes(q) ||
             d.code.toLowerCase().includes(q) ||
             d.description.toLowerCase().includes(q) ||
-            d.causes.some((c) => c.toLowerCase().includes(q))
+            causeNames.some((c) => c.includes(q)) ||
+            (d.symptom_patterns || []).some((p) => p.value.toLowerCase().includes(q))
         );
     });
 
@@ -139,68 +134,163 @@ function KnowledgeBaseContent() {
         return (
             c.name.toLowerCase().includes(q) ||
             c.id.toLowerCase().includes(q) ||
-            c.description.toLowerCase().includes(q)
+            c.description.toLowerCase().includes(q) ||
+            (c.applicable_defects || []).some((d) => d.toLowerCase().includes(q))
         );
     });
 
     const filteredActions = actions.filter((a) => {
         if (!q) return true;
+        const causeNames = (a.applicable_causes || []).map((cid) => (causeNameMap[cid] || cid).toLowerCase());
         return (
             a.name.toLowerCase().includes(q) ||
             a.id.toLowerCase().includes(q) ||
-            a.causes.toLowerCase().includes(q) ||
-            a.effort.toLowerCase().includes(q) ||
-            (a.description && a.description.toLowerCase().includes(q))
+            (a.description && a.description.toLowerCase().includes(q)) ||
+            (a.effort_level && a.effort_level.toLowerCase().includes(q)) ||
+            causeNames.some((c) => c.includes(q))
         );
     });
 
-    const filteredRules = evidenceRules.filter((r) => {
+    const filteredRules = rules.filter((r) => {
         if (!q) return true;
+        const causeName = (causeNameMap[r.cause_id] || r.cause_id).toLowerCase();
         return (
             r.id.toLowerCase().includes(q) ||
-            r.category.toLowerCase().includes(q) ||
-            r.defect.toLowerCase().includes(q) ||
-            r.observation.toLowerCase().includes(q) ||
-            r.inferredCause.toLowerCase().includes(q)
+            r.observation_type.toLowerCase().includes(q) ||
+            r.observation_value.toLowerCase().includes(q) ||
+            r.cause_id.toLowerCase().includes(q) ||
+            causeName.includes(q) ||
+            r.relation.toLowerCase().includes(q) ||
+            r.explanation.toLowerCase().includes(q)
+        );
+    });
+
+    const filteredQuestions = questions.filter((quest) => {
+        if (!q) return true;
+        const causeNames = (quest.applicable_causes || []).map((cid) => (causeNameMap[cid] || cid).toLowerCase());
+        return (
+            quest.id.toLowerCase().includes(q) ||
+            quest.text.toLowerCase().includes(q) ||
+            quest.purpose.toLowerCase().includes(q) ||
+            (quest.expected_answer_type && quest.expected_answer_type.toLowerCase().includes(q)) ||
+            causeNames.some((c) => c.includes(q))
         );
     });
 
     return (
         <PageContainer>
-            <div>
-                <p className="text-sm font-medium text-[#6d5dfc]">
-                    Reference data
-                </p>
+            {/* Header with Title and Live API Synchronization Status */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider bg-[#eeebff] text-[#5848e8]">
+                            <Database size={12} />
+                            Knowledge Engine Catalog
+                        </span>
 
-                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">
-                    Knowledge Base
-                </h1>
+                        {isLiveApi ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200/60">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Live REST API (v1)
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                                Offline Backup Mode
+                            </span>
+                        )}
+                    </div>
 
-                <p className="mt-2 text-sm text-gray-500">
-                    Explore the diagnostic knowledge, defect profiles, and root cause rules that power the
-                    Dispense Lens engine.
-                </p>
+                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
+                        Knowledge Base
+                    </h1>
+
+                    <p className="mt-2 text-sm text-gray-500 max-w-3xl">
+                        Authoritative diagnostic catalog querying live backend REST endpoints (<code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">/api/v1/defects</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">/causes</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">/actions</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">/rules</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">/questions</code>).
+                    </p>
+                </div>
+
+                {/* Catalog Metrics & Live Refresh Button */}
+                <div className="flex items-center gap-3 self-start sm:self-center">
+                    {lastSyncTime && (
+                        <span className="hidden md:inline text-xs text-gray-400">
+                            Synced {lastSyncTime}
+                        </span>
+                    )}
+
+                    <button
+                        onClick={() => loadCatalog(true)}
+                        disabled={isRefreshing}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60"
+                        title="Re-query REST API endpoints to load updated rules or fluid profiles"
+                    >
+                        <RefreshCw size={13} className={isRefreshing ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
+                        {isRefreshing ? "Syncing..." : "Refresh Catalog"}
+                    </button>
+                </div>
             </div>
 
-            {/* Search + Tabs */}
+            {/* Live Decoupling Banner: Explaining Zero-Redeploy Rule Editing */}
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs text-blue-900 flex items-start gap-3">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                    <CheckCircle2 size={15} />
+                </div>
+                <div className="flex-1 leading-relaxed">
+                    <span className="font-semibold text-blue-950">Zero-Redeployment Knowledge Architecture (FR-034):</span> All diagnostic rules, defect profiles, and fluid troubleshooting checks are served dynamically from the backend. When a process engineer alters an adhesive pot-life threshold, creates a new defect category, or updates an evidence rule, changes take effect immediately across all client workstations without requiring frontend builds or server downtime.
+                </div>
+            </div>
+
+            {/* Catalog Summary Metric Bar */}
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Defect Types</span>
+                    <p className="mt-1 text-xl font-bold text-gray-900">{defects.length}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Root Causes</span>
+                    <p className="mt-1 text-xl font-bold text-gray-900">{causes.length}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Troubleshooting Actions</span>
+                    <p className="mt-1 text-xl font-bold text-gray-900">{actions.length}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Evidence Rules</span>
+                    <p className="mt-1 text-xl font-bold text-gray-900">{rules.length}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Discriminating Questions</span>
+                    <p className="mt-1 text-xl font-bold text-gray-900">{questions.length}</p>
+                </div>
+            </div>
+
+            {/* Search + Tabs Navigation */}
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                            className={`rounded-lg px-4 py-2 text-sm font-medium transition whitespace-nowrap ${
                                 activeTab === tab
                                     ? "bg-[#6d5dfc] text-white shadow-sm"
                                     : "text-gray-600 hover:bg-gray-100"
                             }`}
                         >
                             {tab}
+                            <span className={`ml-2 text-xs rounded-full px-1.5 py-0.5 ${
+                                activeTab === tab ? "bg-white/25 text-white" : "bg-gray-200 text-gray-700"
+                            }`}>
+                                {tab === "Defects" && defects.length}
+                                {tab === "Causes" && causes.length}
+                                {tab === "Actions" && actions.length}
+                                {tab === "Rules" && rules.length}
+                                {tab === "Questions" && questions.length}
+                            </span>
                         </button>
                     ))}
                 </div>
 
-                <div className="relative w-full sm:w-[320px]">
+                <div className="relative w-full sm:w-[340px]">
                     <Search
                         size={16}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -226,7 +316,7 @@ function KnowledgeBaseContent() {
                 </div>
             </div>
 
-            {/* Search status / Clear info */}
+            {/* Search filtering notice */}
             {search && (
                 <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
                     <p>
@@ -241,272 +331,466 @@ function KnowledgeBaseContent() {
                 </div>
             )}
 
-            {/* Content Tabs */}
+            {/* Content Tabs Area */}
             <div className="mt-6">
-                {/* Defects Tab */}
-                {activeTab === "Defects" && (
-                    filteredDefects.length > 0 ? (
-                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                            {filteredDefects.map((defect) => (
-                                <div
-                                    key={defect.code}
-                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
-                                            <AlertTriangle size={17} />
-                                        </div>
+                {isLoading ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                        <RefreshCw size={28} className="mx-auto text-gray-400 animate-spin mb-3" />
+                        <p className="text-sm font-semibold text-gray-800">Loading live knowledge catalog...</p>
+                        <p className="mt-1 text-xs text-gray-500">Connecting to FastAPI REST API on port 8000.</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* ======================================================= */}
+                        {/* TAB 1: DEFECTS                                          */}
+                        {/* ======================================================= */}
+                        {activeTab === "Defects" && (
+                            filteredDefects.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    {filteredDefects.map((defect) => (
+                                        <div
+                                            key={defect.code}
+                                            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                                    <AlertTriangle size={17} />
+                                                </div>
 
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-sm font-semibold text-gray-900">
-                                                    {defect.name}
-                                                </p>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <p className="text-sm font-semibold text-gray-900">
+                                                            {defect.name}
+                                                        </p>
 
-                                                <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
-                                                    {defect.code}
-                                                </span>
-                                            </div>
+                                                        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-mono font-medium text-gray-600">
+                                                            {defect.code}
+                                                        </span>
+                                                    </div>
 
-                                            <p className="mt-1 text-xs leading-5 text-gray-500">
-                                                {defect.description}
-                                            </p>
-
-                                            <div className="mt-3 flex flex-wrap gap-1">
-                                                {defect.causes.map((c) => (
-                                                    <span
-                                                        key={c}
-                                                        className="rounded-md bg-[#eeebff] px-1.5 py-0.5 text-[10px] font-medium text-[#5848e8]"
-                                                    >
-                                                        {c}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
-                            <AlertTriangle size={28} className="mx-auto text-gray-300 mb-2" />
-                            <p className="text-sm font-semibold text-gray-800">No defects match your search</p>
-                            <p className="mt-1 text-xs text-gray-500">No defect profiles found matching &quot;{search}&quot;.</p>
-                            <button
-                                onClick={() => setSearch("")}
-                                className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
-                            >
-                                Clear Search
-                            </button>
-                        </div>
-                    )
-                )}
-
-                {/* Causes Tab */}
-                {activeTab === "Causes" && (
-                    filteredCauses.length > 0 ? (
-                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                            {filteredCauses.map((cause) => (
-                                <div
-                                    key={cause.id}
-                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                                            <Link2 size={17} />
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold text-gray-900">
-                                                {cause.name}
-                                            </p>
-
-                                            <p className="mt-1 text-xs leading-5 text-gray-500">
-                                                {cause.description}
-                                            </p>
-
-                                            <p className="mt-2 text-[10px] text-gray-400">
-                                                Applicable to{" "}
-                                                <span className="font-medium text-gray-600">
-                                                    {cause.defectCount} defect types
-                                                </span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
-                            <Link2 size={28} className="mx-auto text-gray-300 mb-2" />
-                            <p className="text-sm font-semibold text-gray-800">No root causes match your search</p>
-                            <p className="mt-1 text-xs text-gray-500">No causes found matching &quot;{search}&quot;.</p>
-                            <button
-                                onClick={() => setSearch("")}
-                                className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
-                            >
-                                Clear Search
-                            </button>
-                        </div>
-                    )
-                )}
-
-                {/* Actions Tab */}
-                {activeTab === "Actions" && (
-                    filteredActions.length > 0 ? (
-                        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead>
-                                        <tr className="border-b border-gray-100 bg-gray-50/50">
-                                            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                ID
-                                            </th>
-                                            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                Action
-                                            </th>
-                                            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                Effort
-                                            </th>
-                                            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                Applicable Causes
-                                            </th>
-                                        </tr>
-                                    </thead>
-
-                                    <tbody className="divide-y divide-gray-100">
-                                        {filteredActions.map((action) => (
-                                            <tr
-                                                key={action.id}
-                                                className="transition hover:bg-gray-50/70"
-                                            >
-                                                <td className="px-6 py-3.5 text-xs font-mono font-medium text-gray-500">
-                                                    {action.id}
-                                                </td>
-
-                                                <td className="px-6 py-3.5">
-                                                    <p className="text-sm font-medium text-gray-900">
-                                                        {action.name}
+                                                    <p className="mt-1.5 text-xs leading-5 text-gray-600">
+                                                        {defect.description}
                                                     </p>
-                                                    {action.description && (
-                                                        <p className="text-xs text-gray-500 mt-0.5">
-                                                            {action.description}
+
+                                                    {/* Symptom Triggers */}
+                                                    {defect.symptom_patterns && defect.symptom_patterns.length > 0 && (
+                                                        <div className="mt-3">
+                                                            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                                                <Tag size={10} /> Physical Observation Triggers
+                                                            </span>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {defect.symptom_patterns.map((p, idx) => (
+                                                                    <span
+                                                                        key={`${p.type}-${p.value}-${idx}`}
+                                                                        className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+                                                                    >
+                                                                        {p.type}: <strong className="text-gray-800">{p.value}</strong>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Applicable Causes */}
+                                                    {defect.applicable_causes && defect.applicable_causes.length > 0 && (
+                                                        <div className="mt-3">
+                                                            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">
+                                                                Associated Candidate Causes
+                                                            </span>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {defect.applicable_causes.map((cid) => (
+                                                                    <span
+                                                                        key={cid}
+                                                                        className="rounded-md bg-[#eeebff] px-2 py-0.5 text-[10px] font-medium text-[#5848e8]"
+                                                                    >
+                                                                        {causeNameMap[cid] || cid.replace(/_/g, " ")}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                                    <AlertTriangle size={28} className="mx-auto text-gray-300 mb-2" />
+                                    <p className="text-sm font-semibold text-gray-800">No defects match your search</p>
+                                    <p className="mt-1 text-xs text-gray-500">No defect profiles found matching &quot;{search}&quot;.</p>
+                                    <button
+                                        onClick={() => setSearch("")}
+                                        className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                    >
+                                        Clear Search
+                                    </button>
+                                </div>
+                            )
+                        )}
+
+                        {/* ======================================================= */}
+                        {/* TAB 2: CAUSES                                           */}
+                        {/* ======================================================= */}
+                        {activeTab === "Causes" && (
+                            filteredCauses.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    {filteredCauses.map((cause) => (
+                                        <div
+                                            key={cause.id}
+                                            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                                                    <Link2 size={17} />
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-sm font-semibold text-gray-900">
+                                                            {cause.name}
+                                                        </p>
+                                                        <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                                            {cause.id}
+                                                        </span>
+                                                    </div>
+
+                                                    <p className="mt-1 text-xs leading-5 text-gray-600">
+                                                        {cause.description}
+                                                    </p>
+
+                                                    {/* Applicable Defects */}
+                                                    {cause.applicable_defects && cause.applicable_defects.length > 0 && (
+                                                        <div className="mt-3">
+                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                                                                Manifests In Defect Categories ({cause.applicable_defects.length})
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {cause.applicable_defects.map((defCode) => (
+                                                                    <span
+                                                                        key={defCode}
+                                                                        className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono font-medium text-gray-700"
+                                                                    >
+                                                                        {defCode}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {cause.source_references && cause.source_references.length > 0 && (
+                                                        <p className="mt-2 text-[10px] text-gray-400">
+                                                            Reference: {cause.source_references.join(", ")}
                                                         </p>
                                                     )}
-                                                </td>
-
-                                                <td className="px-6 py-3.5">
-                                                    <span
-                                                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                                                            action.effort === "Low"
-                                                                ? "bg-green-50 text-green-700"
-                                                                : action.effort === "Medium"
-                                                                  ? "bg-amber-50 text-amber-700"
-                                                                  : "bg-red-50 text-red-700"
-                                                        }`}
-                                                    >
-                                                        {action.effort}
-                                                    </span>
-                                                </td>
-
-                                                <td className="px-6 py-3.5 text-xs text-gray-600">
-                                                    {action.causes}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
-                            <Wrench size={28} className="mx-auto text-gray-300 mb-2" />
-                            <p className="text-sm font-semibold text-gray-800">No actions match your search</p>
-                            <p className="mt-1 text-xs text-gray-500">No recommended actions found matching &quot;{search}&quot;.</p>
-                            <button
-                                onClick={() => setSearch("")}
-                                className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
-                            >
-                                Clear Search
-                            </button>
-                        </div>
-                    )
-                )}
-
-                {/* Rules Tab */}
-                {activeTab === "Rules" && (
-                    <div className="space-y-4">
-                        <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6 text-center">
-                            <BookOpen
-                                size={36}
-                                className="mx-auto text-[#6d5dfc]/60"
-                            />
-
-                            <h3 className="mt-3 text-base font-semibold text-gray-900">
-                                Diagnostic Evidence Rules
-                            </h3>
-
-                            <p className="mt-1 text-xs text-gray-600 max-w-xl mx-auto">
-                                The engine uses 455 evidence mapping rules across observations, operator questions, and
-                                physical checks to score candidate causes.
-                            </p>
-                        </div>
-
-                        {filteredRules.length > 0 ? (
-                            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <thead>
-                                            <tr className="border-b border-gray-100 bg-gray-50/50 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                <th className="px-6 py-3.5">Rule ID</th>
-                                                <th className="px-6 py-3.5">Category</th>
-                                                <th className="px-6 py-3.5">Defect</th>
-                                                <th className="px-6 py-3.5">Observation / Condition</th>
-                                                <th className="px-6 py-3.5">Inferred Cause</th>
-                                                <th className="px-6 py-3.5 text-right">Confidence Weight</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredRules.map((rule) => (
-                                                <tr key={rule.id} className="transition hover:bg-gray-50/70">
-                                                    <td className="px-6 py-3.5 font-mono text-xs font-semibold text-gray-600">
-                                                        {rule.id}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 text-xs text-gray-600">
-                                                        {rule.category}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 font-medium text-gray-900">
-                                                        {rule.defect}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 text-xs text-gray-700">
-                                                        {rule.observation}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 text-xs font-medium text-[#5848e8]">
-                                                        {rule.inferredCause}
-                                                    </td>
-                                                    <td className="px-6 py-3.5 text-right font-mono text-xs font-semibold text-gray-700">
-                                                        {(rule.weight * 100).toFixed(0)}%
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
-                                <BookOpen size={28} className="mx-auto text-gray-300 mb-2" />
-                                <p className="text-sm font-semibold text-gray-800">No rules match your search</p>
-                                <p className="mt-1 text-xs text-gray-500">No evidence rules found matching &quot;{search}&quot;.</p>
-                                <button
-                                    onClick={() => setSearch("")}
-                                    className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
-                                >
-                                    Clear Search
-                                </button>
+                            ) : (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                                    <Link2 size={28} className="mx-auto text-gray-300 mb-2" />
+                                    <p className="text-sm font-semibold text-gray-800">No root causes match your search</p>
+                                    <p className="mt-1 text-xs text-gray-500">No causes found matching &quot;{search}&quot;.</p>
+                                    <button
+                                        onClick={() => setSearch("")}
+                                        className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                    >
+                                        Clear Search
+                                    </button>
+                                </div>
+                            )
+                        )}
+
+                        {/* ======================================================= */}
+                        {/* TAB 3: ACTIONS                                          */}
+                        {/* ======================================================= */}
+                        {activeTab === "Actions" && (
+                            filteredActions.length > 0 ? (
+                                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-gray-100 bg-gray-50/50">
+                                                    <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                        Action ID
+                                                    </th>
+                                                    <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                        Standard Procedure
+                                                    </th>
+                                                    <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                        Effort
+                                                    </th>
+                                                    <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                        Target Root Causes
+                                                    </th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody className="divide-y divide-gray-100">
+                                                {filteredActions.map((action) => (
+                                                    <tr
+                                                        key={action.id}
+                                                        className="transition hover:bg-gray-50/70"
+                                                    >
+                                                        <td className="px-6 py-3.5 text-xs font-mono font-semibold text-gray-700 whitespace-nowrap">
+                                                            {action.id}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 max-w-md">
+                                                            <p className="text-sm font-semibold text-gray-900">
+                                                                {action.name}
+                                                            </p>
+                                                            {action.description && (
+                                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                                    {action.description}
+                                                                </p>
+                                                            )}
+                                                            {action.procedure && (
+                                                                <details className="mt-2 text-[11px] text-gray-600">
+                                                                    <summary className="cursor-pointer text-[#6d5dfc] font-medium hover:underline">
+                                                                        View SOP Procedure Steps
+                                                                    </summary>
+                                                                    <pre className="mt-1 whitespace-pre-wrap font-sans bg-gray-50 p-2 rounded border border-gray-100 text-gray-700 leading-relaxed">
+                                                                        {action.procedure}
+                                                                    </pre>
+                                                                </details>
+                                                            )}
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5 whitespace-nowrap">
+                                                            <span
+                                                                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${
+                                                                    (action.effort_level || "").toLowerCase() === "low"
+                                                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                                        : (action.effort_level || "").toLowerCase() === "medium"
+                                                                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                                                          : "bg-rose-50 text-rose-700 border border-rose-200"
+                                                                }`}
+                                                            >
+                                                                {action.effort_level || "Medium"}
+                                                            </span>
+                                                        </td>
+
+                                                        <td className="px-6 py-3.5">
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {(action.applicable_causes || []).map((cid) => (
+                                                                    <span
+                                                                        key={cid}
+                                                                        className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+                                                                    >
+                                                                        {causeNameMap[cid] || cid.replace(/_/g, " ")}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                                    <Wrench size={28} className="mx-auto text-gray-300 mb-2" />
+                                    <p className="text-sm font-semibold text-gray-800">No actions match your search</p>
+                                    <p className="mt-1 text-xs text-gray-500">No recommended actions found matching &quot;{search}&quot;.</p>
+                                    <button
+                                        onClick={() => setSearch("")}
+                                        className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                    >
+                                        Clear Search
+                                    </button>
+                                </div>
+                            )
+                        )}
+
+                        {/* ======================================================= */}
+                        {/* TAB 4: RULES                                            */}
+                        {/* ======================================================= */}
+                        {activeTab === "Rules" && (
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6 text-center">
+                                    <BookOpen
+                                        size={32}
+                                        className="mx-auto text-[#6d5dfc]/70"
+                                    />
+
+                                    <h3 className="mt-2 text-base font-semibold text-gray-900">
+                                        Live Evidence Evaluation Rules ({rules.length} Active Rules)
+                                    </h3>
+
+                                    <p className="mt-1 text-xs text-gray-600 max-w-2xl mx-auto">
+                                        The diagnostic engine evaluates observations against this live codified knowledge rule set, computing deterministic evidence-support scores on a 0–100 scale.
+                                    </p>
+                                </div>
+
+                                {filteredRules.length > 0 ? (
+                                    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-gray-100 bg-gray-50/50 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                        <th className="px-6 py-3.5">Rule ID</th>
+                                                        <th className="px-6 py-3.5">Observation Condition</th>
+                                                        <th className="px-6 py-3.5">Target Cause</th>
+                                                        <th className="px-6 py-3.5">Relation</th>
+                                                        <th className="px-6 py-3.5">Strength</th>
+                                                        <th className="px-6 py-3.5">Engineering Rationale</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {filteredRules.map((rule) => (
+                                                        <tr key={rule.id} className="transition hover:bg-gray-50/70">
+                                                            <td className="px-6 py-3.5 font-mono text-xs font-semibold text-gray-600 whitespace-nowrap">
+                                                                {rule.id}
+                                                            </td>
+
+                                                            <td className="px-6 py-3.5 whitespace-nowrap">
+                                                                <span className="text-xs font-mono font-medium text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                                    {rule.observation_type}={rule.observation_value}
+                                                                </span>
+                                                            </td>
+
+                                                            <td className="px-6 py-3.5 font-medium text-gray-900 whitespace-nowrap">
+                                                                {causeNameMap[rule.cause_id] || rule.cause_id}
+                                                            </td>
+
+                                                            <td className="px-6 py-3.5 whitespace-nowrap">
+                                                                <span
+                                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${
+                                                                        rule.relation === "SUPPORTS"
+                                                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                                            : rule.relation === "CONTRADICTS"
+                                                                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                                                              : "bg-gray-100 text-gray-600"
+                                                                    }`}
+                                                                >
+                                                                    {rule.relation}
+                                                                </span>
+                                                            </td>
+
+                                                            <td className="px-6 py-3.5 whitespace-nowrap">
+                                                                <span className="text-[11px] font-medium text-gray-500 capitalize">
+                                                                    {rule.strength.toLowerCase()}
+                                                                </span>
+                                                            </td>
+
+                                                            <td className="px-6 py-3.5 text-xs text-gray-600 max-w-sm">
+                                                                {rule.explanation}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                                        <BookOpen size={28} className="mx-auto text-gray-300 mb-2" />
+                                        <p className="text-sm font-semibold text-gray-800">No rules match your search</p>
+                                        <p className="mt-1 text-xs text-gray-500">No evidence rules found matching &quot;{search}&quot;.</p>
+                                        <button
+                                            onClick={() => setSearch("")}
+                                            className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                        >
+                                            Clear Search
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
-                    </div>
+
+                        {/* ======================================================= */}
+                        {/* TAB 5: QUESTIONS (Discriminating Questions Catalog)      */}
+                        {/* ======================================================= */}
+                        {activeTab === "Questions" && (
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6 text-center">
+                                    <HelpCircle
+                                        size={32}
+                                        className="mx-auto text-[#6d5dfc]/70"
+                                    />
+
+                                    <h3 className="mt-2 text-base font-semibold text-gray-900">
+                                        Discriminating Diagnostic Questions ({questions.length} Questions)
+                                    </h3>
+
+                                    <p className="mt-1 text-xs text-gray-600 max-w-2xl mx-auto">
+                                        Questions evaluated by the Information-Gain QuestionEngine to dynamically discriminate between competing physical root causes.
+                                    </p>
+                                </div>
+
+                                {filteredQuestions.length > 0 ? (
+                                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                        {filteredQuestions.map((quest) => (
+                                            <div
+                                                key={quest.id}
+                                                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300"
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                                                        <HelpCircle size={17} />
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-mono text-xs font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
+                                                                {quest.id}
+                                                            </span>
+                                                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 capitalize">
+                                                                {quest.expected_answer_type || "categorical"}
+                                                            </span>
+                                                        </div>
+
+                                                        <p className="mt-2 text-sm font-semibold text-gray-900 leading-snug">
+                                                            &ldquo;{quest.text}&rdquo;
+                                                        </p>
+
+                                                        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                                                            <strong className="text-gray-700">Discrimination Purpose:</strong> {quest.purpose}
+                                                        </p>
+
+                                                        {/* Target Causes */}
+                                                        {quest.applicable_causes && quest.applicable_causes.length > 0 && (
+                                                            <div className="mt-3">
+                                                                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">
+                                                                    Discriminated Causes
+                                                                </span>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {quest.applicable_causes.map((cid) => (
+                                                                        <span
+                                                                            key={cid}
+                                                                            className="rounded bg-[#eeebff] px-2 py-0.5 text-[10px] font-medium text-[#5848e8]"
+                                                                        >
+                                                                            {causeNameMap[cid] || cid.replace(/_/g, " ")}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
+                                        <HelpCircle size={28} className="mx-auto text-gray-300 mb-2" />
+                                        <p className="text-sm font-semibold text-gray-800">No questions match your search</p>
+                                        <p className="mt-1 text-xs text-gray-500">No diagnostic questions found matching &quot;{search}&quot;.</p>
+                                        <button
+                                            onClick={() => setSearch("")}
+                                            className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                        >
+                                            Clear Search
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </PageContainer>

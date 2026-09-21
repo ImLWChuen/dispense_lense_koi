@@ -12,6 +12,7 @@ from app.api.images import router as images_router
 from app.api.analytics import router as analytics_router
 from app.api.admin import router as admin_router
 from app.api.telemetry import router as telemetry_router
+from app.api.rules import router as rules_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -22,6 +23,7 @@ api_router.include_router(actions_router, prefix="/actions", tags=["actions"])
 api_router.include_router(defects_router, prefix="/defects", tags=["defects"])
 api_router.include_router(causes_router, prefix="/causes", tags=["causes"])
 api_router.include_router(questions_router, prefix="/questions", tags=["questions"])
+api_router.include_router(rules_router, prefix="/rules", tags=["rules"])
 api_router.include_router(images_router, prefix="/images", tags=["images"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
