@@ -111,3 +111,98 @@ def create_empty_image(
     cv2.circle(img, (p1, p2), r, fiducial_color, -1)
     cv2.circle(img, (p2, p2), r, fiducial_color, -1)
     return encode_image(img, fmt)
+
+
+def create_tailing_dot_image(
+    size: int = 200,
+    head_radius: int = 25,
+    tail_length: int = 40,
+    tail_width: int = 12,
+    direction: str = "horizontal",
+    bg_color: int = 255,
+    dot_color: int = 30,
+    fmt: str = ".png",
+) -> bytes:
+    """Create a deposit with an asymmetric tailing string / comet effect."""
+    img = create_blank_image(size, size, bg_color)
+    cx, cy = size // 2, size // 2
+    color = (dot_color, dot_color, dot_color)
+
+    # Main dot head
+    cv2.circle(img, (cx, cy), head_radius, color, -1)
+
+    # Tailing extension
+    if direction == "horizontal":
+        pts = np.array([
+            [cx, cy - tail_width // 2],
+            [cx + tail_length, cy],
+            [cx, cy + tail_width // 2],
+        ], dtype=np.int32)
+    else:  # vertical
+        pts = np.array([
+            [cx - tail_width // 2, cy],
+            [cx, cy + tail_length],
+            [cx + tail_width // 2, cy],
+        ], dtype=np.int32)
+
+    cv2.fillPoly(img, [pts], color)
+    return encode_image(img, fmt)
+
+
+def create_abnormal_shape_image(
+    size: int = 200,
+    bg_color: int = 255,
+    dot_color: int = 30,
+    fmt: str = ".png",
+) -> bytes:
+    """Create an irregularly shaped deposit with low circularity and concavities."""
+    img = create_blank_image(size, size, bg_color)
+    cx, cy = size // 2, size // 2
+    color = (dot_color, dot_color, dot_color)
+
+    # Polygon with indented lobes (star/clover-like)
+    points = []
+    num_points = 12
+    for i in range(num_points):
+        angle = i * (2.0 * np.pi / num_points)
+        r = 30 if i % 2 == 0 else 12  # Sharp concavity
+        px = int(cx + r * np.cos(angle))
+        py = int(cy + r * np.sin(angle))
+        points.append([px, py])
+
+    pts = np.array(points, dtype=np.int32)
+    cv2.fillPoly(img, [pts], color)
+    return encode_image(img, fmt)
+
+
+def create_bubble_dot_image(
+    size: int = 200,
+    dot_radius: int = 35,
+    bubble_count: int = 1,
+    bubble_radius: int = 8,
+    bg_color: int = 255,
+    dot_color: int = 30,
+    bubble_color: int = 240,
+    fmt: str = ".png",
+) -> bytes:
+    """Create a deposit containing circular internal voids / air bubbles."""
+    img = create_blank_image(size, size, bg_color)
+    cx, cy = size // 2, size // 2
+    dot_c = (dot_color, dot_color, dot_color)
+    bubble_c = (bubble_color, bubble_color, bubble_color)
+
+    # Draw solid adhesive deposit
+    cv2.circle(img, (cx, cy), dot_radius, dot_c, -1)
+
+    # Draw internal air bubbles inside the adhesive dot
+    if bubble_count == 1:
+        cv2.circle(img, (cx + 5, cy - 5), bubble_radius, bubble_c, -1)
+    else:
+        # Multiple bubbles arranged inside
+        offsets = [(cx - 10, cy - 8), (cx + 12, cy + 8), (cx - 5, cy + 12)]
+        for i in range(min(bubble_count, len(offsets))):
+            bx, by = offsets[i]
+            cv2.circle(img, (bx, by), bubble_radius, bubble_c, -1)
+
+    return encode_image(img, fmt)
+

@@ -38,10 +38,12 @@ from app.schemas.image import (
     ReferenceLimits,
 )
 from tests.fixtures.synthetic_images import (
+    create_bubble_dot_image,
     create_centered_dot_image,
-    create_proportional_dot_image,
-    create_overflow_image,
     create_empty_image,
+    create_overflow_image,
+    create_proportional_dot_image,
+    create_tailing_dot_image,
 )
 
 
@@ -226,3 +228,64 @@ def test_intake_merge_image_and_text_description():
     sources = {o.source for o in case.observations}
     assert EvidenceSource.IMAGE in sources
     assert EvidenceSource.USER in sources
+
+
+def test_calibrated_tailing_shape_identifies_d06():
+    """Calibrated tailing shape from vision pipeline identifies D06 and alters nozzle_condition ranking."""
+    engine = DiagnosticEngine()
+    img_bytes = create_tailing_dot_image(size=200, head_radius=22, tail_length=45, direction="horizontal")
+    profile = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[NormalizedROI(roi_id="r1", x=0.20, y=0.20, width=0.60, height=0.60)],
+        process_limits=ProcessLimits(max_aspect_ratio=1.30),
+    )
+
+    result = _run_vision_pipeline(img_bytes, profile)
+    assert result.status.value == "CALIBRATED"
+    assert len(result.observations) == 1
+    obs = result.observations[0]
+    assert obs.observation_type == ObservationType.DEPOSIT_SHAPE
+    assert obs.value == "tailing"
+    assert obs.source == EvidenceSource.IMAGE
+
+    case = StructuredCase(observations=[obs])
+    res = engine.diagnose(case)
+    assert res.defect == "D06_BUBBLES_ABNORMAL_SHAPE"
+
+    # Verify that nozzle_condition has supporting evidence from image
+    nozzle_cause = next((c for c in res.ranked_causes if c.cause_id == "nozzle_condition"), None)
+    assert nozzle_cause is not None
+    image_ev = [e for e in nozzle_cause.supporting_evidence if e.source == EvidenceSource.IMAGE]
+    assert len(image_ev) >= 1
+    assert image_ev[0].score_contribution > 0
+
+
+def test_calibrated_bubbles_identifies_d06():
+    """Calibrated bubble detection from vision pipeline identifies D06 and alters air_supply_issue ranking."""
+    engine = DiagnosticEngine()
+    img_bytes = create_bubble_dot_image(size=200, dot_radius=35, bubble_count=1, bubble_radius=8)
+    profile = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[NormalizedROI(roi_id="r1", x=0.20, y=0.20, width=0.60, height=0.60)],
+        process_limits=ProcessLimits(max_bubble_count=0),
+    )
+
+    result = _run_vision_pipeline(img_bytes, profile)
+    assert result.status.value == "CALIBRATED"
+    assert len(result.observations) == 1
+    obs = result.observations[0]
+    assert obs.observation_type == ObservationType.BUBBLE_PRESENCE
+    assert obs.value == "visible_bubbles"
+    assert obs.source == EvidenceSource.IMAGE
+
+    case = StructuredCase(observations=[obs])
+    res = engine.diagnose(case)
+    assert res.defect == "D06_BUBBLES_ABNORMAL_SHAPE"
+
+    # Verify that air_supply_issue has supporting evidence from image
+    air_cause = next((c for c in res.ranked_causes if c.cause_id == "air_supply_issue"), None)
+    assert air_cause is not None
+    image_ev = [e for e in air_cause.supporting_evidence if e.source == EvidenceSource.IMAGE]
+    assert len(image_ev) >= 1
+    assert image_ev[0].score_contribution > 0
+

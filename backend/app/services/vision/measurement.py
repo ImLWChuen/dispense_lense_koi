@@ -45,8 +45,14 @@ def calculate_roi_features(
 
     circularity = 0.0
     solidity = 0.0
+    convexity = 1.0
     aspect_ratio = 1.0
     hole_void_ratio = 0.0
+    bubble_count = seg_result.bubble_count
+    has_bubbles = seg_result.has_bubbles
+    bubble_details = list(seg_result.bubble_details)
+    is_tailing = False
+    is_abnormal_shape = False
 
     if seg_result.deposit_contour is not None and deposit_area > 0:
         cnt = seg_result.deposit_contour
@@ -61,13 +67,25 @@ def calculate_roi_features(
         if hull_area > 0:
             solidity = max(0.0, min(1.0, deposit_area / hull_area))
 
-        # Bounding box aspect ratio
+        if perimeter > 0:
+            hull_perimeter = float(cv2.arcLength(hull, True))
+            convexity = max(0.0, min(1.0, hull_perimeter / perimeter))
+
+        # Bounding box aspect ratio (w / h)
         _, _, bw, bh = cv2.boundingRect(cnt)
         if bh > 0:
             aspect_ratio = float(bw) / float(bh)
 
         if deposit_area > 0:
             hole_void_ratio = max(0.0, min(1.0, seg_result.inner_holes_area_px / deposit_area))
+
+        # Programmatic shape abnormality checks
+        elongation = max(aspect_ratio, 1.0 / aspect_ratio) if aspect_ratio > 0 else 1.0
+        if (elongation >= 1.35 and (solidity < 0.94 or circularity < 0.82)) or elongation >= 1.55:
+            is_tailing = True
+
+        if circularity < 0.78 or solidity < 0.88 or convexity < 0.88 or is_tailing:
+            is_abnormal_shape = True
 
     return RoiMeasurement(
         roi_id=roi_id,
@@ -79,8 +97,14 @@ def calculate_roi_features(
         calibrated_diameter_mm=calibrated_diameter_mm,
         circularity=circularity,
         solidity=solidity,
+        convexity=convexity,
         aspect_ratio=aspect_ratio,
         hole_void_ratio=hole_void_ratio,
+        bubble_count=bubble_count,
+        has_bubbles=has_bubbles,
+        is_abnormal_shape=is_abnormal_shape,
+        is_tailing=is_tailing,
+        bubble_details=bubble_details,
         segmentation_quality=seg_result.quality_score,
         is_missing=seg_result.is_missing,
     )
