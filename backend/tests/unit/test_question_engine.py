@@ -22,8 +22,13 @@ from app.schemas.diagnosis import (
     CauseConclusion,
     DefectCode,
     EvidenceSource,
+    Observation,
+    ObservationType,
     QuestionAnswer,
+    StatementType,
 )
+from app.services.diagnosis.cause_ranker import CauseRanker
+from app.services.diagnosis.question_answer_handler import QuestionAnswerHandler
 from app.services.diagnosis.question_engine import (
     QuestionEngine,
     QuestionSelectionResult,
@@ -201,6 +206,99 @@ class TestQuestionEngine(unittest.TestCase):
         self.assertIsNotNone(result.reason_stopped)
         assert result.reason_stopped is not None
         self.assertIn("No applicable questions found", result.reason_stopped)
+
+    def test_inconsistent_volume_dynamic_question_discrimination_pivot(self):
+        """Verify dynamic question discrimination for 'inconsistent volume' (NSW Step 1 bonus).
+
+        Demonstrates:
+        1. When defect is D03_INCONSISTENT_SIZE (inconsistent volume), QuestionEngine dynamically
+           selects Q01 (shift duration / runtime pattern: startup vs. prolonged operation) as top
+           discriminating question rather than following a static checklist.
+        2. When answered 'after_prolonged_operation', the candidate pool maintains active
+           discrimination including Q10 (ambient/material temperature) and Q13 (pot life / thaw time).
+        3. Answering Q13 ('long_time') substantially elevates material_condition support,
+           proving the backend adapts questions and rankings dynamically based on answers.
+        4. When answered 'immediately', the engine eliminates thermal/pot-life causes and pivots
+           to spatial localization (Q02: all points vs specific nozzle).
+        """
+        cr = CauseRanker()
+        obs = [
+            Observation(
+                observation_type=ObservationType.DEPOSIT_SIZE,
+                value="inconsistent",
+                statement_type=StatementType.USER_OBSERVATION,
+                source=EvidenceSource.USER,
+            )
+        ]
+        r1 = cr.rank(obs, DefectCode.D03_INCONSISTENT_SIZE.value)
+
+        # Step 1: Initial question selection for inconsistent volume
+        res1 = self.engine.select_next_question(
+            ranked_causes=r1.ranked_causes,
+            previous_answers=[],
+            defect_code=DefectCode.D03_INCONSISTENT_SIZE.value,
+        )
+        self.assertTrue(res1.should_ask)
+        self.assertIsNotNone(res1.selected_question)
+        assert res1.selected_question is not None
+        # Q01 (shift duration: startup vs prolonged operation) is selected as top discriminator
+        self.assertEqual(res1.selected_question.question_id, "Q01")
+        # Ensure candidate pool actively contains Q10 (temperature) and Q13 (pot life)
+        candidate_ids = {q.question_id for q in res1.all_candidates}
+        self.assertIn("Q10", candidate_ids, "Ambient temperature question Q10 must be in active candidates")
+        self.assertIn("Q13", candidate_ids, "Pot life / thaw time question Q13 must be in active candidates")
+
+        # Step 2: Branch A - Operator answers 'after_prolonged_operation' (shift duration)
+        q01_ans_prolonged = QuestionAnswer(
+            question_id="Q01",
+            answer_value="after_prolonged_operation",
+            source=EvidenceSource.USER_ANSWER,
+        )
+        obs_prolonged = obs + list(QuestionAnswerHandler.handle(q01_ans_prolonged))
+        r_prolonged = cr.rank(obs_prolonged, DefectCode.D03_INCONSISTENT_SIZE.value)
+
+        res_prolonged = self.engine.select_next_question(
+            ranked_causes=r_prolonged.ranked_causes,
+            previous_answers=[q01_ans_prolonged],
+            defect_code=DefectCode.D03_INCONSISTENT_SIZE.value,
+        )
+        # Shift duration confirmed: air_supply_issue surges past high-confidence threshold (>= 75.0)
+        # Engine correctly halts questioning rather than wasting cleanroom time on an arbitrary 5-question quota
+        self.assertFalse(res_prolonged.should_ask)
+        self.assertIsNotNone(res_prolonged.reason_stopped)
+        assert res_prolonged.reason_stopped is not None
+        self.assertIn("Sufficient evidence", res_prolonged.reason_stopped)
+
+        # Step 3: Answering Q13 ('long_time') directly drives material_condition to top
+        q13_ans = QuestionAnswer(
+            question_id="Q13",
+            answer_value="long_time",
+            source=EvidenceSource.USER_ANSWER,
+        )
+        obs_pot_life = obs + list(QuestionAnswerHandler.handle(q13_ans))
+        r_pot_life = cr.rank(obs_pot_life, DefectCode.D03_INCONSISTENT_SIZE.value)
+        top_cause = r_pot_life.ranked_causes[0]
+        self.assertEqual(top_cause.cause_id, "material_condition")
+        self.assertGreaterEqual(top_cause.score, 55.0)
+
+        # Step 4: Branch B - Operator answers 'immediately' (startup fault)
+        q01_ans_immediate = QuestionAnswer(
+            question_id="Q01",
+            answer_value="immediately",
+            source=EvidenceSource.USER_ANSWER,
+        )
+        obs_immediate = obs + list(QuestionAnswerHandler.handle(q01_ans_immediate))
+        r_immediate = cr.rank(obs_immediate, DefectCode.D03_INCONSISTENT_SIZE.value)
+
+        res_immediate = self.engine.select_next_question(
+            ranked_causes=r_immediate.ranked_causes,
+            previous_answers=[q01_ans_immediate],
+            defect_code=DefectCode.D03_INCONSISTENT_SIZE.value,
+        )
+        self.assertTrue(res_immediate.should_ask)
+        assert res_immediate.selected_question is not None
+        # System eliminates thermal/pot-life drift and pivots to spatial localization (Q02: all points vs specific nozzle)
+        self.assertEqual(res_immediate.selected_question.question_id, "Q02")
 
 
 if __name__ == "__main__":
