@@ -155,7 +155,7 @@ The following requirements have been reverse-engineered and verified directly ag
 | **FR-031** | SPC | Statistical process control capability analysis. | ✅ Fully implemented | `backend/app/services/spc/spc_service.py:generate_spc_analysis` | Computes $C_p, C_{pk}, P_p, P_{pk}$, control limits, and Nelson rules. |
 | **FR-032** | Telemetry | Cleanroom ambient and line sensor monitoring. | ✅ Fully implemented | `backend/app/services/telemetry/telemetry_service.py` | Generates live readings for temp, humidity, pressure, particles. |
 | **FR-033** | Telemetry | Syringe pot life, defrosting, mounting, and scrap tracking. | ✅ Fully implemented | `backend/app/services/telemetry/telemetry_service.py` | State machine governing syringe defrost countdown and work life. |
-| **FR-034** | Knowledge | Live knowledge base inspection via REST API. | ⚠️ Implemented but disconnected | `backend/app/api/defects.py`, `causes.py`, `actions.py`, `questions.py` | Backend endpoints work; frontend page uses hardcoded static arrays. |
+| **FR-034** | Knowledge | Live knowledge base inspection via REST API. | ✅ Fully implemented | `backend/app/api/defects.py`, `causes.py`, `actions.py`, `rules.py`, `questions.py` | Full live sync; frontend Knowledge Base UI queries REST API with live reload. |
 
 ---
 
