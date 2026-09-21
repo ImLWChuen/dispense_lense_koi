@@ -98,7 +98,31 @@ Run these steps in Windows PowerShell 15 minutes before the demonstration:
 
 ---
 
-### Phase 4: Guided Physical Troubleshooting Checks (5:15 – 6:45)
+### Phase 3B: Dynamic Question Discrimination & NSW Step 1 Bonus Showcase (5:15 – 6:30)
+- **Competition Criterion Highlight (NSW Step 1 Bonus):**
+  - *"The AI dynamically asks additional questions depending on the user's answers."*
+- **Narrative:**
+  - "Watch closely how DispenseIQ handles question discrimination. Traditional shop-floor tools force operators through a static, 20-step checklist. When an operator indicates 'inconsistent volume', the root cause could be pressure instability, nozzle restriction, or material degradation."
+  - "DispenseIQ's QuestionEngine does NOT follow a static checklist. It calculates real-time information gain across competing hypotheses. For 'inconsistent volume', it immediately discriminates between **shift duration vs. ambient temperature vs. syringe pot life / thaw time**."
+  - "Notice Question Q01 is selected first: *'Does the problem occur immediately after startup or only after the machine has been running for a while?'* because shift duration has the highest discriminating power."
+  - "When the technician indicates prolonged operation, the engine immediately elevates time-dependent degradation—surging air expansion and material viscosity—and pivots to interrogate cleanroom ambient temperature and syringe pot life. If the technician had answered 'immediately at startup', the engine would eliminate pot life entirely and pivot to spatial localization (all points vs. specific nozzle)."
+- **Action on Screen:**
+  1. On the Case Overview (`/diagnosis/{id}`), locate the **Active Diagnostic Question** card.
+  2. Point out the question text:
+     - `Q01`: *"Does the problem occur immediately after startup or only after the machine has been running for a while?"*
+     - Show the purpose: *"Distinguishes thermal/time-related causes (air expansion, material viscosity change) from static issues."*
+  3. Under **Submit Answer**:
+     - Click option `After prolonged operation` (or select from available options).
+     - Click **Submit Answer**.
+  4. Point out the live transition:
+     - The case advances to **Revision 2**.
+     - Point out the cause re-ranking: `Air / Supply Issue` and `Material Condition` surge, while static nozzle obstruction drops.
+     - Show that the candidate inquiry has dynamically shifted: The system now evaluates ambient cleanroom temperature (`Q10`) and syringe pot life work window (`Q13`), correlating with the live Telemetry Hub countdown.
+     - Explain the stopping condition: *"Once sufficient evidence support is achieved (≥75/100), the engine halts questioning automatically to avoid cleanroom downtime, seamlessly handing off to targeted physical checks."*
+
+---
+
+### Phase 4: Guided Physical Troubleshooting Checks (6:30 – 7:45)
 - **Narrative:**
   - "Rather than leaving the technician to guess, DispenseIQ recommends high-yield physical troubleshooting checks to confirm or eliminate suspected causes."
 - **Action on Screen:**
