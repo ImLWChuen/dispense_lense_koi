@@ -874,3 +874,103 @@ def test_defect_breakdown_with_missing_defect_code(
     assert target["code"] is None  # Must remain None, not "D00"
     assert target["count"] == 1
     assert "D00" not in [d["code"] for d in defect_types if d.get("code") is not None]
+
+
+def test_defect_breakdown_consolidates_by_canonical_code(
+    tracked_cases: list[str],
+) -> None:
+    """Consolidate defect breakdown entries sharing the same canonical code into one entry."""
+    case1_id = str(uuid.uuid4())
+    case2_id = str(uuid.uuid4())
+    tracked_cases.extend([case1_id, case2_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        c1 = CaseModel(
+            case_id=case1_id,
+            description="D03 case with legacy stored defect name",
+            material="epoxy",
+            method="pneumatic",
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dot Size / Line Width",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        c2 = CaseModel(
+            case_id=case2_id,
+            description="D03 case with canonical stored defect name",
+            material="epoxy",
+            method="pneumatic",
+            defect_code="D03_INCONSISTENT_SIZE",
+            defect_name="Inconsistent Dispensing Size",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add_all([c1, c2])
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/performance?period=all")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    defect_types = data["defect_types"]
+    d03_entries = [d for d in defect_types if d.get("code") == "D03_INCONSISTENT_SIZE"]
+    assert len(d03_entries) == 1, f"Expected 1 entry for D03_INCONSISTENT_SIZE, got: {d03_entries}"
+    d03 = d03_entries[0]
+    assert d03["name"] == "Inconsistent Dispensing Size"
+    assert d03["count"] == 2
+
+    # All non-null codes in defect_types must be unique
+    non_null_codes = [d["code"] for d in defect_types if d.get("code") is not None]
+    assert len(non_null_codes) == len(set(non_null_codes)), f"Duplicate codes found: {non_null_codes}"
+
+    # Percentages total approximately 100%, subject to one-decimal rounding
+    total_percentage = sum(d["percentage"] for d in defect_types)
+    assert 99.0 <= total_percentage <= 101.0
+
+
+def test_defect_breakdown_handles_unknown_non_null_code_deterministically(
+    tracked_cases: list[str],
+) -> None:
+    """Handle unknown non-null defect codes deterministically without crashing or duplicate codes."""
+    case1_id = str(uuid.uuid4())
+    case2_id = str(uuid.uuid4())
+    tracked_cases.extend([case1_id, case2_id])
+
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    with factory() as session:
+        c1 = CaseModel(
+            case_id=case1_id,
+            description="Unknown defect code case 1",
+            material="epoxy",
+            method="pneumatic",
+            defect_code="D99_UNKNOWN_ANOMALY",
+            defect_name="Custom Anomaly",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        c2 = CaseModel(
+            case_id=case2_id,
+            description="Unknown defect code case 2",
+            material="epoxy",
+            method="pneumatic",
+            defect_code="D99_UNKNOWN_ANOMALY",
+            defect_name="Custom Anomaly Variant",
+            issue_condition=IssueCondition.UNRESOLVED.value,
+            created_at=now,
+        )
+        session.add_all([c1, c2])
+        session.commit()
+
+    resp = client.get("/api/v1/analytics/performance?period=all")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    defect_types = data["defect_types"]
+    d99_entries = [d for d in defect_types if d.get("code") == "D99_UNKNOWN_ANOMALY"]
+    assert len(d99_entries) == 1, f"Expected exactly 1 entry for D99_UNKNOWN_ANOMALY, got: {d99_entries}"
+    d99 = d99_entries[0]
+    assert d99["count"] == 2
+    assert d99["name"] == "D99 Unknown Anomaly"

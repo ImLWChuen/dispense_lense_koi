@@ -35,6 +35,15 @@ Repeatable local demo startup and competition rehearsal readiness
   - review: `.agents/handoff/reviews/DLK-M3-031-review.md`
   - next step: Member 3 feature implementation is complete for the authorized scope; proceed with final team rehearsal, submission evidence/video, and user-directed Git publication or merge
 
+## Active rehearsal correction
+
+- `DLK-M3-032` — Consolidate analytics defects by canonical code — **accepted**
+  - reviewed commit: `01640a7fb3344d49a3dedc478d75ad3bc7f1d475`
+  - accepted outcome: recognized codes, including `D03_INCONSISTENT_SIZE`, are consolidated into one canonical analytics entry; null-code categories remain intact; unknown non-null codes use deterministic code-derived labels
+  - verification: focused analytics suite `16 passed`; full backend suite `507 passed`; whitespace checks passed
+  - review: `.agents/handoff/reviews/DLK-M3-032-review.md`
+  - next step: restart the local backend before browser verification, then continue final rehearsal; no separate next-feature task is authorized
+
 ## Explicitly deferred
 
 Do not implement inside DLK-M3-031:

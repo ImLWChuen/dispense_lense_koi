@@ -12,7 +12,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.knowledge import get_cause_by_id
+from app.knowledge import get_cause_by_id, get_defect_by_code
 from app.models.case import (
     AnalysisRevisionModel,
     CaseCauseConfirmationModel,
@@ -574,28 +574,63 @@ def get_performance_analytics(
             CaseModel.defect_code,
             func.count(CaseModel.case_id),
         )
-        .filter(CaseModel.defect_name.isnot(None))
+        .filter(or_(CaseModel.defect_name.isnot(None), CaseModel.defect_code.isnot(None)))
     )
     if cutoff:
         defect_counts_query = defect_counts_query.filter(CaseModel.created_at >= cutoff)
 
-    defect_counts = (
+    raw_defect_counts = (
         defect_counts_query
         .group_by(CaseModel.defect_name, CaseModel.defect_code)
-        .order_by(func.count(CaseModel.case_id).desc())
         .all()
     )
 
+    aggregated_defects: dict[tuple[str, str], dict[str, Any]] = {}
+    for d_name, d_code, count in raw_defect_counts:
+        if d_code is not None:
+            group_key = ("CODE", d_code)
+            if group_key not in aggregated_defects:
+                defect_def = get_defect_by_code(d_code)
+                if defect_def:
+                    canonical_name = defect_def.name
+                else:
+                    canonical_name = d_code.replace("_", " ").title()
+                aggregated_defects[group_key] = {
+                    "name": canonical_name,
+                    "code": d_code,
+                    "count": count,
+                }
+            else:
+                aggregated_defects[group_key]["count"] += count
+        else:
+            # Preserve existing behavior for cases whose defect_code is null:
+            # keep grouped by recorded defect name without inventing a code
+            name = d_name or "Unknown"
+            group_key = ("NAME", name)
+            if group_key not in aggregated_defects:
+                aggregated_defects[group_key] = {
+                    "name": name,
+                    "code": None,
+                    "count": count,
+                }
+            else:
+                aggregated_defects[group_key]["count"] += count
+
+    sorted_defects = sorted(
+        aggregated_defects.values(),
+        key=lambda item: (-item["count"], item["name"]),
+    )
+
     defect_types: list[DefectTypeBreakdownItem] = []
-    total_dt = sum([count for _, _, count in defect_counts])
+    total_dt = sum(item["count"] for item in sorted_defects)
     if total_dt > 0:
-        for d_name, d_code, count in defect_counts:
-            pct = round((count / total_dt) * 100, 1)
+        for item in sorted_defects:
+            pct = round((item["count"] / total_dt) * 100, 1)
             defect_types.append(
                 DefectTypeBreakdownItem(
-                    name=d_name or "Unknown",
-                    code=d_code,
-                    count=count,
+                    name=item["name"],
+                    code=item["code"],
+                    count=item["count"],
                     percentage=pct,
                 )
             )
