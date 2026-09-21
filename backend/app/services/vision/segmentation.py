@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 import cv2
 import numpy as np
 
 from app.schemas.image import PixelROI
+from app.services.vision.bubble_detector import detect_interior_bubbles
 
 
 class SegmentationStatus(str, Enum):
@@ -34,6 +36,10 @@ class SegmentationResult:
     quality_score: float = 1.0
     is_missing: bool = False
     inner_holes_area_px: float = 0.0
+    bubble_count: int = 0
+    has_bubbles: bool = False
+    bubble_details: list[dict[str, Any]] = field(default_factory=list)
+    detected_bubbles_area_px: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -241,13 +247,24 @@ def segment_roi(
     # Consistent binary mask arithmetic: total = inside + outside exactly
     outside_pixels = max(0.0, total_deposit_pixels - inside_pixels)
 
-    # Calculate inner holes area if hierarchy exists
+    # Calculate inner holes area and collect inner contours if hierarchy exists
+    inner_contours = []
     inner_holes_area = 0.0
     if hierarchy is not None:
         child_idx = hierarchy[0][best_idx][2]
         while child_idx != -1:
-            inner_holes_area += float(cv2.contourArea(contours[child_idx]))
+            child_cnt = contours[child_idx]
+            inner_contours.append(child_cnt)
+            inner_holes_area += float(cv2.contourArea(child_cnt))
             child_idx = hierarchy[0][child_idx][0]
+
+    # Detect interior bubbles and void pockets
+    bubble_res = detect_interior_bubbles(
+        image_gray=gray,
+        deposit_mask=best_mask,
+        deposit_contour=best_cnt,
+        inner_contours=inner_contours,
+    )
 
     # Assess segmentation quality & reject border-dominant / clipped candidates
     # 1. Background-dominant check: if mask takes up > 90% of entire window
@@ -296,6 +313,8 @@ def segment_roi(
     border_penalty = 0.15 if border_pixels_count > 0 else 0.0
     quality = max(0.1, min(1.0, contrast_ratio * (1.0 - border_penalty)))
 
+    total_void_area = max(inner_holes_area, bubble_res.total_bubble_area_px)
+
     if deposit_contrast < 15.0:
         return SegmentationResult(
             status=SegmentationStatus.UNRELIABLE,
@@ -305,7 +324,11 @@ def segment_roi(
             deposit_inside_target_px=inside_pixels,
             deposit_outside_target_px=outside_pixels,
             target_area_px=target_area,
-            inner_holes_area_px=inner_holes_area,
+            inner_holes_area_px=total_void_area,
+            bubble_count=bubble_res.bubble_count,
+            has_bubbles=bubble_res.has_bubbles,
+            bubble_details=bubble_res.bubble_details,
+            detected_bubbles_area_px=bubble_res.total_bubble_area_px,
             quality_score=quality,
             warnings=["Low contrast ambiguous segmentation."],
         )
@@ -318,7 +341,11 @@ def segment_roi(
         deposit_inside_target_px=inside_pixels,
         deposit_outside_target_px=outside_pixels,
         target_area_px=target_area,
-        inner_holes_area_px=inner_holes_area,
+        inner_holes_area_px=total_void_area,
+        bubble_count=bubble_res.bubble_count,
+        has_bubbles=bubble_res.has_bubbles,
+        bubble_details=bubble_res.bubble_details,
+        detected_bubbles_area_px=bubble_res.total_bubble_area_px,
         quality_score=quality,
         is_missing=False,
     )

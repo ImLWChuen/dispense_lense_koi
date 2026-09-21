@@ -203,6 +203,9 @@ export default function ImageUpload({
                 max_coverage_ratio: 0.45,
                 max_overflow_ratio: 0.20,
                 min_presence_ratio: 0.05,
+                min_circularity: 0.75,
+                max_aspect_ratio: 1.35,
+                max_bubble_count: 0,
             },
             referenceLimits: null,
             referenceFile: null,
@@ -588,6 +591,8 @@ export default function ImageUpload({
                                                                 {item.mmPerPixel && (
                                                                     <th className="pb-1.5 font-medium">Calibrated Dia</th>
                                                                 )}
+                                                                <th className="pb-1.5 font-medium">Shape (Circ / AR)</th>
+                                                                <th className="pb-1.5 font-medium">Bubbles</th>
                                                                 <th className="pb-1.5 font-medium">Quality</th>
                                                             </tr>
                                                         </thead>
@@ -614,6 +619,29 @@ export default function ImageUpload({
                                                                                 : "-"}
                                                                         </td>
                                                                     )}
+                                                                    <td className="py-1.5">
+                                                                        <span>
+                                                                            {(rm.circularity * 100).toFixed(0)}% circ · {rm.aspect_ratio.toFixed(2)} AR
+                                                                        </span>
+                                                                        {rm.is_tailing ? (
+                                                                            <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+                                                                                Tailing
+                                                                            </span>
+                                                                        ) : rm.is_abnormal_shape ? (
+                                                                            <span className="ml-1 rounded bg-rose-100 px-1 py-0.5 text-[10px] font-medium text-rose-800">
+                                                                                Abnormal
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </td>
+                                                                    <td className="py-1.5">
+                                                                        {(rm.bubble_count ?? 0) > 0 || rm.has_bubbles ? (
+                                                                            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                                                                                {rm.bubble_count ?? 1} void(s)
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-gray-400">0</span>
+                                                                        )}
+                                                                    </td>
                                                                     <td className="py-1.5">
                                                                         {(rm.segmentation_quality * 100).toFixed(0)}%
                                                                     </td>

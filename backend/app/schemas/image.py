@@ -80,6 +80,13 @@ class ProcessLimits(BaseModel):
     max_overflow_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
     max_size_cv: float | None = Field(default=None, ge=0.0)
     min_presence_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_circularity: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_solidity: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_convexity: float | None = Field(default=None, ge=0.0, le=1.0)
+    max_aspect_ratio: float | None = Field(default=None, ge=1.0)
+    min_aspect_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    max_bubble_count: int | None = Field(default=None, ge=0)
+    max_void_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def validate_limits(self) -> ProcessLimits:
@@ -89,6 +96,13 @@ class ProcessLimits(BaseModel):
             and self.max_overflow_ratio is None
             and self.max_size_cv is None
             and self.min_presence_ratio is None
+            and self.min_circularity is None
+            and self.min_solidity is None
+            and self.min_convexity is None
+            and self.max_aspect_ratio is None
+            and self.min_aspect_ratio is None
+            and self.max_bubble_count is None
+            and self.max_void_ratio is None
         ):
             raise ValueError("ProcessLimits requires at least one limit to be defined.")
         if (
@@ -97,6 +111,12 @@ class ProcessLimits(BaseModel):
             and self.min_coverage_ratio > self.max_coverage_ratio
         ):
             raise ValueError("min_coverage_ratio cannot be greater than max_coverage_ratio.")
+        if (
+            self.min_aspect_ratio is not None
+            and self.max_aspect_ratio is not None
+            and self.min_aspect_ratio > self.max_aspect_ratio
+        ):
+            raise ValueError("min_aspect_ratio cannot be greater than max_aspect_ratio.")
         return self
 
 
@@ -107,6 +127,8 @@ class ReferenceLimits(BaseModel):
     min_reference_ratio: float | None = Field(default=None, gt=0.0)
     max_reference_ratio: float | None = Field(default=None, gt=0.0)
     tolerance_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_circularity_ratio: float | None = Field(default=None, gt=0.0)
+    min_solidity_ratio: float | None = Field(default=None, gt=0.0)
 
     @model_validator(mode="after")
     def resolve_and_validate(self) -> ReferenceLimits:
@@ -120,8 +142,13 @@ class ReferenceLimits(BaseModel):
             if self.min_reference_ratio > self.max_reference_ratio:
                 raise ValueError("min_reference_ratio cannot be greater than max_reference_ratio.")
 
-        if self.min_reference_ratio is None and self.max_reference_ratio is None:
-            raise ValueError("Reference mode requires at least one of min_reference_ratio, max_reference_ratio, or tolerance_ratio.")
+        if (
+            self.min_reference_ratio is None
+            and self.max_reference_ratio is None
+            and self.min_circularity_ratio is None
+            and self.min_solidity_ratio is None
+        ):
+            raise ValueError("Reference mode requires at least one reference limit or tolerance to be defined.")
         return self
 
 
@@ -186,8 +213,14 @@ class RoiMeasurement(BaseModel):
     calibrated_diameter_mm: float | None = None
     circularity: float
     solidity: float
+    convexity: float = 1.0
     aspect_ratio: float
     hole_void_ratio: float
+    bubble_count: int = 0
+    has_bubbles: bool = False
+    is_abnormal_shape: bool = False
+    is_tailing: bool = False
+    bubble_details: list[dict[str, Any]] = Field(default_factory=list)
     segmentation_quality: float
     is_missing: bool = False
 

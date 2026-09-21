@@ -38,10 +38,13 @@ from app.services.vision.measurement import (
 from app.services.vision.preprocessing import decode_and_validate_image, normalize_roi_to_pixels
 from app.services.vision.segmentation import segment_roi
 from tests.fixtures.synthetic_images import (
+    create_abnormal_shape_image,
+    create_bubble_dot_image,
     create_centered_dot_image,
     create_empty_image,
     create_overflow_image,
     create_proportional_dot_image,
+    create_tailing_dot_image,
 )
 
 
@@ -257,3 +260,89 @@ def test_omitted_limits_never_emit_unrequested_dimensions() -> None:
     )
     assert status == AnalysisStatus.CALIBRATED
     assert not any(o.value == "excessive_spread" for o in obs)
+
+
+def test_process_limits_d06_tailing_aspect_ratio() -> None:
+    """Tailing deposit violates max_aspect_ratio and emits deposit_shape=tailing."""
+    tailing_img = create_tailing_dot_image(size=200, head_radius=22, tail_length=45, direction="horizontal")
+    roi = NormalizedROI(roi_id="roi_1", x=0.20, y=0.20, width=0.60, height=0.60)
+    dims, feats, agg = _measure_single_roi(tailing_img, roi)
+
+    assert feats[0].aspect_ratio > 1.35
+    assert feats[0].is_tailing is True
+
+    limits = ProcessLimits(max_aspect_ratio=1.30)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=feats,
+        aggregate=agg,
+        process_limits=limits,
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 1
+    assert obs[0].observation_type == "deposit_shape"
+    assert obs[0].value == "tailing"
+    assert obs[0].source == EvidenceSource.IMAGE
+    assert obs[0].statement_type == StatementType.AI_INFERENCE
+    assert "aspect_ratio" in obs[0].metadata
+
+
+def test_process_limits_d06_abnormal_shape_circularity_solidity() -> None:
+    """Non-circular/indented deposit violates min_circularity or min_solidity and emits deposit_shape=abnormal."""
+    abnormal_img = create_abnormal_shape_image(size=200)
+    roi = NormalizedROI(roi_id="roi_1", x=0.20, y=0.20, width=0.60, height=0.60)
+    dims, feats, agg = _measure_single_roi(abnormal_img, roi)
+
+    assert feats[0].circularity < 0.70
+    assert feats[0].is_abnormal_shape is True
+
+    limits = ProcessLimits(min_circularity=0.75, min_solidity=0.85)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=feats,
+        aggregate=agg,
+        process_limits=limits,
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert any(o.observation_type == "deposit_shape" and o.value == "abnormal" for o in obs)
+
+
+def test_process_limits_d06_bubble_detection() -> None:
+    """Deposit with internal air bubbles violates max_bubble_count and emits bubble_presence=visible_bubbles."""
+    bubble_img = create_bubble_dot_image(size=200, dot_radius=35, bubble_count=1, bubble_radius=8)
+    roi = NormalizedROI(roi_id="roi_1", x=0.20, y=0.20, width=0.60, height=0.60)
+    dims, feats, agg = _measure_single_roi(bubble_img, roi)
+
+    assert feats[0].bubble_count >= 1
+    assert feats[0].has_bubbles is True
+
+    limits = ProcessLimits(max_bubble_count=0)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=feats,
+        aggregate=agg,
+        process_limits=limits,
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    assert any(o.observation_type == "bubble_presence" and o.value == "visible_bubbles" for o in obs)
+
+
+def test_omitted_shape_limits_never_emit_d06_observations() -> None:
+    """Rule R4 applies to D06: omitting shape and bubble limits never emits D06 observations."""
+    bubble_img = create_bubble_dot_image(size=200, dot_radius=35, bubble_count=1, bubble_radius=8)
+    roi = NormalizedROI(roi_id="roi_1", x=0.20, y=0.20, width=0.60, height=0.60)
+    dims, feats, agg = _measure_single_roi(bubble_img, roi)
+
+    # Only supply min_coverage_ratio
+    limits = ProcessLimits(min_coverage_ratio=0.05)
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=feats,
+        aggregate=agg,
+        process_limits=limits,
+    )
+    assert status == AnalysisStatus.CALIBRATED
+    # Must NOT emit bubble or shape observations when those limit dimensions are omitted
+    assert not any(o.observation_type == "bubble_presence" for o in obs)
+    assert not any(o.observation_type == "deposit_shape" for o in obs)
+

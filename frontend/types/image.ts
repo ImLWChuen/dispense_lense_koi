@@ -26,12 +26,21 @@ export interface ProcessLimits {
     max_overflow_ratio?: number | null;
     max_size_cv?: number | null;
     min_presence_ratio?: number | null;
+    min_circularity?: number | null;
+    min_solidity?: number | null;
+    min_convexity?: number | null;
+    max_aspect_ratio?: number | null;
+    min_aspect_ratio?: number | null;
+    max_bubble_count?: number | null;
+    max_void_ratio?: number | null;
 }
 
 export interface ReferenceLimits {
     min_reference_ratio?: number | null;
     max_reference_ratio?: number | null;
     tolerance_ratio?: number | null;
+    min_circularity_ratio?: number | null;
+    min_solidity_ratio?: number | null;
 }
 
 export interface AnalysisProfile {
@@ -58,8 +67,14 @@ export interface RoiMeasurement {
     calibrated_diameter_mm: number | null;
     circularity: number;
     solidity: number;
+    convexity?: number;
     aspect_ratio: number;
     hole_void_ratio: number;
+    bubble_count?: number;
+    has_bubbles?: boolean;
+    is_abnormal_shape?: boolean;
+    is_tailing?: boolean;
+    bubble_details?: Array<{ x: number; y: number; radius: number; area: number; method: string }>;
     segmentation_quality: number;
     is_missing: boolean;
 }

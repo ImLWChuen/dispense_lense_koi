@@ -59,7 +59,14 @@ export function validateAnalysisConfiguration(item: UploadItem): string | null {
             (limits.max_coverage_ratio !== null && limits.max_coverage_ratio !== undefined) ||
             (limits.max_overflow_ratio !== null && limits.max_overflow_ratio !== undefined) ||
             (limits.max_size_cv !== null && limits.max_size_cv !== undefined) ||
-            (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined);
+            (limits.min_presence_ratio !== null && limits.min_presence_ratio !== undefined) ||
+            (limits.min_circularity !== null && limits.min_circularity !== undefined) ||
+            (limits.min_solidity !== null && limits.min_solidity !== undefined) ||
+            (limits.min_convexity !== null && limits.min_convexity !== undefined) ||
+            (limits.max_aspect_ratio !== null && limits.max_aspect_ratio !== undefined) ||
+            (limits.min_aspect_ratio !== null && limits.min_aspect_ratio !== undefined) ||
+            (limits.max_bubble_count !== null && limits.max_bubble_count !== undefined) ||
+            (limits.max_void_ratio !== null && limits.max_void_ratio !== undefined);
 
         if (!hasAnyLimit) {
             return "PROCESS_LIMITS mode requires at least one process limit threshold.";
@@ -103,6 +110,57 @@ export function validateAnalysisConfiguration(item: UploadItem): string | null {
                 return "Min presence ratio must be a finite number between 0 and 1.";
             }
         }
+
+        if (limits.min_circularity !== null && limits.min_circularity !== undefined) {
+            if (!Number.isFinite(limits.min_circularity) || limits.min_circularity < 0 || limits.min_circularity > 1) {
+                return "Min circularity must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (limits.min_solidity !== null && limits.min_solidity !== undefined) {
+            if (!Number.isFinite(limits.min_solidity) || limits.min_solidity < 0 || limits.min_solidity > 1) {
+                return "Min solidity must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (limits.min_convexity !== null && limits.min_convexity !== undefined) {
+            if (!Number.isFinite(limits.min_convexity) || limits.min_convexity < 0 || limits.min_convexity > 1) {
+                return "Min convexity must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (limits.max_aspect_ratio !== null && limits.max_aspect_ratio !== undefined) {
+            if (!Number.isFinite(limits.max_aspect_ratio) || limits.max_aspect_ratio < 1) {
+                return "Max aspect ratio must be a finite number greater than or equal to 1 (>= 1.0).";
+            }
+        }
+
+        if (limits.min_aspect_ratio !== null && limits.min_aspect_ratio !== undefined) {
+            if (!Number.isFinite(limits.min_aspect_ratio) || limits.min_aspect_ratio <= 0 || limits.min_aspect_ratio > 1) {
+                return "Min aspect ratio must be a finite number between 0 and 1.";
+            }
+        }
+
+        if (
+            limits.min_aspect_ratio !== null && limits.min_aspect_ratio !== undefined &&
+            limits.max_aspect_ratio !== null && limits.max_aspect_ratio !== undefined
+        ) {
+            if (limits.min_aspect_ratio > limits.max_aspect_ratio) {
+                return "Min aspect ratio cannot be greater than max aspect ratio.";
+            }
+        }
+
+        if (limits.max_bubble_count !== null && limits.max_bubble_count !== undefined) {
+            if (!Number.isFinite(limits.max_bubble_count) || limits.max_bubble_count < 0) {
+                return "Max bubble count must be a non-negative number (>= 0).";
+            }
+        }
+
+        if (limits.max_void_ratio !== null && limits.max_void_ratio !== undefined) {
+            if (!Number.isFinite(limits.max_void_ratio) || limits.max_void_ratio < 0 || limits.max_void_ratio > 1) {
+                return "Max void ratio must be a finite number between 0 and 1.";
+            }
+        }
     } else if (item.mode === "REFERENCE_IMAGE") {
         if (!item.referenceFile) {
             return "REFERENCE_IMAGE mode requires a reference image to be uploaded.";
@@ -116,7 +174,9 @@ export function validateAnalysisConfiguration(item: UploadItem): string | null {
         const hasRefLimit =
             (rLimits.tolerance_ratio !== null && rLimits.tolerance_ratio !== undefined) ||
             (rLimits.min_reference_ratio !== null && rLimits.min_reference_ratio !== undefined) ||
-            (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined);
+            (rLimits.max_reference_ratio !== null && rLimits.max_reference_ratio !== undefined) ||
+            (rLimits.min_circularity_ratio !== null && rLimits.min_circularity_ratio !== undefined) ||
+            (rLimits.min_solidity_ratio !== null && rLimits.min_solidity_ratio !== undefined);
 
         if (!hasRefLimit) {
             return "REFERENCE_IMAGE mode requires at least one tolerance or reference ratio bound.";

@@ -2,7 +2,7 @@
 Dispense Lens - Vision Defect Classifier Service
 
 Maps calibrated resolution-independent vision measurements to canonical
-diagnostic evidence observations (D01-D05). D06 bubble/shape metrics remain neutral.
+diagnostic evidence observations (D01-D06).
 """
 
 from __future__ import annotations
@@ -64,6 +64,13 @@ def classify_defects_from_measurements(
                 "target_area_px": m.target_area_px,
                 "equivalent_diameter_px": m.equivalent_diameter_px,
                 "calibrated_diameter_mm": m.calibrated_diameter_mm,
+                "circularity": m.circularity,
+                "solidity": m.solidity,
+                "convexity": m.convexity,
+                "aspect_ratio": m.aspect_ratio,
+                "hole_void_ratio": m.hole_void_ratio,
+                "bubble_count": m.bubble_count,
+                "has_bubbles": m.has_bubbles,
                 "mode": mode.value,
                 "status": status.value,
                 "segmentation_quality": m.segmentation_quality,
@@ -83,7 +90,7 @@ def classify_defects_from_measurements(
                             statement_type=StatementType.AI_INFERENCE,
                             metadata=roi_meta,
                         ))
-                    continue  # Skip further size/overflow checks for deposits classified as missing
+                    continue  # Skip further size/overflow/shape checks for deposits classified as missing
 
             # Check D01: Undersized
             if process_limits.min_coverage_ratio is not None and m.coverage_ratio < process_limits.min_coverage_ratio:
@@ -119,6 +126,66 @@ def classify_defects_from_measurements(
                     observations.append(Observation(
                         observation_type=ObservationType.SPREADING_BEHAVIOUR,
                         value="excessive_spread",
+                        source=EvidenceSource.IMAGE,
+                        statement_type=StatementType.AI_INFERENCE,
+                        metadata=roi_meta,
+                    ))
+
+            # Check D06: Tailing / Elongated shape
+            is_tailing_limit_violated = False
+            if process_limits.max_aspect_ratio is not None:
+                if m.aspect_ratio > process_limits.max_aspect_ratio or (m.aspect_ratio > 0 and (1.0 / m.aspect_ratio) > process_limits.max_aspect_ratio):
+                    is_tailing_limit_violated = True
+            if process_limits.min_aspect_ratio is not None and m.aspect_ratio < process_limits.min_aspect_ratio:
+                is_tailing_limit_violated = True
+
+            if is_tailing_limit_violated:
+                key = ("deposit_shape", "tailing")
+                if key not in seen_obs_keys:
+                    seen_obs_keys.add(key)
+                    observations.append(Observation(
+                        observation_type=ObservationType.DEPOSIT_SHAPE,
+                        value="tailing",
+                        source=EvidenceSource.IMAGE,
+                        statement_type=StatementType.AI_INFERENCE,
+                        metadata=roi_meta,
+                    ))
+
+            # Check D06: Abnormal shape (circularity, solidity, convexity)
+            is_shape_abnormal = False
+            if process_limits.min_circularity is not None and m.circularity < process_limits.min_circularity:
+                is_shape_abnormal = True
+            if process_limits.min_solidity is not None and m.solidity < process_limits.min_solidity:
+                is_shape_abnormal = True
+            if process_limits.min_convexity is not None and m.convexity < process_limits.min_convexity:
+                is_shape_abnormal = True
+
+            if is_shape_abnormal:
+                key = ("deposit_shape", "abnormal")
+                if key not in seen_obs_keys:
+                    seen_obs_keys.add(key)
+                    observations.append(Observation(
+                        observation_type=ObservationType.DEPOSIT_SHAPE,
+                        value="abnormal",
+                        source=EvidenceSource.IMAGE,
+                        statement_type=StatementType.AI_INFERENCE,
+                        metadata=roi_meta,
+                    ))
+
+            # Check D06: Bubbles / Voids
+            has_bubble_violation = False
+            if process_limits.max_bubble_count is not None and m.bubble_count > process_limits.max_bubble_count:
+                has_bubble_violation = True
+            if process_limits.max_void_ratio is not None and m.hole_void_ratio > process_limits.max_void_ratio:
+                has_bubble_violation = True
+
+            if has_bubble_violation:
+                key = ("bubble_presence", "visible_bubbles")
+                if key not in seen_obs_keys:
+                    seen_obs_keys.add(key)
+                    observations.append(Observation(
+                        observation_type=ObservationType.BUBBLE_PRESENCE,
+                        value="visible_bubbles",
                         source=EvidenceSource.IMAGE,
                         statement_type=StatementType.AI_INFERENCE,
                         metadata=roi_meta,
@@ -183,6 +250,11 @@ def classify_defects_from_measurements(
                 "current_coverage": curr_cov,
                 "reference_coverage": ref_cov,
                 "coverage_ratio_to_reference": ratio,
+                "circularity": curr_m.circularity,
+                "solidity": curr_m.solidity,
+                "convexity": curr_m.convexity,
+                "aspect_ratio": curr_m.aspect_ratio,
+                "bubble_count": curr_m.bubble_count,
                 "mode": mode.value,
                 "status": status.value,
             }
@@ -210,6 +282,34 @@ def classify_defects_from_measurements(
                         statement_type=StatementType.AI_INFERENCE,
                         metadata=roi_meta,
                     ))
+
+            if reference_limits.min_circularity_ratio is not None and ref_m.circularity > 1e-6:
+                circ_ratio = curr_m.circularity / ref_m.circularity
+                if circ_ratio < reference_limits.min_circularity_ratio:
+                    key = ("deposit_shape", "abnormal")
+                    if key not in seen_obs_keys:
+                        seen_obs_keys.add(key)
+                        observations.append(Observation(
+                            observation_type=ObservationType.DEPOSIT_SHAPE,
+                            value="abnormal",
+                            source=EvidenceSource.IMAGE,
+                            statement_type=StatementType.AI_INFERENCE,
+                            metadata=roi_meta,
+                        ))
+
+            if reference_limits.min_solidity_ratio is not None and ref_m.solidity > 1e-6:
+                sol_ratio = curr_m.solidity / ref_m.solidity
+                if sol_ratio < reference_limits.min_solidity_ratio:
+                    key = ("deposit_shape", "abnormal")
+                    if key not in seen_obs_keys:
+                        seen_obs_keys.add(key)
+                        observations.append(Observation(
+                            observation_type=ObservationType.DEPOSIT_SHAPE,
+                            value="abnormal",
+                            source=EvidenceSource.IMAGE,
+                            statement_type=StatementType.AI_INFERENCE,
+                            metadata=roi_meta,
+                        ))
 
         return status, observations, warnings
 
