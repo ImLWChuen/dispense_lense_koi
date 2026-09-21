@@ -594,7 +594,7 @@ def get_performance_analytics(
                 if defect_def:
                     canonical_name = defect_def.name
                 else:
-                    canonical_name = d_name or d_code.replace("_", " ").title()
+                    canonical_name = d_code.replace("_", " ").title()
                 aggregated_defects[group_key] = {
                     "name": canonical_name,
                     "code": d_code,

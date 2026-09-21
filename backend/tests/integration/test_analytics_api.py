@@ -973,4 +973,4 @@ def test_defect_breakdown_handles_unknown_non_null_code_deterministically(
     assert len(d99_entries) == 1, f"Expected exactly 1 entry for D99_UNKNOWN_ANOMALY, got: {d99_entries}"
     d99 = d99_entries[0]
     assert d99["count"] == 2
-    assert d99["name"] in ("Custom Anomaly", "Custom Anomaly Variant", "D99 Unknown Anomaly")
+    assert d99["name"] == "D99 Unknown Anomaly"
