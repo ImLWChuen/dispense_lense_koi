@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-032
-reviewed_commit: f39444dc1f6353be69769ce1e3ddcd853b14c09a
-decision: changes_requested
+reviewed_commit: 01640a7fb3344d49a3dedc478d75ad3bc7f1d475
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,21 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested. The committed implementation correctly consolidates recognized defect codes such as `D03_INCONSISTENT_SIZE`, preserves null-code categories, and passes the focused and full backend suites. One bounded correction is required before acceptance because unknown non-null codes do not yet have the deterministic label promised by the task.
+Accepted at `01640a7fb3344d49a3dedc478d75ad3bc7f1d475`. The correction resolves R1 by deriving unknown non-null labels solely from their defect code and tightening the regression test to one exact expected label. Recognized-code consolidation and null-code behavior remain intact.
+
+## Final correction review: `01640a7fb3344d49a3dedc478d75ad3bc7f1d475`
+
+### Resolved
+
+- R1 is resolved: unknown non-null codes now use `d_code.replace("_", " ").title()` regardless of stored defect-name variants or database row order.
+- The `D99_UNKNOWN_ANOMALY` regression now requires the exact deterministic label `D99 Unknown Anomaly` and still verifies the combined count.
+- The correction changes only the intended backend branch, regression assertion, and previously pending handoff records.
+
+### Final verification
+
+- Focused analytics suite: `16 passed`, with 11 dependency deprecation warnings.
+- Full backend suite: `507 passed`, with 42 dependency/API deprecation warnings.
+- Commit and working-tree whitespace checks passed.
 
 ## Acceptance evidence
 
@@ -23,7 +37,7 @@ Changes requested. The committed implementation correctly consolidates recognize
 
 ## Findings
 
-### R1 — Unknown non-null defect names remain query-order dependent (medium)
+### Historical R1 — Unknown non-null defect names remained query-order dependent (resolved)
 
 - `backend/app/api/analytics.py:597` selects the first encountered stored name for an unknown code through `d_name or d_code.replace(...)`.
 - `raw_defect_counts` has no ordering, so database execution order decides whether `D99_UNKNOWN_ANOMALY` is labelled `Custom Anomaly`, `Custom Anomaly Variant`, or another stored variant.
@@ -32,4 +46,4 @@ Changes requested. The committed implementation correctly consolidates recognize
 
 ## Follow-up
 
-Gemini should make the bounded R1 correction, rerun the focused analytics tests and full backend suite, and create one new local correction commit. Do not amend `f39444d`, push, merge, rebase, or create a pull request. The detailed correction prompt is supplied in chat for copy-paste use.
+No further DLK-M3-032 correction is required. Remote Git operations remain unauthorized until the user explicitly requests them.

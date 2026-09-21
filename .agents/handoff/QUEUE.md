@@ -37,12 +37,12 @@ Repeatable local demo startup and competition rehearsal readiness
 
 ## Active rehearsal correction
 
-- `DLK-M3-032` — Consolidate analytics defects by canonical code — **implemented**
-  - implemented commit: `f39444dc1f6353be69769ce1e3ddcd853b14c09a`
-  - accepted behavior so far: recognized codes, including `D03_INCONSISTENT_SIZE`, are consolidated into one canonical analytics entry; null-code categories remain intact
-  - required correction: unknown non-null code labels must be deterministic rather than dependent on unordered database row selection
+- `DLK-M3-032` — Consolidate analytics defects by canonical code — **accepted**
+  - reviewed commit: `01640a7fb3344d49a3dedc478d75ad3bc7f1d475`
+  - accepted outcome: recognized codes, including `D03_INCONSISTENT_SIZE`, are consolidated into one canonical analytics entry; null-code categories remain intact; unknown non-null codes use deterministic code-derived labels
+  - verification: focused analytics suite `16 passed`; full backend suite `507 passed`; whitespace checks passed
   - review: `.agents/handoff/reviews/DLK-M3-032-review.md`
-  - handoff: bounded correction instructions are supplied in chat for copy-paste use; no separate next-feature task is authorized
+  - next step: restart the local backend before browser verification, then continue final rehearsal; no separate next-feature task is authorized
 
 ## Explicitly deferred
 
