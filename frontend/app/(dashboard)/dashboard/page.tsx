@@ -116,19 +116,19 @@ export default function DashboardPage() {
 
                 {/* Global Sync Indicator & Refresh Button */}
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm">
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/60 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 shadow-sm">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                         </span>
                         <span>Live Sync</span>
-                        <span className="text-emerald-500 font-mono text-[11px]">({lastSyncTime})</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">({lastSyncTime})</span>
                     </div>
 
                     <button
                         onClick={handleManualRefresh}
                         disabled={isSyncing}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         title="Refresh dashboard data"
                     >
                         <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
@@ -245,18 +245,18 @@ export default function DashboardPage() {
                             <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#6d5dfc]/20 blur-3xl" />
                         </div>
 
-                        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                            <p className="text-sm font-semibold text-gray-900">
+                        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
                                 Cause Confirmation Coverage
                             </p>
 
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                 Unique confirmed cases / total cases
                             </p>
 
                             <div className="mt-6">
                                 <div className="flex items-end justify-between">
-                                    <span className="text-3xl font-bold text-gray-900">
+                                    <span className="text-3xl font-bold text-gray-900 dark:text-white">
                                         {isLoading
                                             ? "..."
                                             : confirmationRate != null
@@ -265,20 +265,20 @@ export default function DashboardPage() {
                                     </span>
 
                                     {confirmationRate != null && (
-                                        <span className="text-xs font-medium text-emerald-600">
+                                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
                                             {confirmationRate >= 80 ? "High Coverage" : confirmationRate >= 50 ? "Moderate" : "Low Coverage"}
                                         </span>
                                     )}
                                 </div>
 
-                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                                     <div
                                         className="h-full rounded-full bg-[#6d5dfc] transition-all duration-500"
                                         style={{ width: `${confirmationRate != null ? Math.min(100, Math.max(0, confirmationRate)) : 0}%` }}
                                     />
                                 </div>
 
-                                <p className="mt-3 text-xs leading-5 text-gray-500">
+                                <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
                                     Percentage of total diagnostic cases with at least one verified technician root cause confirmation.
                                 </p>
                             </div>

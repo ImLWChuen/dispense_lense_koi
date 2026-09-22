@@ -89,51 +89,50 @@ export default function DiagnosisSummary({
     const caseIdText = caseData?.case_id ? `Case ${caseData.case_id}` : "Case not recorded";
 
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 px-6 py-5">
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+            <div className="border-b border-gray-100 dark:border-gray-800 px-6 py-5">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
                         <Stethoscope size={20} />
                     </div>
 
                     <div>
                         <div className="flex items-center gap-2">
-                            <span className="rounded bg-indigo-50 text-[#5848e8] border border-indigo-200 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider">
+                            <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider">
                                 Step 2
                             </span>
-                            <h2 className="text-base font-semibold text-gray-900">
+                            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                                 Diagnosis Summary
                             </h2>
                         </div>
-
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
                             {caseIdText}
                         </p>
                     </div>
 
-                    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-blue-500/15 border border-transparent dark:border-blue-500/30 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
                         {status}
                     </span>
                 </div>
             </div>
 
             <div className="p-6">
-                <div className="rounded-xl bg-gray-50 p-4 border border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-gray-100 dark:border-gray-800 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                         Identified Dispensing Defect
                     </p>
 
-                    <p className="mt-1.5 text-lg font-bold text-gray-900">
+                    <p className="mt-1.5 text-lg font-bold text-gray-900 dark:text-white">
                         {defect}
                     </p>
 
-                    <p className="mt-1 text-xs leading-5 text-gray-500">
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-300">
                         {defectDescription}
                     </p>
                 </div>
 
                 <div className="mt-5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                         Defect Confidence Level
                     </p>
 
@@ -141,21 +140,21 @@ export default function DiagnosisSummary({
                         {topScore !== null ? (
                             <ConfidenceScore score={topScore} size="lg" label="Confidence Level" showStars={true} />
                         ) : (
-                            <p className="text-sm text-gray-500">No ranked causes evaluated</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">No ranked causes evaluated</p>
                         )}
                     </div>
                 </div>
 
                 {/* Step 2: Characteristic Symptoms */}
                 {symptoms.length > 0 && (
-                    <div className="mt-5 rounded-xl border border-indigo-100 bg-[#faf9ff] p-3.5">
-                        <p className="text-xs font-semibold text-gray-800 mb-2">
+                    <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-[#faf9ff] dark:bg-indigo-950/20 p-3.5">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">
                             Possible Defect Symptoms:
                         </p>
-                        <ul className="space-y-1.5 text-xs text-gray-600">
+                        <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
                             {symptoms.map((symptom, idx) => (
                                 <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-[#6d5dfc] font-bold shrink-0">•</span>
+                                    <span className="text-[#6d5dfc] dark:text-[#a59bff] font-bold shrink-0">•</span>
                                     <span>{symptom}</span>
                                 </li>
                             ))}
@@ -164,22 +163,22 @@ export default function DiagnosisSummary({
                 )}
 
                 <div className="mt-5 grid grid-cols-2 gap-4">
-                    <div className="rounded-xl bg-gray-50 p-3 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
+                    <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-transparent dark:border-gray-800 p-3 text-center">
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
                             {causesCount}
                         </p>
 
-                        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             Candidate Causes
                         </p>
                     </div>
 
-                    <div className="rounded-xl bg-gray-50 p-3 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
+                    <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-transparent dark:border-gray-800 p-3 text-center">
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
                             {observationsCount}
                         </p>
 
-                        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                        <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             Observations
                         </p>
                     </div>

@@ -226,13 +226,13 @@ export default function AnalyticsPage() {
 
                 <div className="flex flex-wrap items-center gap-3">
                     {/* View Switcher Tabs */}
-                    <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-2xl border border-gray-200">
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-850 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700">
                         <button
                             onClick={() => setViewMode("performance")}
                             className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
                                 viewMode === "performance"
-                                    ? "bg-white text-gray-900 shadow-sm"
-                                    : "text-gray-600 hover:text-gray-900"
+                                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-900 dark:text-white dark:ring-1 dark:ring-white/10"
+                                    : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
                             }`}
                         >
                             <BarChart3 size={14} className={viewMode === "performance" ? "text-[#6d5dfc]" : ""} />
@@ -242,8 +242,8 @@ export default function AnalyticsPage() {
                             onClick={() => setViewMode("spc")}
                             className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
                                 viewMode === "spc"
-                                    ? "bg-white text-gray-900 shadow-sm"
-                                    : "text-gray-600 hover:text-gray-900"
+                                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-900 dark:text-white dark:ring-1 dark:ring-white/10"
+                                    : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
                             }`}
                         >
                             <Activity size={14} className={viewMode === "spc" ? "text-[#6d5dfc]" : ""} />
@@ -252,23 +252,23 @@ export default function AnalyticsPage() {
                     </div>
 
                     {/* Sync Badge */}
-                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-800 shadow-sm">
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/60 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 shadow-sm">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                         </span>
                         <span className="hidden sm:inline">Global Sync</span>
-                        <span className="text-emerald-600 font-mono text-[11px]">({lastSyncTime})</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">({lastSyncTime})</span>
                     </div>
 
                     {/* Manual Refresh Button */}
                     <button
                         onClick={handleManualRefresh}
                         disabled={isSyncing}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         title="Refresh data"
                     >
-                        <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
+                        <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#6d5dfc]" : "text-gray-500 dark:text-gray-400"} />
                         Refresh
                     </button>
                 </div>
@@ -281,7 +281,7 @@ export default function AnalyticsPage() {
                 <div className="space-y-6 mt-6">
                     {/* Interactive Date Filter Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-1.5 bg-white dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
                             {periods.map((p) => (
                                 <button
                                     key={p.value}
@@ -289,7 +289,7 @@ export default function AnalyticsPage() {
                                     className={`rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${
                                         selectedPeriod === p.value
                                             ? "bg-[#6d5dfc] text-white shadow-sm font-semibold"
-                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
                                     }`}
                                 >
                                     {p.label}
@@ -462,10 +462,10 @@ export default function AnalyticsPage() {
             {viewMode === "spc" && (
                 <div className="space-y-6 mt-6">
                     {/* SPC Controls Bar */}
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                         {/* Parameter Selector */}
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-1">
+                            <span className="text-xs font-bold text-gray-400 dark:text-gray-300 uppercase tracking-wider mr-1">
                                 Parameter:
                             </span>
                             {spcParameters.map((param) => {
@@ -477,11 +477,11 @@ export default function AnalyticsPage() {
                                         className={`rounded-xl px-3 py-1.5 text-xs transition flex items-center gap-2 ${
                                             isSelected
                                                 ? "bg-[#6d5dfc] text-white font-semibold shadow-sm"
-                                                : "bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200"
+                                                : "bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-750 dark:hover:text-white"
                                         }`}
                                     >
                                         <span>{param.label}</span>
-                                        <span className={`text-[10px] font-mono opacity-80 ${isSelected ? "text-white" : "text-gray-500"}`}>
+                                        <span className={`text-[10px] font-mono opacity-80 ${isSelected ? "text-white" : "text-gray-500 dark:text-gray-400"}`}>
                                             ({param.spec})
                                         </span>
                                     </button>
@@ -493,11 +493,11 @@ export default function AnalyticsPage() {
                         <div className="flex flex-wrap items-center gap-3">
                             {/* Line Filter */}
                             <div className="flex items-center gap-1.5">
-                                <span className="text-xs text-gray-500 font-medium">Line:</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Line:</span>
                                 <select
                                     value={spcLine}
                                     onChange={(e) => setSpcLine(e.target.value)}
-                                    className="rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#6d5dfc]"
+                                    className="rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#6d5dfc] dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
                                 >
                                     {spcLines.map((l) => (
                                         <option key={l.key} value={l.key}>
@@ -508,15 +508,15 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Sample Size Toggle */}
-                            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
                                 {[30, 50, 100].map((size) => (
                                     <button
                                         key={size}
                                         onClick={() => setSpcSampleSize(size)}
                                         className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
                                             spcSampleSize === size
-                                                ? "bg-white text-gray-900 shadow-sm font-semibold"
-                                                : "text-gray-500 hover:text-gray-900"
+                                                ? "bg-white text-gray-900 shadow-sm font-semibold dark:bg-gray-900 dark:text-white dark:ring-1 dark:ring-white/10"
+                                                : "text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700/60"
                                         }`}
                                     >
                                         {size} Shots
@@ -528,7 +528,7 @@ export default function AnalyticsPage() {
                             <button
                                 onClick={handleExportSpcCsv}
                                 disabled={!spcData}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-white"
                             >
                                 <Download size={13} />
                                 Export CSV

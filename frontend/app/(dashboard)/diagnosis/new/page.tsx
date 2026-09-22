@@ -146,12 +146,12 @@ export default function NewDiagnosisPage() {
                             <ImageUpload onSnapshotChange={setUploadSnapshot} />
 
                             {/* Tips Card */}
-                            <div className="mt-6 rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-5">
-                                <p className="text-sm font-semibold text-gray-900">
+                            <div className="mt-6 rounded-2xl border border-[#ded9ff] dark:border-[#6d5dfc]/30 bg-[#faf9ff] dark:bg-[#161e2e] p-5">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                                     Tips for better diagnosis
                                 </p>
 
-                                <ul className="mt-3 space-y-2.5 text-xs leading-5 text-gray-600">
+                                <ul className="mt-3 space-y-2.5 text-xs leading-5 text-gray-600 dark:text-gray-300">
                                     <li className="flex items-start gap-2">
                                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
                                         Be specific about when the defect appears (steady vs. occasional)

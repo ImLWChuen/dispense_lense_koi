@@ -263,13 +263,13 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
 
                     {/* Notification Panel */}
                     {isNotifOpen && (
-                        <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95">
+                        <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl animate-in fade-in-50 zoom-in-95">
                             {/* Panel Header */}
-                            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                    <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
                                     {unreadCount > 0 && (
-                                        <span className="rounded-full bg-[#eeebff] px-2 py-0.5 text-[11px] font-bold text-[#5848e8]">
+                                        <span className="rounded-full bg-[#eeebff] dark:bg-[#5848e8]/30 px-2 py-0.5 text-[11px] font-bold text-[#5848e8] dark:text-[#a59bff]">
                                             {unreadCount} new
                                         </span>
                                     )}
@@ -279,7 +279,7 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                                     {unreadCount > 0 && (
                                         <button
                                             onClick={() => notificationService.markAllAsRead()}
-                                            className="text-xs text-gray-500 hover:text-[#6d5dfc] transition"
+                                            className="text-xs text-gray-500 dark:text-gray-400 hover:text-[#6d5dfc] dark:hover:text-[#a59bff] transition"
                                             title="Mark all as read"
                                         >
                                             Mark all read
@@ -287,7 +287,7 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                                     )}
                                     <button
                                         onClick={() => setIsNotifOpen(false)}
-                                        className="text-gray-400 hover:text-gray-600 rounded-lg p-1"
+                                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg p-1"
                                     >
                                         <X size={16} />
                                     </button>
@@ -295,23 +295,23 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                             </div>
 
                             {/* Filter Tabs */}
-                            <div className="flex border-b border-gray-100 px-4 pt-2 gap-4 text-xs font-medium">
+                            <div className="flex border-b border-gray-100 dark:border-gray-800 px-4 pt-2 gap-4 text-xs font-medium">
                                 <button
                                     onClick={() => setNotifFilter("all")}
-                                    className={`pb-2 border-b-2 transition ${
+                                    className={`pb-2 border-b-2 transition font-semibold ${
                                         notifFilter === "all"
-                                            ? "border-[#6d5dfc] text-[#5848e8]"
-                                            : "border-transparent text-gray-400 hover:text-gray-600"
+                                            ? "border-[#6d5dfc] text-[#5848e8] dark:text-[#a59bff]"
+                                            : "border-transparent text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-100"
                                     }`}
                                 >
                                     All ({notifications.length})
                                 </button>
                                 <button
                                     onClick={() => setNotifFilter("unread")}
-                                    className={`pb-2 border-b-2 transition ${
+                                    className={`pb-2 border-b-2 transition font-semibold ${
                                         notifFilter === "unread"
-                                            ? "border-[#6d5dfc] text-[#5848e8]"
-                                            : "border-transparent text-gray-400 hover:text-gray-600"
+                                            ? "border-[#6d5dfc] text-[#5848e8] dark:text-[#a59bff]"
+                                            : "border-transparent text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-100"
                                     }`}
                                 >
                                     Unread ({unreadCount})
@@ -319,14 +319,14 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                             </div>
 
                             {/* Notification List */}
-                            <div className="max-h-[360px] overflow-y-auto divide-y divide-gray-50">
+                            <div className="max-h-[360px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-800">
                                 {filteredNotifications.length > 0 ? (
                                     filteredNotifications.map((notif) => (
                                         <div
                                             key={notif.id}
                                             onClick={() => handleNotificationClick(notif)}
-                                            className={`flex items-start gap-3 p-3.5 cursor-pointer transition hover:bg-gray-50 ${
-                                                !notif.read ? "bg-[#eeebff]/20" : ""
+                                            className={`flex items-start gap-3 p-3.5 cursor-pointer transition hover:bg-gray-50 dark:hover:bg-gray-800/80 ${
+                                                !notif.read ? "bg-[#eeebff]/20 dark:bg-[#6d5dfc]/10" : ""
                                             }`}
                                         >
                                             <div
@@ -339,7 +339,7 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
 
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between">
-                                                    <p className={`text-xs font-semibold truncate ${!notif.read ? "text-gray-900" : "text-gray-600"}`}>
+                                                    <p className={`text-xs font-semibold truncate ${!notif.read ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-300"}`}>
                                                         {notif.title}
                                                     </p>
                                                     <span className="text-[10px] text-gray-400 shrink-0 ml-1">
@@ -347,7 +347,7 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                                                     </span>
                                                 </div>
 
-                                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
                                                     {notif.message}
                                                 </p>
                                             </div>
@@ -359,8 +359,8 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                                     ))
                                 ) : (
                                     <div className="py-8 text-center">
-                                        <Bell size={28} className="mx-auto text-gray-300 mb-2" />
-                                        <p className="text-xs font-semibold text-gray-700">No notifications</p>
+                                        <Bell size={28} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">No notifications</p>
                                         <p className="text-[11px] text-gray-400 mt-0.5">
                                             {notifFilter === "unread"
                                                 ? "You've read all your notifications!"
@@ -371,11 +371,11 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                             </div>
 
                             {/* Panel Footer */}
-                            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-2.5 text-center">
+                            <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-850 px-4 py-2.5 text-center rounded-b-2xl">
                                 <Link
                                     href="/cases"
                                     onClick={() => setIsNotifOpen(false)}
-                                    className="text-xs font-medium text-[#6d5dfc] hover:underline inline-flex items-center gap-1"
+                                    className="text-xs font-medium text-[#6d5dfc] dark:text-[#a59bff] hover:underline inline-flex items-center gap-1"
                                 >
                                     View all diagnostic cases <ArrowRight size={11} />
                                 </Link>
