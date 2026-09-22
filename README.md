@@ -1,6 +1,6 @@
-# DispenseIQ (DispenseLens)
+# DispenseLens
 
-**DispenseIQ** is an AI-assisted industrial dispensing defect diagnosis and troubleshooting platform. It provides technician and engineering decision support for manufacturing lines by structuring defect investigation across three distinct layers:
+**DispenseLens** is an AI-assisted industrial dispensing defect diagnosis and troubleshooting platform. It provides technician and engineering decision support for manufacturing lines by structuring defect investigation across three distinct layers:
 
 1. **Result Inspection:** Computer-vision measurement and classification of dispensing defects (e.g., undersized/oversized deposits, abnormal shape, interior void/bubbles, coverage ratio, overflow ratio) under calibrated optics.
 2. **Process Context:** Equipment parameters, fluid material properties, valve and nozzle configurations, dispensing pressure, syringe pot-life, and ambient cleanroom environmental conditions.
