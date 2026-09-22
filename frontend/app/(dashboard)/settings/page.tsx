@@ -26,6 +26,7 @@ import {
 
 import PageContainer from "@/components/layout/PageContainer";
 import { useAuth } from "@/components/providers/AuthContext";
+import { useTheme } from "@/components/providers/ThemeContext";
 import { authApi } from "@/lib/api/auth";
 
 export default function SettingsPage() {
@@ -55,7 +56,7 @@ export default function SettingsPage() {
     const [showConfirmPass, setShowConfirmPass] = useState(false);
 
     // Appearance state
-    const [theme, setTheme] = useState<"light" | "dark" | "system">("light");
+    const { theme, setTheme } = useTheme();
     const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
 
     // Notification preferences state
@@ -77,11 +78,8 @@ export default function SettingsPage() {
         }
     }, [user]);
 
-    // Load appearance & notification preferences from localStorage on mount
+    // Load density & notification preferences from localStorage on mount
     useEffect(() => {
-        const storedTheme = (localStorage.getItem("dispenselens_theme") as any) || "light";
-        setTheme(storedTheme);
-
         const storedDensity = (localStorage.getItem("dispenselens_density") as any) || "comfortable";
         setDensity(storedDensity);
 
@@ -185,14 +183,6 @@ export default function SettingsPage() {
     // Handle Theme Change
     const handleThemeSelect = (selectedTheme: "light" | "dark" | "system") => {
         setTheme(selectedTheme);
-        localStorage.setItem("dispenselens_theme", selectedTheme);
-
-        const isDark =
-            selectedTheme === "dark" ||
-            (selectedTheme === "system" &&
-                window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-        document.documentElement.classList.toggle("dark", isDark);
         setSuccessMessage(`Theme updated to ${selectedTheme === "system" ? "System Default" : selectedTheme.toUpperCase()}.`);
     };
 
