@@ -121,25 +121,25 @@ export default function LiveTelemetryRibbon() {
     }
 
     return (
-        <div className="border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-all duration-200">
+        <div className="border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-sm transition-all duration-200">
             {/* Main Bar / Compact Bar */}
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2 sm:px-6">
                 {/* Left: Cleanroom Facility & Active Line Selector */}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                     {/* Cleanroom ISO 5 status chip */}
-                    <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200 shadow-2xs">
+                    <div className="flex items-center gap-2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 shadow-2xs">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                         </span>
                         <span className="font-bold">ISO 5</span>
-                        <span className="hidden md:inline text-emerald-600 font-normal">
+                        <span className="hidden md:inline text-emerald-600 dark:text-emerald-400/80 font-normal">
                             • {overview.environment.ambient_temp_c.toFixed(1)}°C • {overview.environment.relative_humidity_pct.toFixed(0)}% RH
                         </span>
                     </div>
 
                     {/* Line Tabs */}
-                    <div className="flex items-center rounded-lg bg-gray-100 p-0.5 text-xs font-medium">
+                    <div className="flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 text-xs font-medium">
                         {overview.lines.map((line) => {
                             const isSelected = line.line_id === selectedLineId;
                             return (
@@ -148,8 +148,8 @@ export default function LiveTelemetryRibbon() {
                                     onClick={() => setSelectedLineId(line.line_id)}
                                     className={`rounded-md px-2.5 py-1 transition-all ${
                                         isSelected
-                                            ? "bg-white text-gray-900 font-semibold shadow-xs"
-                                            : "text-gray-500 hover:text-gray-800"
+                                            ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-semibold shadow-xs"
+                                            : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                                     }`}
                                 >
                                     {line.line_name}
@@ -225,22 +225,22 @@ export default function LiveTelemetryRibbon() {
 
             {/* Expanded Sensor Ribbon Detail */}
             {isExpanded && currentLine && (
-                <div className="border-t border-gray-100 bg-gray-50/70 px-4 py-2 sm:px-6 transition-all">
+                <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/70 px-4 py-2 sm:px-6 transition-all">
                     <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-2 gap-x-4">
                         {/* 4 Sensor Pills */}
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 flex-1">
                             {/* Fluid Pressure */}
-                            <div className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 border border-gray-200/80 shadow-2xs">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+                            <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-gray-800/90 px-2.5 py-1.5 border border-gray-200/80 dark:border-gray-700 shadow-2xs">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
                                     <Gauge size={14} />
                                 </div>
                                 <div>
-                                    <div className="text-[10px] font-medium text-gray-400 leading-tight">
+                                    <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 leading-tight">
                                         Fluid Feed
                                     </div>
-                                    <div className="text-xs font-bold text-gray-800">
+                                    <div className="text-xs font-bold text-gray-800 dark:text-gray-100">
                                         {currentLine.fluid_pressure.value.toFixed(1)}{" "}
-                                        <span className="text-[10px] font-normal text-gray-500">
+                                        <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400">
                                             {currentLine.fluid_pressure.unit}
                                         </span>
                                     </div>
@@ -248,17 +248,17 @@ export default function LiveTelemetryRibbon() {
                             </div>
 
                             {/* Vacuum Backpressure */}
-                            <div className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 border border-gray-200/80 shadow-2xs">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-50 text-cyan-600">
+                            <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-gray-800/90 px-2.5 py-1.5 border border-gray-200/80 dark:border-gray-700 shadow-2xs">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400">
                                     <Wind size={14} />
                                 </div>
                                 <div>
-                                    <div className="text-[10px] font-medium text-gray-400 leading-tight">
+                                    <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 leading-tight">
                                         Anti-Drool Vac
                                     </div>
-                                    <div className="text-xs font-bold text-gray-800">
+                                    <div className="text-xs font-bold text-gray-800 dark:text-gray-100">
                                         {currentLine.vacuum_pressure.value.toFixed(1)}{" "}
-                                        <span className="text-[10px] font-normal text-gray-500">
+                                        <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400">
                                             {currentLine.vacuum_pressure.unit}
                                         </span>
                                     </div>
@@ -266,17 +266,17 @@ export default function LiveTelemetryRibbon() {
                             </div>
 
                             {/* Nozzle Heater */}
-                            <div className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 border border-gray-200/80 shadow-2xs">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+                            <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-gray-800/90 px-2.5 py-1.5 border border-gray-200/80 dark:border-gray-700 shadow-2xs">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
                                     <Thermometer size={14} />
                                 </div>
                                 <div>
-                                    <div className="text-[10px] font-medium text-gray-400 leading-tight">
+                                    <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 leading-tight">
                                         Nozzle Temp
                                     </div>
-                                    <div className="text-xs font-bold text-gray-800">
+                                    <div className="text-xs font-bold text-gray-800 dark:text-gray-100">
                                         {currentLine.nozzle_temp.value.toFixed(1)}{" "}
-                                        <span className="text-[10px] font-normal text-gray-500">
+                                        <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400">
                                             {currentLine.nozzle_temp.unit}
                                         </span>
                                     </div>
@@ -284,17 +284,17 @@ export default function LiveTelemetryRibbon() {
                             </div>
 
                             {/* Syringe Temp */}
-                            <div className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 border border-gray-200/80 shadow-2xs">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                            <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-gray-800/90 px-2.5 py-1.5 border border-gray-200/80 dark:border-gray-700 shadow-2xs">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
                                     <Layers size={14} />
                                 </div>
                                 <div>
-                                    <div className="text-[10px] font-medium text-gray-400 leading-tight">
+                                    <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 leading-tight">
                                         Barrel Temp
                                     </div>
-                                    <div className="text-xs font-bold text-gray-800">
+                                    <div className="text-xs font-bold text-gray-800 dark:text-gray-100">
                                         {currentLine.syringe_temp.value.toFixed(1)}{" "}
-                                        <span className="text-[10px] font-normal text-gray-500">
+                                        <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400">
                                             {currentLine.syringe_temp.unit}
                                         </span>
                                     </div>
@@ -304,20 +304,20 @@ export default function LiveTelemetryRibbon() {
 
                         {/* Tip & Volume Status */}
                         {mountedSyringe && (
-                            <div className="hidden lg:flex items-center gap-3 text-xs text-gray-500 border-l border-gray-200 pl-4">
+                            <div className="hidden lg:flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-gray-700 pl-4">
                                 <div className="flex items-center gap-1.5">
-                                    <span className="font-medium text-gray-400">Volume:</span>
-                                    <span className="font-semibold text-gray-700">
+                                    <span className="font-medium text-gray-400 dark:text-gray-500">Volume:</span>
+                                    <span className="font-semibold text-gray-700 dark:text-gray-200">
                                         {mountedSyringe.current_volume_cc.toFixed(1)} / {mountedSyringe.barrel_size_cc} cc ({mountedSyringe.volume_percent}%)
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="font-medium text-gray-400">Tip:</span>
-                                    <span className="font-semibold text-gray-700">
+                                    <span className="font-medium text-gray-400 dark:text-gray-500">Tip:</span>
+                                    <span className="font-semibold text-gray-700 dark:text-gray-200">
                                         {mountedSyringe.nozzle_tip.gauge} ({mountedSyringe.nozzle_tip.wear_percentage}% wear)
                                     </span>
                                     {mountedSyringe.nozzle_tip.purge_required && (
-                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                        <span className="rounded bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
                                             PURGE REQ
                                         </span>
                                     )}

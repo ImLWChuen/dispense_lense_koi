@@ -201,14 +201,14 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
     };
 
     return (
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-200 bg-white/90 px-4 sm:px-6 lg:px-8 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-[#111827]/90 px-4 sm:px-6 lg:px-8 backdrop-blur transition-colors duration-200">
             {/* Left side: Hamburger (mobile) + Global Search Trigger */}
             <div className="flex items-center gap-3">
                 {/* Mobile Drawer Trigger */}
                 <button
                     onClick={onOpenMobileMenu}
                     aria-label="Open navigation menu"
-                    className="flex lg:hidden h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition"
+                    className="flex lg:hidden h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition"
                 >
                     <Menu size={20} />
                 </button>
@@ -216,17 +216,17 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                 {/* Global Command Palette Trigger Button */}
                 <button
                     onClick={onOpenCommandPalette}
-                    className="group relative flex h-10 w-52 sm:w-72 md:w-80 lg:w-96 items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm text-gray-400 transition hover:border-[#6d5dfc]/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#6d5dfc]/15"
+                    className="group relative flex h-10 w-52 sm:w-72 md:w-80 lg:w-96 items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 px-3.5 text-sm text-gray-400 dark:text-gray-300 transition hover:border-[#6d5dfc]/50 hover:bg-white dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[#6d5dfc]/15"
                 >
                     <div className="flex items-center gap-2.5 truncate">
-                        <Search size={17} className="text-gray-400 group-hover:text-[#6d5dfc] transition-colors" />
-                        <span className="truncate text-gray-400 group-hover:text-gray-600">
+                        <Search size={17} className="text-gray-400 dark:text-gray-400 group-hover:text-[#6d5dfc] transition-colors" />
+                        <span className="truncate text-gray-400 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200">
                             Search cases, defects, SOPs...
                         </span>
                     </div>
 
                     <div className="hidden sm:flex items-center gap-1 shrink-0">
-                        <kbd className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-400 shadow-2xs">
+                        <kbd className="flex items-center gap-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-400 dark:text-gray-300 shadow-2xs">
                             <span className="text-[11px]">⌘</span>K
                         </kbd>
                     </div>
@@ -377,11 +377,11 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                 </div>
 
                 {/* User Profile */}
-                <div className="flex items-center gap-2.5 sm:gap-3 border-l border-gray-200 pl-3 sm:pl-5">
+                <div className="flex items-center gap-2.5 sm:gap-3 border-l border-gray-200 dark:border-gray-800 pl-3 sm:pl-5">
                     {isAdmin && (
                         <Link
                             href="/admin"
-                            className="hidden md:flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-[#eeebff] px-2.5 py-1 text-xs font-semibold text-[#5848e8] hover:bg-[#5848e8] hover:text-white transition shadow-xs"
+                            className="hidden md:flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/50 bg-[#eeebff] dark:bg-[#5848e8]/20 px-2.5 py-1 text-xs font-semibold text-[#5848e8] dark:text-[#a59bff] hover:bg-[#5848e8] hover:text-white transition shadow-xs"
                             title="Open Admin Oversight Console"
                         >
                             <Shield size={13} />
@@ -389,12 +389,12 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                         </Link>
                     )}
 
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eeebff] text-sm font-semibold uppercase text-[#5848e8]">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eeebff] dark:bg-[#5848e8]/25 text-sm font-semibold uppercase text-[#5848e8] dark:text-[#a59bff]">
                         {initials}
                     </div>
 
                     <div className="hidden sm:block">
-                        <p className="text-sm font-semibold text-gray-900 leading-tight">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight">
                             {firstName} {lastName}
                         </p>
 
@@ -416,7 +416,7 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                     {user && (
                         <button
                             onClick={logout}
-                            className="ml-1 sm:ml-2 rounded-xl p-2 text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"
+                            className="ml-1 sm:ml-2 rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-red-500 transition-colors"
                             title="Sign out"
                         >
                             <LogOut size={18} />

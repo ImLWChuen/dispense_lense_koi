@@ -131,7 +131,7 @@ export default function TelemetryPage() {
     const currentLine = overview?.lines.find((l) => l.line_id === selectedLineId) || overview?.lines[0];
 
     return (
-        <div className="min-h-screen bg-[#f7f8fa] p-4 sm:p-6 lg:p-8">
+        <div className="min-h-screen bg-[#f7f8fa] dark:bg-[#0b0f19] text-gray-900 dark:text-gray-100 p-4 sm:p-6 lg:p-8 transition-colors duration-200">
             <div className="mx-auto max-w-7xl space-y-6">
                 {/* Page Header */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

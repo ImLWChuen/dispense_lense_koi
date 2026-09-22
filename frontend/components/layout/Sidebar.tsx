@@ -72,12 +72,12 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
 
     return (
         <aside
-            className={`fixed left-0 top-0 z-50 flex h-screen w-72 lg:w-64 flex-col border-r border-gray-200 bg-white shadow-xl lg:shadow-none transition-transform duration-200 ease-in-out ${
+            className={`fixed left-0 top-0 z-50 flex h-screen w-72 lg:w-64 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111827] shadow-xl lg:shadow-none transition-all duration-200 ease-in-out ${
                 isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
             }`}
         >
             {/* Brand */}
-            <div className="flex h-20 items-center justify-between border-b border-gray-100 px-6">
+            <div className="flex h-20 items-center justify-between border-b border-gray-100 dark:border-gray-800 px-6">
                 <Link
                     href="/dashboard"
                     onClick={handleLinkClick}
@@ -88,11 +88,11 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                     </div>
 
                     <div>
-                        <h1 className="text-lg font-bold tracking-tight text-gray-900">
+                        <h1 className="text-lg font-bold tracking-tight text-gray-900 dark:text-gray-100">
                             Dispense Lens
                         </h1>
 
-                        <p className="text-[11px] text-gray-500 font-medium">
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
                             Defect Intelligence
                         </p>
                     </div>
@@ -102,7 +102,7 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                 <button
                     onClick={onCloseMobile}
                     aria-label="Close navigation menu"
-                    className="flex lg:hidden h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    className="flex lg:hidden h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                     <X size={18} />
                 </button>
@@ -110,7 +110,7 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 px-3 py-5 overflow-y-auto">
-                <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                     Workspace
                 </p>
 
@@ -128,8 +128,8 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                             onClick={handleLinkClick}
                             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                                 isActive
-                                    ? "bg-[#eeebff] text-[#5848e8]"
-                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                    ? "bg-[#eeebff] dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff]"
+                                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-100"
                             }`}
                         >
                             <Icon size={18} strokeWidth={1.8} />
@@ -140,12 +140,12 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
 
                 {/* Administration section - shown for Admins */}
                 {(isAdmin || user?.role === "admin") && (
-                    <div className="pt-4 mt-4 border-t border-gray-100">
+                    <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
                         <div className="flex items-center justify-between px-3 pb-2">
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6d5dfc]">
                                 Management
                             </p>
-                            <span className="rounded bg-[#eeebff] px-1.5 py-0.5 text-[10px] font-bold text-[#5848e8]">
+                            <span className="rounded bg-[#eeebff] dark:bg-[#5848e8]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#5848e8] dark:text-[#a59bff]">
                                 ADMIN
                             </span>
                         </div>
@@ -155,7 +155,7 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                                 pathname === "/admin" || pathname.startsWith("/admin/")
                                     ? "bg-[#5848e8] text-white shadow-sm shadow-indigo-200"
-                                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-100"
                             }`}
                         >
                             <Shield
@@ -170,14 +170,14 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
             </nav>
 
             {/* Bottom */}
-            <div className="border-t border-gray-100 p-3">
+            <div className="border-t border-gray-100 dark:border-gray-800 p-3">
                 <Link
                     href="/settings"
                     onClick={handleLinkClick}
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                         pathname === "/settings"
-                            ? "bg-[#eeebff] text-[#5848e8]"
-                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            ? "bg-[#eeebff] dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff]"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-100"
                     }`}
                 >
                     <Settings size={18} strokeWidth={1.8} />

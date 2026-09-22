@@ -28,7 +28,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     }, []);
 
     return (
-        <div className="min-h-screen bg-[#f7f8fa]">
+        <div className="min-h-screen bg-[#f7f8fa] dark:bg-[#0b0f19] text-gray-900 dark:text-gray-100 transition-colors duration-200">
             {/* Sidebar (Desktop fixed rail & Mobile slide-over drawer) */}
             <Sidebar
                 isMobileOpen={isMobileMenuOpen}
