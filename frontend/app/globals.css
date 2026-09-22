@@ -37,13 +37,13 @@ html.dark {
   --background: #0b0f19;
   --foreground: #f3f4f6;
 
-  --card: #111827;
+  --card: #141b29;
   --card-foreground: #f9fafb;
 
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
+  --muted: #1c2638;
+  --muted-foreground: #9ca3af;
 
-  --border: #1f2937;
+  --border: #232d3f;
 }
 
 * {
@@ -59,7 +59,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 button,
@@ -79,229 +79,240 @@ button {
 }
 
 /* ==========================================================================
-   Comprehensive Dark Mode Surface & Utility Inversions
-   Ensures seamless, high-contrast dark mode across all cleanroom dashboard views
+   WORKSTATION APPEARANCE: DARK MODE ("Low-Glare Night")
+   Deep obsidian tones reducing eye fatigue on cleanroom microscope displays.
    ========================================================================== */
 
-html.dark {
-  /* Page backgrounds */
-  .bg-\[\#f7f8fa\] {
-    background-color: #0b0f19 !important;
-  }
+html.dark body,
+html.dark .bg-\[\#f7f8fa\],
+html.dark .bg-gray-50,
+html.dark .bg-slate-50 {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
 
-  /* Card and Panel Surfaces */
-  .bg-white {
-    background-color: #111827;
-  }
+html.dark .bg-white,
+html.dark aside,
+html.dark header {
+  background-color: #141b29 !important;
+  color: #f1f5f9 !important;
+}
 
-  .bg-white\/90 {
-    background-color: rgba(17, 24, 39, 0.9);
-  }
+html.dark .bg-gray-100 {
+  background-color: #1c2638 !important;
+}
 
-  .bg-white\/95 {
-    background-color: rgba(17, 24, 39, 0.95);
-  }
+html.dark .bg-gray-200 {
+  background-color: #27344c !important;
+}
 
-  .bg-gray-50,
-  .bg-gray-50\/50,
-  .bg-gray-50\/60,
-  .bg-gray-50\/70 {
-    background-color: #161e2e;
-  }
+/* Border overrides */
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-slate-100,
+html.dark .border-slate-200 {
+  border-color: #232d3f !important;
+}
 
-  .bg-gray-100,
-  .bg-gray-100\/70,
-  .bg-gray-100\/80 {
-    background-color: #1f2937;
-  }
+html.dark .divide-gray-100 > * + *,
+html.dark .divide-gray-200 > * + * {
+  border-color: #232d3f !important;
+}
 
-  /* Text Colors */
-  .text-gray-900 {
-    color: #f9fafb;
-  }
+/* Typography overrides */
+html.dark .text-gray-900,
+html.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
 
-  .text-gray-800 {
-    color: #f3f4f6;
-  }
+html.dark .text-gray-800,
+html.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
 
-  .text-gray-700 {
-    color: #e2e8f0;
-  }
+html.dark .text-gray-700,
+html.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
 
-  .text-gray-600 {
-    color: #cbd5e1;
-  }
+html.dark .text-gray-600,
+html.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
 
-  .text-gray-500 {
-    color: #94a3b8;
-  }
+html.dark .text-gray-500,
+html.dark .text-slate-500 {
+  color: #64748b !important;
+}
 
-  .text-gray-400 {
-    color: #64748b;
-  }
+html.dark .text-gray-400,
+html.dark .text-slate-400 {
+  color: #475569 !important;
+}
 
-  /* Borders */
-  .border-gray-200,
-  .border-gray-200\/80 {
-    border-color: #1f2937;
-  }
+/* Hover state overrides */
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-slate-50:hover {
+  background-color: #1b2336 !important;
+}
 
-  .border-gray-100 {
-    border-color: #1a2234;
-  }
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #222d42 !important;
+}
 
-  .divide-gray-50 > :not([hidden]) ~ :not([hidden]),
-  .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
-  .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
-    border-color: #1f2937;
-  }
+html.dark .hover\:text-gray-900:hover {
+  color: #ffffff !important;
+}
 
-  /* Hover States */
-  .hover\:bg-gray-50:hover {
-    background-color: #1e293b;
-  }
+/* Input, Select & Textarea overrides */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark select,
+html.dark textarea {
+  background-color: #172030 !important;
+  border-color: #2c384e !important;
+  color: #f8fafc !important;
+}
 
-  .hover\:bg-gray-100:hover,
-  .hover\:bg-gray-100\/80:hover {
-    background-color: #1f2937;
-  }
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #475569 !important;
+}
 
-  .hover\:text-gray-900:hover {
-    color: #ffffff;
-  }
+/* Tables in dark mode */
+html.dark table th {
+  background-color: #101623 !important;
+  color: #94a3b8 !important;
+  border-color: #232d3f !important;
+}
 
-  .hover\:text-gray-700:hover {
-    color: #f8fafc;
-  }
+html.dark table td {
+  border-color: #232d3f !important;
+}
 
-  .hover\:text-gray-600:hover {
-    color: #e2e8f0;
-  }
+html.dark table tr:hover td {
+  background-color: #192336 !important;
+}
 
-  /* Accent & Brand Elements in Dark Mode */
-  .bg-\[\#eeebff\] {
-    background-color: rgba(109, 93, 252, 0.18);
-  }
+/* Purple and Brand accent cards in dark mode */
+html.dark .bg-\[\#faf9ff\] {
+  background-color: #161b30 !important;
+}
 
-  .bg-\[\#eeebff\]\/20,
-  .bg-\[\#eeebff\]\/30 {
-    background-color: rgba(109, 93, 252, 0.15);
-  }
+html.dark .border-\[\#ded9ff\] {
+  border-color: #2c3660 !important;
+}
 
-  .text-\[\#5848e8\] {
-    color: #9c8fff;
-  }
+html.dark .bg-\[\#eeebff\] {
+  background-color: #212852 !important;
+}
 
-  /* Forms and Controls */
-  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
-  textarea,
-  select {
-    background-color: #161e2e;
-    color: #f9fafb;
-    border-color: #374151;
-  }
+html.dark .text-\[\#6d5dfc\],
+html.dark .text-\[\#5848e8\] {
+  color: #9b8eff !important;
+}
 
-  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):focus,
-  textarea:focus,
-  select:focus {
-    background-color: #1a2336;
-    border-color: #6d5dfc;
-  }
+/* Cleanroom badges & alert pills */
+html.dark .bg-emerald-50,
+html.dark .bg-green-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
 
-  input::placeholder,
-  textarea::placeholder {
-    color: #64748b;
-  }
+html.dark .text-emerald-700,
+html.dark .text-emerald-600 {
+  color: #34d399 !important;
+}
 
-  /* Status Badges in Dark Mode */
-  .bg-emerald-50,
-  .bg-emerald-100 {
-    background-color: rgba(16, 185, 129, 0.15);
-  }
-  .text-emerald-700,
-  .text-emerald-800,
-  .text-emerald-600 {
-    color: #34d399;
-  }
-  .border-emerald-200 {
-    border-color: rgba(16, 185, 129, 0.3);
-  }
+html.dark .bg-amber-50,
+html.dark .bg-yellow-50,
+html.dark .bg-yellow-100 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
 
-  .bg-amber-50,
-  .bg-amber-100 {
-    background-color: rgba(245, 158, 11, 0.15);
-  }
-  .text-amber-700,
-  .text-amber-800,
-  .text-amber-600 {
-    color: #fbbf24;
-  }
-  .border-amber-200 {
-    border-color: rgba(245, 158, 11, 0.3);
-  }
+html.dark .text-amber-700,
+html.dark .text-yellow-700,
+html.dark .text-amber-600 {
+  color: #fbbf24 !important;
+}
 
-  .bg-rose-50,
-  .bg-rose-100 {
-    background-color: rgba(244, 63, 94, 0.15);
-  }
-  .text-rose-700,
-  .text-rose-800,
-  .text-rose-600 {
-    color: #fb7185;
-  }
-  .border-rose-200 {
-    border-color: rgba(244, 63, 94, 0.3);
-  }
+html.dark .bg-red-50,
+html.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
 
-  .bg-blue-50,
-  .bg-blue-100 {
-    background-color: rgba(59, 130, 246, 0.15);
-  }
-  .text-blue-700,
-  .text-blue-800,
-  .text-blue-600 {
-    color: #60a5fa;
-  }
-  .border-blue-200 {
-    border-color: rgba(59, 130, 246, 0.3);
-  }
+html.dark .text-red-700,
+html.dark .text-red-600 {
+  color: #f87171 !important;
+}
 
-  .bg-purple-50,
-  .bg-purple-100 {
-    background-color: rgba(168, 85, 247, 0.15);
-  }
-  .text-purple-700,
-  .text-purple-800 {
-    color: #c084fc;
-  }
-  .border-purple-200 {
-    border-color: rgba(168, 85, 247, 0.3);
-  }
+html.dark .bg-blue-50,
+html.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
 
-  .bg-indigo-50,
-  .bg-indigo-100 {
-    background-color: rgba(99, 102, 241, 0.15);
-  }
-  .text-indigo-700 {
-    color: #818cf8;
-  }
-  .border-indigo-200 {
-    border-color: rgba(99, 102, 241, 0.3);
-  }
+html.dark .text-blue-700,
+html.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
 
-  .bg-cyan-50 {
-    background-color: rgba(6, 182, 212, 0.15);
-  }
-  .text-cyan-600 {
-    color: #22d3ee;
-  }
+/* ==========================================================================
+   WORKSTATION APPEARANCE: INTERFACE DENSITY ("Compact Cleanroom")
+   Denser data tables and tight padding for 1080p touch terminals.
+   ========================================================================== */
 
-  /* Subtle Ambient Shadows */
-  .shadow-sm,
-  .shadow-md,
-  .shadow-lg,
-  .shadow-xl,
-  .shadow-2xl {
-    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  }
+html.density-compact .p-8 {
+  padding: 1.25rem !important;
+}
+
+html.density-compact .p-7 {
+  padding: 1rem !important;
+}
+
+html.density-compact .p-6 {
+  padding: 0.875rem !important;
+}
+
+html.density-compact .p-5 {
+  padding: 0.75rem !important;
+}
+
+html.density-compact .p-4 {
+  padding: 0.625rem !important;
+}
+
+html.density-compact .space-y-6 > * + * {
+  margin-top: 0.875rem !important;
+}
+
+html.density-compact .space-y-5 > * + * {
+  margin-top: 0.75rem !important;
+}
+
+html.density-compact .gap-6 {
+  gap: 0.875rem !important;
+}
+
+html.density-compact .gap-4 {
+  gap: 0.625rem !important;
+}
+
+html.density-compact table td,
+html.density-compact table th {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  font-size: 0.8125rem !important;
+}
+
+html.density-compact .py-2\.5 {
+  padding-top: 0.375rem !important;
+  padding-bottom: 0.375rem !important;
+}
+
+html.density-compact .py-2 {
+  padding-top: 0.3125rem !important;
+  padding-bottom: 0.3125rem !important;
+}
+
+html.density-compact .h-20 {
+  height: 3.75rem !important;
 }

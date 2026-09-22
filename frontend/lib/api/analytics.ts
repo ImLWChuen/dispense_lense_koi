@@ -90,6 +90,79 @@ export interface AnalyticsEvent {
     [key: string]: unknown;
 }
 
+// Shared singleton SSE connection state
+let sharedEventSource: EventSource | null = null;
+const sseListeners = new Set<(event: AnalyticsEvent) => void>();
+let consecutiveFailures = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cleanupSharedEventSource() {
+    if (sharedEventSource) {
+        sharedEventSource.onmessage = null;
+        sharedEventSource.onerror = null;
+        sharedEventSource.close();
+        sharedEventSource = null;
+    }
+}
+
+function initSharedEventSource() {
+    if (typeof window === "undefined" || sseListeners.size === 0) return;
+    if (sharedEventSource && sharedEventSource.readyState !== EventSource.CLOSED) return;
+
+    if (consecutiveFailures >= 3) {
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                consecutiveFailures = 0;
+                initSharedEventSource();
+            }, 30000);
+        }
+        return;
+    }
+
+    try {
+        const es = new EventSource(`${API_BASE_URL}/analytics/events`);
+        sharedEventSource = es;
+
+        es.onopen = () => {
+            consecutiveFailures = 0;
+        };
+
+        es.onmessage = (event) => {
+            let parsed: AnalyticsEvent;
+            try {
+                parsed = JSON.parse(event.data) as AnalyticsEvent;
+            } catch {
+                parsed = { event_type: "UNKNOWN", raw: event.data };
+            }
+            sseListeners.forEach((listener) => {
+                try {
+                    listener(parsed);
+                } catch {
+                    // Ignore listener errors
+                }
+            });
+        };
+
+        es.onerror = () => {
+            consecutiveFailures++;
+            if (consecutiveFailures === 1) {
+                console.warn("[Analytics SSE] Connection unavailable; will retry with backoff.");
+            }
+            cleanupSharedEventSource();
+            if (sseListeners.size > 0 && consecutiveFailures < 3 && !reconnectTimer) {
+                const delay = consecutiveFailures * 3000;
+                reconnectTimer = setTimeout(() => {
+                    reconnectTimer = null;
+                    initSharedEventSource();
+                }, delay);
+            }
+        };
+    } catch {
+        // SSE not supported
+    }
+}
+
 export const analyticsApi = {
     async getPerformanceAnalytics(period: string = "30d"): Promise<AnalyticsPerformanceResponse> {
         return apiClient.get<AnalyticsPerformanceResponse>(`/analytics/performance?period=${period}`);
@@ -100,28 +173,19 @@ export const analyticsApi = {
     },
 
     subscribeToEvents(onEvent: (event: AnalyticsEvent) => void): () => void {
-        try {
-            const eventSource = new EventSource(`${API_BASE_URL}/analytics/events`);
+        sseListeners.add(onEvent);
+        initSharedEventSource();
 
-            eventSource.onmessage = (event) => {
-                try {
-                    const parsed = JSON.parse(event.data) as AnalyticsEvent;
-                    onEvent(parsed);
-                } catch {
-                    onEvent({ event_type: "UNKNOWN", raw: event.data });
+        return () => {
+            sseListeners.delete(onEvent);
+            if (sseListeners.size === 0) {
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
                 }
-            };
-
-            eventSource.onerror = (err) => {
-                console.warn("Analytics SSE connection warning / reconnecting...", err);
-            };
-
-            return () => {
-                eventSource.close();
-            };
-        } catch (e) {
-            console.warn("SSE not supported in this environment, falling back to polling.", e);
-            return () => {};
-        }
+                consecutiveFailures = 0;
+                cleanupSharedEventSource();
+            }
+        };
     },
 };

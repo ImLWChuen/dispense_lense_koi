@@ -26,11 +26,12 @@ import {
 
 import PageContainer from "@/components/layout/PageContainer";
 import { useAuth } from "@/components/providers/AuthContext";
-import { useTheme } from "@/components/providers/ThemeContext";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { authApi } from "@/lib/api/auth";
 
 export default function SettingsPage() {
     const { user, logout, updateUser } = useAuth();
+    const { theme, density, setTheme, setDensity } = useTheme();
     const [activeTab, setActiveTab] = useState<"profile" | "notifications" | "security" | "appearance">("profile");
 
     // Feedback states
@@ -55,10 +56,6 @@ export default function SettingsPage() {
     const [showNewPass, setShowNewPass] = useState(false);
     const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-    // Appearance state
-    const { theme, setTheme } = useTheme();
-    const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
-
     // Notification preferences state
     const [notificationPrefs, setNotificationPrefs] = useState({
         newCases: true,
@@ -78,11 +75,8 @@ export default function SettingsPage() {
         }
     }, [user]);
 
-    // Load density & notification preferences from localStorage on mount
+    // Load notification preferences from localStorage on mount
     useEffect(() => {
-        const storedDensity = (localStorage.getItem("dispenselens_density") as any) || "comfortable";
-        setDensity(storedDensity);
-
         const storedNotifs = localStorage.getItem("dispenselens_notification_prefs");
         if (storedNotifs) {
             try {
@@ -189,7 +183,6 @@ export default function SettingsPage() {
     // Handle Density Change
     const handleDensitySelect = (selectedDensity: "comfortable" | "compact") => {
         setDensity(selectedDensity);
-        localStorage.setItem("dispenselens_density", selectedDensity);
         setSuccessMessage(`Display density set to ${selectedDensity.toUpperCase()}.`);
     };
 

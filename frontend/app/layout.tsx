@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/components/providers/AuthContext";
-import { ThemeProvider } from "@/components/providers/ThemeContext";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 
 export default function RootLayout({
                                      children,
@@ -22,14 +22,20 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var t = localStorage.getItem('dispenselens_theme') || 'light';
-                var d = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-                if (d) {
+                const t = localStorage.getItem('dispenselens_theme') || 'light';
+                const d = localStorage.getItem('dispenselens_density') || 'comfortable';
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const isDark = t === 'dark' || (t === 'system' && prefersDark);
+                if (isDark) {
                   document.documentElement.classList.add('dark');
                   document.documentElement.setAttribute('data-theme', 'dark');
                 } else {
                   document.documentElement.classList.remove('dark');
                   document.documentElement.setAttribute('data-theme', 'light');
+                }
+                document.documentElement.setAttribute('data-density', d);
+                if (d === 'compact') {
+                  document.documentElement.classList.add('density-compact');
                 }
               } catch (e) {}
             `,
@@ -43,4 +49,4 @@ export default function RootLayout({
       </body>
       </html>
   );
-}
+}
