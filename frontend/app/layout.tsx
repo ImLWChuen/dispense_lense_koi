@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/components/providers/AuthContext";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 
 export default function RootLayout({
                                      children,
@@ -15,9 +16,36 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const t = localStorage.getItem('dispenselens_theme') || 'light';
+                const d = localStorage.getItem('dispenselens_density') || 'comfortable';
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const isDark = t === 'dark' || (t === 'system' && prefersDark);
+                if (isDark) {
+                  document.documentElement.classList.add('dark');
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                  document.documentElement.setAttribute('data-theme', 'light');
+                }
+                document.documentElement.setAttribute('data-density', d);
+                if (d === 'compact') {
+                  document.documentElement.classList.add('density-compact');
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
       </html>
   );

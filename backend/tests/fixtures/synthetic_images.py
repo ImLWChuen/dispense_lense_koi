@@ -50,7 +50,7 @@ def create_proportional_dot_image(
     fmt: str = ".png",
 ) -> bytes:
     """Create an image where dot radius is proportional to image size (e.g. size * normalized_radius)."""
-    radius = int(round(size * normalized_radius))
+    radius = round(size * normalized_radius)
     return create_centered_dot_image(size, radius, bg_color, dot_color, fmt)
 
 

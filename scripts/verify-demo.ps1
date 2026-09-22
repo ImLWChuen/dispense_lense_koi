@@ -72,7 +72,9 @@ try {
 
     if ($statusCode -eq 200) {
         $hasIdentityMatch = ($content -like "*<title>DispenseLens</title>*") -or
+                            ($content -like "*<title>Dispense Lens</title>*") -or
                             ($content -like "*DispenseLens*") -or
+                            ($content -like "*Dispense Lens*") -or
                             ($content -like "*DispenseIQ*")
 
         if ($hasIdentityMatch) {
