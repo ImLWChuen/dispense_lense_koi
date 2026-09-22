@@ -87,7 +87,26 @@ function Get-DatabaseConfigStatus(
 
 # 1. Resolve repository root from script location
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$backendVenvPython = Join-Path $repoRoot "backend\.venv\Scripts\python.exe"
+$backendVenvPythonCandidates = @(
+    @{ Path = (Join-Path $repoRoot "backend\.venv\Scripts\python.exe"); Label = "backend\.venv\Scripts\python.exe" },
+    @{ Path = (Join-Path $repoRoot ".venv\Scripts\python.exe"); Label = ".venv\Scripts\python.exe" },
+    @{ Path = (Join-Path $repoRoot "backend\.venv\bin\python.exe"); Label = "backend\.venv\bin\python.exe" },
+    @{ Path = (Join-Path $repoRoot ".venv\bin\python.exe"); Label = ".venv\bin\python.exe" }
+)
+
+$backendVenvPython = $null
+$backendVenvLabel = "backend\.venv\Scripts\python.exe"
+foreach ($candidate in $backendVenvPythonCandidates) {
+    if (Test-Path $candidate.Path) {
+        $backendVenvPython = $candidate.Path
+        $backendVenvLabel = $candidate.Label
+        break
+    }
+}
+if (-not $backendVenvPython) {
+    $backendVenvPython = Join-Path $repoRoot "backend\.venv\Scripts\python.exe"
+}
+
 $frontendNodeModules = Join-Path $repoRoot "frontend\node_modules\next"
 $composeFile = Join-Path $repoRoot "compose.yaml"
 $rootEnvFile = Join-Path $repoRoot ".env"
@@ -153,10 +172,10 @@ if (Test-Path $composeFile) {
 # ------------------------------------------------------------------------------
 if (Test-Path $backendVenvPython) {
     $pyVer = ((& "$backendVenvPython" --version 2>&1) | Out-String).Trim()
-    Write-Host "[PASS] Backend Python: Found ($pyVer at backend\.venv\Scripts\python.exe)" -ForegroundColor Green
+    Write-Host "[PASS] Backend Python: Found ($pyVer at $backendVenvLabel)" -ForegroundColor Green
 } else {
     Write-Host "[FAIL] Backend Python: Not found at $backendVenvPython" -ForegroundColor Red
-    Write-Host "       Action: In 'backend/', create virtual environment:" -ForegroundColor Yellow
+    Write-Host "       Action: Create virtual environment (.venv or backend\.venv):" -ForegroundColor Yellow
     Write-Host "               python -m venv .venv" -ForegroundColor Yellow
     Write-Host "               .\.venv\Scripts\python.exe -m pip install -e `".[dev]`"" -ForegroundColor Yellow
     $hasFailure = $true
