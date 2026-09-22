@@ -46,6 +46,10 @@ export default function LoginPage() {
                     Authorization: `Bearer ${data.access_token}`,
                 },
             });
+            if (!userResponse.ok) {
+                const errorData = await userResponse.json().catch(() => ({}));
+                throw new Error(errorData.detail || "Failed to fetch user profile");
+            }
             const userData = await userResponse.json();
             
             login(data.access_token, userData);
