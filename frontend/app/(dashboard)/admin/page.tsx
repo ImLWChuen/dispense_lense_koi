@@ -525,7 +525,7 @@ export default function AdminDashboardPage() {
                                                 setCurrentPage(1);
                                             }}
                                             placeholder="Search by name, email, or department..."
-                                            className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50/50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#6d5dfc] focus:bg-white"
+                                            className="h-10 w-full rounded-xl border border-gray-200 dark:border-gray-750 bg-gray-50/50 dark:bg-gray-850 pl-10 pr-4 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition focus:border-[#6d5dfc] focus:bg-white dark:focus:bg-gray-800"
                                         />
                                     </div>
 
@@ -537,7 +537,7 @@ export default function AdminDashboardPage() {
                                                 setRoleFilter(e.target.value);
                                                 setCurrentPage(1);
                                             }}
-                                            className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-[#6d5dfc]"
+                                            className="h-10 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3 text-xs font-medium text-gray-700 dark:text-gray-200 outline-none focus:border-[#6d5dfc]"
                                         >
                                             <option value="ALL">All Roles</option>
                                             <option value="ADMIN">Admin</option>
@@ -553,7 +553,7 @@ export default function AdminDashboardPage() {
                                                 setStatusFilter(e.target.value as any);
                                                 setCurrentPage(1);
                                             }}
-                                            className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-[#6d5dfc]"
+                                            className="h-10 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3 text-xs font-medium text-gray-700 dark:text-gray-200 outline-none focus:border-[#6d5dfc]"
                                         >
                                             <option value="ALL">All Status</option>
                                             <option value="ACTIVE">Active</option>
@@ -802,15 +802,15 @@ export default function AdminDashboardPage() {
                             </div>
 
                             {/* Live Operational Audit Log */}
-                            <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                            <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <Clock size={16} className="text-[#6d5dfc]" />
-                                        <h3 className="font-bold text-gray-900 text-sm">
+                                        <h3 className="font-bold text-gray-900 dark:text-white text-sm">
                                             Recent Operational Activities
                                         </h3>
                                     </div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wider rounded-md bg-gray-100 px-2 py-0.5 text-gray-600">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-gray-600 dark:text-gray-300">
                                         AUDIT TRAIL
                                     </span>
                                 </div>
@@ -824,7 +824,7 @@ export default function AdminDashboardPage() {
                                             value={auditSearch}
                                             onChange={(e) => setAuditSearch(e.target.value)}
                                             placeholder="Search audit actions, titles, actors..."
-                                            className="h-8 w-full rounded-lg border border-gray-200 bg-gray-50/50 pl-8 pr-3 text-xs outline-none focus:border-[#6d5dfc] focus:bg-white transition"
+                                            className="h-8 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-850 pl-8 pr-3 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#6d5dfc] focus:bg-white dark:focus:bg-gray-800 transition"
                                         />
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -833,8 +833,8 @@ export default function AdminDashboardPage() {
                                             onClick={() => setAuditCategory("ALL")}
                                             className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                                                 auditCategory === "ALL"
-                                                    ? "bg-[#eeebff] text-[#5848e8] font-semibold"
-                                                    : "text-gray-500 hover:bg-gray-100"
+                                                    ? "bg-[#eeebff] dark:bg-[#5848e8]/30 text-[#5848e8] dark:text-[#a59bff] font-semibold"
+                                                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-white"
                                             }`}
                                         >
                                             All ({overview?.recent_activities?.length || 0})
@@ -844,8 +844,8 @@ export default function AdminDashboardPage() {
                                             onClick={() => setAuditCategory("CONFIRMATION")}
                                             className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                                                 auditCategory === "CONFIRMATION"
-                                                    ? "bg-purple-100 text-purple-700 font-semibold"
-                                                    : "text-gray-500 hover:bg-gray-100"
+                                                    ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 dark:border dark:border-purple-800/50 font-semibold"
+                                                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-white"
                                             }`}
                                         >
                                             Confirmations
@@ -855,8 +855,8 @@ export default function AdminDashboardPage() {
                                             onClick={() => setAuditCategory("LIFECYCLE")}
                                             className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                                                 auditCategory === "LIFECYCLE"
-                                                    ? "bg-blue-100 text-blue-700 font-semibold"
-                                                    : "text-gray-500 hover:bg-gray-100"
+                                                    ? "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 dark:border dark:border-blue-800/50 font-semibold"
+                                                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-white"
                                             }`}
                                         >
                                             Lifecycle
@@ -869,20 +869,20 @@ export default function AdminDashboardPage() {
                                         filteredActivities.map((act, i) => (
                                             <div
                                                 key={`activity-${act.id || act.type || "item"}-${i}`}
-                                                className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-xs hover:bg-gray-50 transition"
+                                                className="flex items-start gap-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-850 p-3 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                                             >
                                                 <div
                                                     className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
                                                         act.type === "CAUSE_CONFIRMATION"
-                                                            ? "bg-purple-100 text-purple-600"
-                                                            : "bg-blue-100 text-blue-600"
+                                                            ? "bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400"
+                                                            : "bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400"
                                                     }`}
                                                 >
                                                     <CheckCircle2 size={13} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between gap-1">
-                                                        <p className="font-semibold text-gray-900 truncate">
+                                                        <p className="font-semibold text-gray-900 dark:text-white truncate">
                                                             {act.title}
                                                         </p>
                                                         <span className="text-[10px] text-gray-400 shrink-0">
@@ -894,13 +894,13 @@ export default function AdminDashboardPage() {
                                                                 : "Recent"}
                                                         </span>
                                                     </div>
-                                                    <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">
+                                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
                                                         {act.description}
                                                     </p>
                                                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-400">
-                                                        <span className="font-medium text-gray-600">{act.actor}</span>
+                                                        <span className="font-medium text-gray-600 dark:text-gray-300">{act.actor}</span>
                                                         <span>•</span>
-                                                        <span className="uppercase font-mono text-[9px] px-1 rounded bg-gray-200/70 text-gray-600">
+                                                        <span className="uppercase font-mono text-[9px] px-1 rounded bg-gray-200/70 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                                                             {act.type === "CAUSE_CONFIRMATION" ? "Confirmation" : "Lifecycle"}
                                                         </span>
                                                     </div>

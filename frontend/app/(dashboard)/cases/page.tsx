@@ -121,7 +121,7 @@ function CasesContent() {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={loadCases}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3.5 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-gray-800"
                         title="Refresh cases"
                     >
                         <RefreshCw size={15} className={isLoading ? "animate-spin text-[#6d5dfc]" : "text-gray-400"} />
@@ -151,12 +151,12 @@ function CasesContent() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search cases by ID, equipment, defect, or status..."
-                        className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none transition focus:border-[#6d5dfc] focus:ring-1 focus:ring-[#6d5dfc]"
+                        className="w-full rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 py-2.5 pl-10 pr-9 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none transition focus:border-[#6d5dfc] focus:ring-1 focus:ring-[#6d5dfc]"
                     />
                     {searchQuery && (
                         <button
                             onClick={() => setSearchQuery("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                             title="Clear search"
                         >
                             <X size={15} />
@@ -170,7 +170,7 @@ function CasesContent() {
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-8 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-50 focus:border-[#6d5dfc] focus:ring-1 focus:ring-[#6d5dfc] cursor-pointer"
+                        className="appearance-none rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 py-2.5 pl-9 pr-8 text-sm font-medium text-gray-700 dark:text-gray-200 outline-none transition hover:bg-gray-50 dark:hover:bg-gray-800 focus:border-[#6d5dfc] focus:ring-1 focus:ring-[#6d5dfc] cursor-pointer"
                     >
                         <option value="ALL">All Statuses</option>
                         <option value="UNRESOLVED">Unresolved</option>
@@ -182,10 +182,10 @@ function CasesContent() {
             </div>
 
             {/* Match Counter / Active Filter Notice */}
-            <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+            <div className="mt-4 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <p>
-                    Showing <span className="font-semibold text-gray-900">{filteredCases.length}</span> of{" "}
-                    <span className="font-semibold text-gray-900">{cases.length}</span> cases
+                    Showing <span className="font-semibold text-gray-900 dark:text-white">{filteredCases.length}</span> of{" "}
+                    <span className="font-semibold text-gray-900 dark:text-white">{cases.length}</span> cases
                     {searchQuery && <span> matching &quot;{searchQuery}&quot;</span>}
                     {statusFilter !== "ALL" && <span> with status &quot;{formatStatus(statusFilter)}&quot;</span>}
                 </p>
@@ -196,7 +196,7 @@ function CasesContent() {
                             setSearchQuery("");
                             setStatusFilter("ALL");
                         }}
-                        className="text-[#6d5dfc] hover:underline font-medium"
+                        className="text-[#6d5dfc] dark:text-[#a59bff] hover:underline font-medium"
                     >
                         Reset filters
                     </button>
@@ -204,10 +204,10 @@ function CasesContent() {
             </div>
 
             {/* Cases Table */}
-            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full whitespace-nowrap text-left text-sm">
-                        <thead className="bg-gray-50 text-gray-500">
+                        <thead className="bg-gray-50 dark:bg-gray-850 text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
                             <tr>
                                 <th className="px-6 py-4 font-medium">Case ID</th>
                                 <th className="px-6 py-4 font-medium">Defect Type</th>
@@ -217,7 +217,7 @@ function CasesContent() {
                                 <th className="px-6 py-4 font-medium text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 text-gray-700">
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
                             {isLoading ? (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
@@ -267,33 +267,33 @@ function CasesContent() {
                                         "Not recorded";
 
                                     return (
-                                        <tr key={caseItem.case_id} className="transition hover:bg-gray-50/80">
-                                            <td className="px-6 py-4 font-mono font-medium text-gray-900">
+                                        <tr key={caseItem.case_id} className="transition hover:bg-gray-50/80 dark:hover:bg-[#253347]/50">
+                                            <td className="px-6 py-4 font-mono font-medium text-gray-900 dark:text-white">
                                                 #{caseItem.case_id.split("-")[0]}
                                             </td>
-                                            <td className="px-6 py-4 font-medium text-gray-900">
+                                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                                 {caseItem.defect_name || caseItem.defect_code || "Unknown Defect"}
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600">
+                                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
                                                 {eq}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span
                                                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                                                         statusColors[caseItem.issue_condition as keyof typeof statusColors] ||
-                                                        "bg-gray-100 text-gray-700"
+                                                        "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                                                     }`}
                                                 >
                                                     {formatStatus(caseItem.issue_condition)}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-xs text-gray-500">
+                                            <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
                                                 {new Date(caseItem.created_at).toLocaleDateString()}
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <Link
                                                     href={`/diagnosis/${caseItem.case_id}`}
-                                                    className="inline-flex items-center gap-1 font-medium text-[#5848e8] hover:text-[#6d5dfc]"
+                                                    className="inline-flex items-center gap-1 font-medium text-[#5848e8] dark:text-[#a59bff] hover:text-[#6d5dfc] dark:hover:text-white"
                                                 >
                                                     View Details
                                                 </Link>

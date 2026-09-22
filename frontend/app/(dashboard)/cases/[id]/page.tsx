@@ -39,30 +39,30 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         <PageContainer>
             <Link
                 href="/cases"
-                className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition hover:text-gray-900"
+                className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 transition hover:text-gray-900 dark:hover:text-white"
             >
                 <ArrowLeft size={16} />
                 Back to Cases
             </Link>
 
             <div className="mt-6">
-                <p className="text-sm font-medium text-[#6d5dfc]">Case management</p>
-                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">Case Detail</h1>
-                <p className="mt-2 text-sm text-gray-500">
+                <p className="text-sm font-medium text-[#6d5dfc] dark:text-[#a59bff]">Case management</p>
+                <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Case Detail</h1>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     Full lifecycle view of this diagnostic case.
                 </p>
             </div>
 
             {isLoading ? (
-                <div className="flex flex-col items-center justify-center py-24 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-24 text-gray-500 dark:text-gray-400">
                     <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#6d5dfc]" />
                     <p className="text-sm font-medium">Loading case details...</p>
                 </div>
             ) : error || !caseData ? (
-                <div className="mt-8 rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
+                <div className="mt-8 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-gray-900 p-8 text-center shadow-sm">
                     <AlertCircle className="mx-auto mb-3 h-10 w-10 text-rose-500" />
-                    <h2 className="text-base font-bold text-gray-900">Case Unavailable</h2>
-                    <p className="mb-4 mt-1 text-sm text-gray-600">
+                    <h2 className="text-base font-bold text-gray-900 dark:text-white">Case Unavailable</h2>
+                    <p className="mb-4 mt-1 text-sm text-gray-600 dark:text-gray-300">
                         {error || "The requested case could not be found."}
                     </p>
                     <button
