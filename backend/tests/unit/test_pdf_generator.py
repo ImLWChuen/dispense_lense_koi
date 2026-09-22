@@ -650,3 +650,34 @@ def test_render_case_report_pdf_multi_page_and_page_numbering():
 
     last_page_text = reader.pages[-1].extract_text()
     assert f"Page {total_pages} of {total_pages}" in last_page_text
+
+
+def test_render_case_report_pdf_nsw_bonus_challenges_content():
+    """Verify NSW Challenge branding, Quality Assessment table, and Learning Insight banner in PDF."""
+    report = _make_sample_report(with_history=True)
+    pdf_bytes = render_case_report_pdf(report)
+
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    full_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    # 1. NSW Branding Header
+    assert "AI HORIZON SOLUTION CHALLENGE 2026" in full_text
+    assert "NSW AUTOMATION" in full_text
+    assert "AI Dispensing Defect Detective" in full_text
+    assert "Helping Manufacturers Identify Dispensing Problems Faster with AI" in full_text
+    assert "Dispense Lens Diagnostic Case Report" in full_text
+
+    # 2. Bonus Challenge 2: Dispensing Quality Assessment
+    assert "Dispensing Quality Assessment (NSW Bonus Challenge 2)" in full_text
+    assert "Overall Quality Score: 78 / 100" in full_text
+    assert "Shape Consistency" in full_text
+    assert "Size Consistency" in full_text
+    assert "Dispensing Position" in full_text
+    assert "Defect Risk" in full_text
+
+    # 3. Bonus Challenge 3: AI Learning Database Insight
+    assert "AI Learning Database Insight (NSW Bonus Challenge 3)" in full_text
+    assert "Similar problems occurred 12 times previously" in full_text
+    assert "In 8 cases" in full_text
+    assert "air trapped inside the syringe" in full_text
+
