@@ -88,12 +88,12 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                     </div>
 
                     <div>
-                        <h1 className="text-lg font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                            Dispense Lens
+                        <h1 className="text-sm font-bold tracking-tight text-gray-900 dark:text-gray-100 leading-tight">
+                            AI Defect Detective
                         </h1>
 
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-                            Defect Intelligence
+                        <p className="text-[10px] text-[#6d5dfc] dark:text-[#a59bff] font-semibold tracking-wide uppercase">
+                            NSW Automation
                         </p>
                     </div>
                 </Link>
@@ -168,6 +168,16 @@ export default function Sidebar({ isMobileOpen = false, onCloseMobile }: Sidebar
                     </div>
                 )}
             </nav>
+
+            {/* Tagline / Competition Banner */}
+            <div className="mx-3 mb-2 rounded-xl bg-gradient-to-br from-[#faf9ff] to-[#f0eeff] dark:from-gray-800/60 dark:to-gray-800/40 p-2.5 border border-[#e4dffd] dark:border-gray-700/60">
+                <p className="text-[10px] font-bold text-[#5848e8] dark:text-[#a59bff] uppercase tracking-wider">
+                    AI Horizon 2026 • NSW Automation
+                </p>
+                <p className="mt-0.5 text-[10px] leading-snug text-gray-600 dark:text-gray-300 italic">
+                    “Helping Manufacturers Identify Dispensing Problems Faster with AI”
+                </p>
+            </div>
 
             {/* Bottom */}
             <div className="border-t border-gray-100 dark:border-gray-800 p-3">

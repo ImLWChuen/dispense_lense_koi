@@ -26,6 +26,7 @@ from app.schemas.diagnosis import (
     CandidateCause,
     CauseConclusion,
     EvidenceSource,
+    EvidenceStrength,
     IssueCondition,
     Question,
     StructuredCase,
@@ -246,9 +247,26 @@ class ExplanationService:
             lines.append(f"Root cause confirmed: {names} (explicitly confirmed by technician).")
 
         if top_cause:
+            # Step 4 NSW format: explain WHY it provides the recommendation
+            strongest_supp = sorted(
+                top_cause.supporting_evidence,
+                key=lambda e: (
+                    1 if getattr(e, "strength", None) in (EvidenceStrength.STRONG, "STRONG") else 0,
+                    getattr(e, "score_contribution", 0.0) or 0.0,
+                ),
+                reverse=True,
+            )
+            why_clause = ""
+            if strongest_supp and strongest_supp[0].explanation:
+                expl = strongest_supp[0].explanation.strip()
+                if expl:
+                    why_clause = f" because {expl[0].lower() + expl[1:] if expl[0].isupper() else expl}"
+            if not why_clause:
+                why_clause = " based on current defect symptom observations and process likelihood."
+
             lines.append(
                 f"{top_cause.cause_name} is currently the highest-supported hypothesis "
-                f"with evidence support {top_cause.score:.0f}/100."
+                f"with evidence support {top_cause.score:.0f}/100{why_clause}"
             )
             if top_cause.supporting_evidence:
                 supp_count = len(top_cause.supporting_evidence)

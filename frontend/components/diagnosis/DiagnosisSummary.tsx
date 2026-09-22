@@ -7,16 +7,73 @@ interface DiagnosisSummaryProps {
     status?: string;
 }
 
+const DEFECT_POSSIBLE_SYMPTOMS: Record<string, string[]> = {
+    D01_TOO_LITTLE: [
+        "Dispensed volume is consistently less than target specification (< 80%)",
+        "Thin deposit profile with insufficient substrate coverage",
+        "Higher risk of cold joint or mechanical detachment",
+    ],
+    D02_TOO_MUCH: [
+        "Dispensed volume consistently exceeds target specification (> 120%)",
+        "Tall or bulging deposit profile with excessive fluid height",
+        "Material spreading toward adjacent keep-out zones",
+    ],
+    D03_INCONSISTENT_SIZE: [
+        "Some dispensing dots are larger than nominal",
+        "Some dispensing dots are smaller than nominal",
+        "Dispensing results are not shot-to-shot repeatable",
+    ],
+    D04_MISSING_DOTS: [
+        "One or more designated positions receive zero material delivery",
+        "Blank substrate pads observed during post-dispense inspection",
+        "Intermittent shot starvation or nozzle valve skip",
+    ],
+    D05_SPREADING: [
+        "Material wets out uncontrollably past target diameter into keep-out zones",
+        "Loss of crisp dot boundary definition with edge bleeding / haloing",
+        "Substrate surface contamination or low fluid viscosity observed",
+    ],
+    D06_BUBBLES_ABNORMAL_SHAPE: [
+        "Visible air void or cavity trapped inside the dispensed deposit",
+        "Asymmetric elongation, stringing tails, or satellite droplets",
+        "Deposit shape deviates significantly from circular symmetry",
+    ],
+};
+
 export default function DiagnosisSummary({
     caseData,
     status: externalStatus,
 }: DiagnosisSummaryProps) {
     const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
+    const defectCode = caseData?.defect_code || (diagnosis as any)?.defect_code || "";
     const defect = diagnosis?.defect_name || diagnosis?.defect || "No defect identified";
     const defectDescription = caseData?.description || "No problem description recorded.";
     const topScore = typeof diagnosis?.ranked_causes?.[0]?.score === "number"
         ? Math.round(diagnosis.ranked_causes[0].score)
         : null;
+
+    // Retrieve canonical symptoms for identified defect (Step 2 - NSW Automation)
+    let symptoms: string[] = [];
+    if (defectCode && DEFECT_POSSIBLE_SYMPTOMS[defectCode]) {
+        symptoms = DEFECT_POSSIBLE_SYMPTOMS[defectCode];
+    } else {
+        // Fallback matching by defect name
+        const lowerName = defect.toLowerCase();
+        if (lowerName.includes("inconsistent")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D03_INCONSISTENT_SIZE"];
+        } else if (lowerName.includes("little") || lowerName.includes("undersize")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D01_TOO_LITTLE"];
+        } else if (lowerName.includes("much") || lowerName.includes("oversize")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D02_TOO_MUCH"];
+        } else if (lowerName.includes("missing")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D04_MISSING_DOTS"];
+        } else if (lowerName.includes("spread")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D05_SPREADING"];
+        } else if (lowerName.includes("bubble") || lowerName.includes("abnormal")) {
+            symptoms = DEFECT_POSSIBLE_SYMPTOMS["D06_BUBBLES_ABNORMAL_SHAPE"];
+        }
+    }
+
     const computedStatus = caseData?.issue_condition === "RECOVERY_PENDING_VERIFICATION"
         ? "Pending Verification"
         : caseData?.issue_condition === "RESOLVED"
@@ -40,10 +97,14 @@ export default function DiagnosisSummary({
                     </div>
 
                     <div>
-                        <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                            Diagnosis Summary
-                        </h2>
-
+                        <div className="flex items-center gap-2">
+                            <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider">
+                                Step 2
+                            </span>
+                            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                                Diagnosis Summary
+                            </h2>
+                        </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             {caseIdText}
                         </p>
@@ -56,12 +117,12 @@ export default function DiagnosisSummary({
             </div>
 
             <div className="p-6">
-                <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-transparent dark:border-gray-800 p-4">
+                <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-gray-100 dark:border-gray-800 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
-                        Identified Defect
+                        Identified Dispensing Defect
                     </p>
 
-                    <p className="mt-2 text-lg font-bold text-gray-900 dark:text-white">
+                    <p className="mt-1.5 text-lg font-bold text-gray-900 dark:text-white">
                         {defect}
                     </p>
 
@@ -72,17 +133,34 @@ export default function DiagnosisSummary({
 
                 <div className="mt-5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
-                        Top Evidence Support
+                        Defect Confidence Level
                     </p>
 
                     <div className="mt-2">
                         {topScore !== null ? (
-                            <ConfidenceScore score={topScore} size="lg" label="Evidence Support" />
+                            <ConfidenceScore score={topScore} size="lg" label="Confidence Level" showStars={true} />
                         ) : (
                             <p className="text-sm text-gray-500 dark:text-gray-400">No ranked causes evaluated</p>
                         )}
                     </div>
                 </div>
+
+                {/* Step 2: Characteristic Symptoms */}
+                {symptoms.length > 0 && (
+                    <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-[#faf9ff] dark:bg-indigo-950/20 p-3.5">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                            Possible Defect Symptoms:
+                        </p>
+                        <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                            {symptoms.map((symptom, idx) => (
+                                <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-[#6d5dfc] dark:text-[#a59bff] font-bold shrink-0">•</span>
+                                    <span>{symptom}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
                 <div className="mt-5 grid grid-cols-2 gap-4">
                     <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-transparent dark:border-gray-800 p-3 text-center">

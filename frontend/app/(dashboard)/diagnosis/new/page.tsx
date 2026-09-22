@@ -72,6 +72,24 @@ export default function NewDiagnosisPage() {
                 });
             }
 
+            if (data.recentChange && data.recentChange !== "none") {
+                const obsType =
+                    data.recentChange === "material_refilled"
+                        ? "material_state"
+                        : data.recentChange === "nozzle_changed"
+                        ? "nozzle_condition"
+                        : data.recentChange === "parameters_changed"
+                        ? "process_parameter"
+                        : "equipment_condition";
+
+                observations.push({
+                    observation_type: obsType,
+                    value: data.recentChange,
+                    source: "USER",
+                    statement_type: "USER_OBSERVATION",
+                });
+            }
+
             // 3. Assemble CreateCaseRequest with controlled material and machine context
             const request: CreateCaseRequest = {
                 defect_code: data.defect || undefined,
