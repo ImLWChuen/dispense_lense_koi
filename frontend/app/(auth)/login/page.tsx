@@ -63,15 +63,18 @@ export default function LoginPage() {
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm backdrop-blur-xl">
-            <div className="flex flex-col items-center mb-8">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6d5dfc] text-white mb-4">
+            <div className="flex flex-col items-center mb-7 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6d5dfc] text-white mb-3 shadow-md shadow-indigo-200">
                     <Activity size={24} />
                 </div>
-                <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-                    Welcome back
+                <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-0.5 text-[11px] font-semibold text-[#5848e8] mb-2 uppercase tracking-wide">
+                    AI Horizon 2026 • NSW Automation
+                </span>
+                <h1 className="text-xl font-bold tracking-tight text-gray-900">
+                    AI Dispensing Defect Detective
                 </h1>
-                <p className="mt-1 text-sm text-gray-500">
-                    Sign in to your Dispense Lens account
+                <p className="mt-1 text-xs text-gray-500 italic max-w-xs">
+                    “Helping Manufacturers Identify Dispensing Problems Faster with AI”
                 </p>
             </div>
 

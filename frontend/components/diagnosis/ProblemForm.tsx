@@ -20,6 +20,7 @@ export interface ProblemFormData {
     depositSize: string;
     frequency: string;
     location: string;
+    recentChange?: string;
 }
 
 const defectTypes = [
@@ -145,6 +146,14 @@ const locationOptions = [
     { label: "Varies across points", value: "varies_across_points" },
 ];
 
+const recentChangeOptions = [
+    { label: "No recent changes / Normal operation", value: "none" },
+    { label: "Material refilled or new batch loaded", value: "material_refilled" },
+    { label: "Nozzle cleaned, replaced, or adjusted", value: "nozzle_changed" },
+    { label: "Dispensing parameters or pressure modified", value: "parameters_changed" },
+    { label: "Equipment restarted or serviced", value: "equipment_serviced" },
+];
+
 interface ProblemFormProps {
     onSubmit?: (data: ProblemFormData) => void;
     isSubmitting?: boolean;
@@ -158,6 +167,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
     const [depositSize, setDepositSize] = useState("");
     const [frequency, setFrequency] = useState("");
     const [location, setLocation] = useState("");
+    const [recentChange, setRecentChange] = useState("");
 
     const handleSubmit = () => {
         onSubmit?.({
@@ -168,6 +178,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
             depositSize,
             frequency,
             location,
+            recentChange,
         });
     };
 
@@ -322,29 +333,36 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Observations */}
+            {/* Step 1 – Dispensing Problem Discovery */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="text-base font-semibold text-gray-900">
-                    Manual Observations
-                </h2>
-
-                <p className="mt-1 text-xs text-gray-500">
-                    Provide additional canonical observations to improve diagnostic accuracy
-                </p>
-
-                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            Deposit Size
-                        </label>
+                        <div className="flex items-center gap-2">
+                            <span className="rounded-md bg-indigo-50 text-[#5848e8] border border-indigo-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                Step 1 • NSW Automation
+                            </span>
+                            <h2 className="text-base font-semibold text-gray-900">
+                                Dispensing Problem Discovery
+                            </h2>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                            Smart discovery questions to establish defect characteristics and process variables
+                        </p>
+                    </div>
+                </div>
 
+                <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-700">
+                            1. Dispensing Amount (Size)
+                        </label>
+                        <p className="text-[10px] text-gray-400 mb-1.5">Too large, too small, or varying?</p>
                         <select
                             value={depositSize}
                             onChange={(e) => setDepositSize(e.target.value)}
-                            className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">No observation (unremarkable / normal)</option>
-
+                            <option value="">Select size observation...</option>
                             {depositSizeOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
                                     {opt.label}
@@ -354,17 +372,16 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            Frequency Pattern
+                        <label className="block text-xs font-semibold text-gray-700">
+                            2. Defect Frequency
                         </label>
-
+                        <p className="text-[10px] text-gray-400 mb-1.5">Continuously or occasionally?</p>
                         <select
                             value={frequency}
                             onChange={(e) => setFrequency(e.target.value)}
-                            className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">Select pattern (optional)</option>
-
+                            <option value="">Select frequency pattern...</option>
                             {frequencyOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
                                     {opt.label}
@@ -374,17 +391,35 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            Location Pattern
+                        <label className="block text-xs font-semibold text-gray-700">
+                            3. Recent Changes
                         </label>
+                        <p className="text-[10px] text-gray-400 mb-1.5">Material, nozzle, or parameters?</p>
+                        <select
+                            value={recentChange}
+                            onChange={(e) => setRecentChange(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs outline-none transition focus:border-[#6d5dfc] focus:bg-white"
+                        >
+                            <option value="">Select recent change...</option>
+                            {recentChangeOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-700">
+                            4. Defect Location
+                        </label>
+                        <p className="text-[10px] text-gray-400 mb-1.5">One location or across all points?</p>
                         <select
                             value={location}
                             onChange={(e) => setLocation(e.target.value)}
-                            className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white"
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs outline-none transition focus:border-[#6d5dfc] focus:bg-white"
                         >
-                            <option value="">Select pattern (optional)</option>
-
+                            <option value="">Select location pattern...</option>
                             {locationOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
                                     {opt.label}
