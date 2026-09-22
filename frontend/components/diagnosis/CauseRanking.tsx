@@ -9,26 +9,26 @@ interface CauseRankingProps {
 export default function CauseRanking({ causes = [], revision = 1 }: CauseRankingProps) {
     if (causes.length === 0) {
         return (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <p className="text-sm text-gray-500">No causes identified yet.</p>
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                <p className="text-sm text-gray-500 dark:text-gray-400">No causes identified yet.</p>
             </div>
         );
     }
 
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-base font-semibold text-gray-900">
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                         Ranked Candidate Causes
                     </h2>
 
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         Causes ranked by cumulative evidence score
                     </p>
                 </div>
 
-                <span className="rounded-full bg-[#eeebff] px-2.5 py-1 text-[10px] font-semibold text-[#5848e8]">
+                <span className="rounded-full bg-[#eeebff] dark:bg-[#5848e8]/30 px-2.5 py-1 text-[10px] font-semibold text-[#5848e8] dark:text-[#a59bff]">
                     REVISION {revision}
                 </span>
             </div>

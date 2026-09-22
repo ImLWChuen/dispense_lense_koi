@@ -123,7 +123,7 @@ function ReportsContent() {
                     <button
                         onClick={reloadReports}
                         disabled={isLoading}
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 px-3.5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         title="Refresh reports"
                     >
                         <RefreshCw size={16} className={isLoading ? "animate-spin text-[#6d5dfc]" : "text-gray-500"} />
@@ -186,30 +186,30 @@ function ReportsContent() {
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search reports by title, report ID, or case ref..."
-                                className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-9 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#6d5dfc] focus:ring-2 focus:ring-[#6d5dfc]/10"
+                                className="h-10 w-full rounded-xl border border-gray-200 dark:border-gray-750 bg-white dark:bg-gray-850 pl-10 pr-9 text-sm text-gray-900 dark:text-white outline-none transition placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-[#6d5dfc] focus:ring-2 focus:ring-[#6d5dfc]/10"
                             />
                             {searchQuery && (
                                 <button
                                     onClick={() => setSearchQuery("")}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                     title="Clear search"
                                 >
                                     <X size={15} />
                                 </button>
                             )}
                         </div>
-                        <div className="text-sm text-gray-500">
-                            Showing <span className="font-semibold text-gray-900">{filteredReports.length}</span> reports
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                            Showing <span className="font-semibold text-gray-900 dark:text-white">{filteredReports.length}</span> reports
                         </div>
                     </div>
 
                     {/* Reports Table */}
-                    <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                    <div className="mt-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
                         {filteredReports.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <AlertCircle className="h-10 w-10 text-gray-300 mb-3" />
-                                <p className="text-base font-semibold text-gray-900">No reports found</p>
-                                <p className="mt-1 text-sm text-gray-500">
+                                <p className="text-base font-semibold text-gray-900 dark:text-white">No reports found</p>
+                                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                                     {searchQuery ? "No reports matched your search criteria." : "No diagnostic cases have been recorded yet."}
                                 </p>
                             </div>
@@ -217,7 +217,7 @@ function ReportsContent() {
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead>
-                                        <tr className="border-b border-gray-100 bg-gray-50/50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-850 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                                             <th className="px-6 py-3.5">Report ID</th>
                                             <th className="px-6 py-3.5">Title</th>
                                             <th className="px-6 py-3.5">Case Ref</th>
@@ -227,32 +227,32 @@ function ReportsContent() {
                                             <th className="px-6 py-3.5 text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100">
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {filteredReports.map((report) => {
                                             const statusPresentation = getReportStatusPresentation(report.isResolved);
                                             return (
                                                 <tr
                                                     key={report.id}
-                                                    className="border-b border-gray-50 transition hover:bg-gray-50/80"
+                                                    className="border-b border-gray-50 dark:border-gray-800/60 transition hover:bg-gray-50/80 dark:hover:bg-[#253347]/50"
                                                 >
-                                                    <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900">
+                                                    <td className="px-6 py-4 font-mono text-xs font-medium text-gray-900 dark:text-white">
                                                         {report.displayId}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <Link
                                                             href={`/reports/${report.id}`}
-                                                            className="text-sm font-medium text-gray-800 hover:underline block max-w-xs truncate"
+                                                            className="text-sm font-medium text-gray-800 dark:text-gray-100 hover:text-[#6d5dfc] dark:hover:text-[#a59bff] hover:underline block max-w-xs truncate"
                                                             title={report.title}
                                                         >
                                                             {report.title}
                                                         </Link>
                                                     </td>
-                                                    <td className="px-6 py-4 font-mono text-xs text-gray-600">
+                                                    <td className="px-6 py-4 font-mono text-xs text-gray-600 dark:text-gray-300">
                                                         {report.caseRef}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                                                            <span className="rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-gray-300">
                                                                 {report.type}
                                                             </span>
                                                             <Link
@@ -284,20 +284,20 @@ function ReportsContent() {
                                                             <button
                                                                 onClick={(e) => handleDownloadPdf(e, report.id)}
                                                                 disabled={downloadingId === report.id}
-                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white disabled:opacity-50"
                                                                 title="Download Case PDF"
                                                             >
                                                                 {downloadingId === report.id ? (
                                                                     <Loader2 size={13} className="animate-spin text-[#6d5dfc]" />
                                                                 ) : (
-                                                                    <Download size={13} className="text-gray-500" />
+                                                                    <Download size={13} className="text-gray-500 dark:text-gray-400" />
                                                                 )}
                                                                 PDF
                                                             </button>
 
                                                             <Link
                                                                 href={`/reports/${report.id}?format=8d`}
-                                                                className="inline-flex items-center gap-1 rounded-lg border border-[#6d5dfc]/30 bg-[#6d5dfc]/5 px-2.5 py-1.5 text-xs font-semibold text-[#5848e8] transition hover:bg-[#6d5dfc]/15"
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-[#6d5dfc]/30 bg-[#6d5dfc]/5 dark:bg-[#6d5dfc]/15 px-2.5 py-1.5 text-xs font-semibold text-[#5848e8] dark:text-[#a59bff] transition hover:bg-[#6d5dfc]/15 dark:hover:bg-[#6d5dfc]/30"
                                                                 title="Open 8D Quality Report"
                                                             >
                                                                 8D Audit
@@ -305,7 +305,7 @@ function ReportsContent() {
 
                                                             <Link
                                                                 href={`/reports/${report.id}`}
-                                                                className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-[#6d5dfc] hover:text-white"
+                                                                className="inline-flex items-center gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 transition hover:bg-[#6d5dfc] hover:text-white dark:hover:bg-[#6d5dfc] dark:hover:text-white"
                                                             >
                                                                 View
                                                             </Link>

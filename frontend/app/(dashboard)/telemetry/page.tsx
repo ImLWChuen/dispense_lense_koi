@@ -154,8 +154,8 @@ export default function TelemetryPage() {
                             onClick={() => setAutoRefresh((prev) => !prev)}
                             className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border transition ${
                                 autoRefresh
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-white text-gray-600 border-gray-200"
+                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50"
+                                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
                             }`}
                         >
                             <span className={`h-2 w-2 rounded-full ${autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`} />
@@ -173,34 +173,38 @@ export default function TelemetryPage() {
                 </div>
 
                 {/* Tab Switcher */}
-                <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+                <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-800 pb-2">
                     <button
                         onClick={() => setActiveTab("syringes")}
-                        className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
                             activeTab === "syringes"
-                                ? "bg-[#eeebff] text-[#5848e8]"
-                                : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                                ? "bg-[#eeebff] dark:bg-[#5848e8]/30 text-[#5848e8] dark:text-[#a59bff] border border-transparent dark:border-[#6d5dfc]/40 shadow-xs"
+                                : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
                         }`}
                     >
                         <Clock size={15} />
                         Syringe Pot Life & Consumables
-                        <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-700 shadow-2xs">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold shadow-2xs ${
+                            activeTab === "syringes"
+                                ? "bg-white dark:bg-[#6d5dfc] text-gray-800 dark:text-white"
+                                : "bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border dark:border-gray-700"
+                        }`}>
                             {consumables.length}
                         </span>
                     </button>
 
                     <button
                         onClick={() => setActiveTab("sensors")}
-                        className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
                             activeTab === "sensors"
-                                ? "bg-[#eeebff] text-[#5848e8]"
-                                : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                                ? "bg-[#eeebff] dark:bg-[#5848e8]/30 text-[#5848e8] dark:text-[#a59bff] border border-transparent dark:border-[#6d5dfc]/40 shadow-xs"
+                                : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
                         }`}
                     >
                         <Gauge size={15} />
                         Cleanroom & Machine Sensors
                         {overview && (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                            <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border dark:border-emerald-800/60">
                                 ISO 5
                             </span>
                         )}
@@ -326,22 +330,22 @@ export default function TelemetryPage() {
                     <div className="space-y-6">
                         {/* Cleanroom Facility Overview Card */}
                         {overview && (
-                            <div className="rounded-2xl border border-emerald-200 bg-linear-to-r from-emerald-50/70 to-teal-50/50 p-5 shadow-xs">
+                            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/20 bg-linear-to-r from-emerald-50/70 to-teal-50/50 dark:from-emerald-950/40 dark:to-teal-950/30 p-5 shadow-xs">
                                 <div className="flex flex-wrap items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-md shadow-emerald-200">
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-md shadow-emerald-200 dark:shadow-emerald-950/60">
                                             <Wind size={24} />
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <h3 className="text-base font-bold text-gray-900">
+                                                <h3 className="text-base font-bold text-gray-900 dark:text-white">
                                                     Cleanroom Facility Ambient Environment
                                                 </h3>
                                                 <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
                                                     {overview.environment.iso_class}
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-emerald-800 font-medium">
+                                            <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium">
                                                 Active HEPA filtration, positive differential air pressure sealed cleanroom
                                             </p>
                                         </div>
@@ -349,36 +353,36 @@ export default function TelemetryPage() {
 
                                     {/* Facility Sensors Grid */}
                                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                        <div className="rounded-xl bg-white/90 p-2.5 border border-emerald-100 shadow-2xs">
-                                            <span className="text-[10px] font-medium text-gray-400 block">Ambient Temp</span>
-                                            <span className="text-sm font-bold text-gray-800 font-mono">
+                                        <div className="rounded-xl bg-white/90 dark:bg-gray-900/90 p-2.5 border border-emerald-100 dark:border-emerald-500/20 shadow-2xs">
+                                            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 block">Ambient Temp</span>
+                                            <span className="text-sm font-bold text-gray-800 dark:text-white font-mono">
                                                 {overview.environment.ambient_temp_c.toFixed(1)} °C
                                             </span>
-                                            <span className="text-[10px] text-emerald-600 block">Nominal (22.0°C)</span>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">Nominal (22.0°C)</span>
                                         </div>
 
-                                        <div className="rounded-xl bg-white/90 p-2.5 border border-emerald-100 shadow-2xs">
-                                            <span className="text-[10px] font-medium text-gray-400 block">Relative Humidity</span>
-                                            <span className="text-sm font-bold text-gray-800 font-mono">
+                                        <div className="rounded-xl bg-white/90 dark:bg-gray-900/90 p-2.5 border border-emerald-100 dark:border-emerald-500/20 shadow-2xs">
+                                            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 block">Relative Humidity</span>
+                                            <span className="text-sm font-bold text-gray-800 dark:text-white font-mono">
                                                 {overview.environment.relative_humidity_pct.toFixed(0)} %
                                             </span>
-                                            <span className="text-[10px] text-emerald-600 block">Nominal (45%)</span>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">Nominal (45%)</span>
                                         </div>
 
-                                        <div className="rounded-xl bg-white/90 p-2.5 border border-emerald-100 shadow-2xs">
-                                            <span className="text-[10px] font-medium text-gray-400 block">Diff Pressure</span>
-                                            <span className="text-sm font-bold text-gray-800 font-mono">
+                                        <div className="rounded-xl bg-white/90 dark:bg-gray-900/90 p-2.5 border border-emerald-100 dark:border-emerald-500/20 shadow-2xs">
+                                            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 block">Diff Pressure</span>
+                                            <span className="text-sm font-bold text-gray-800 dark:text-white font-mono">
                                                 +{overview.environment.differential_pressure_pa.toFixed(1)} Pa
                                             </span>
-                                            <span className="text-[10px] text-emerald-600 block">Positive Seal</span>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">Positive Seal</span>
                                         </div>
 
-                                        <div className="rounded-xl bg-white/90 p-2.5 border border-emerald-100 shadow-2xs">
-                                            <span className="text-[10px] font-medium text-gray-400 block">Particles (≥0.5µm)</span>
-                                            <span className="text-sm font-bold text-gray-800 font-mono">
+                                        <div className="rounded-xl bg-white/90 dark:bg-gray-900/90 p-2.5 border border-emerald-100 dark:border-emerald-500/20 shadow-2xs">
+                                            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 block">Particles (≥0.5µm)</span>
+                                            <span className="text-sm font-bold text-gray-800 dark:text-white font-mono">
                                                 {overview.environment.particle_count_per_m3} /m³
                                             </span>
-                                            <span className="text-[10px] text-emerald-600 block">&lt; 3,520 Limit</span>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">&lt; 3,520 Limit</span>
                                         </div>
                                     </div>
                                 </div>
@@ -395,10 +399,10 @@ export default function TelemetryPage() {
                                     <button
                                         key={l.line_id}
                                         onClick={() => setSelectedLineId(l.line_id)}
-                                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                                        className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
                                             selectedLineId === l.line_id
-                                                ? "bg-gray-900 text-white shadow-xs"
-                                                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                                                ? "bg-[#6d5dfc] text-white shadow-sm ring-1 ring-white/20"
+                                                : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 dark:hover:text-white"
                                         }`}
                                     >
                                         {l.line_name}

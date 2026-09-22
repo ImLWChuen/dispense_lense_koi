@@ -177,27 +177,27 @@ function ReportDetailContent({
                 </Link>
 
                 {/* Report Format Switcher */}
-                <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 shadow-sm">
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/90 p-1.5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
                     <button
                         onClick={() => setReportFormat("standard")}
                         className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
                             reportFormat === "standard"
-                                ? "bg-white text-gray-900 shadow-sm"
-                                : "text-gray-600 hover:text-gray-900"
+                                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm dark:ring-1 dark:ring-white/10 font-bold"
+                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-700/60"
                         }`}
                     >
-                        <FileText size={14} className={reportFormat === "standard" ? "text-[#6d5dfc]" : ""} />
+                        <FileText size={14} className={reportFormat === "standard" ? "text-[#6d5dfc] dark:text-[#a59bff]" : ""} />
                         Diagnostic Report
                     </button>
                     <button
                         onClick={() => setReportFormat("8d")}
                         className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
                             reportFormat === "8d"
-                                ? "bg-white text-gray-900 shadow-sm"
-                                : "text-gray-600 hover:text-gray-900"
+                                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm dark:ring-1 dark:ring-white/10 font-bold"
+                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-700/60"
                         }`}
                     >
-                        <ShieldCheck size={14} className={reportFormat === "8d" ? "text-[#6d5dfc]" : ""} />
+                        <ShieldCheck size={14} className={reportFormat === "8d" ? "text-[#6d5dfc] dark:text-[#a59bff]" : ""} />
                         8D Quality & CAPA Report (AIAG / VDA)
                     </button>
                 </div>
@@ -306,7 +306,7 @@ function ReportDetailContent({
                                     <button
                                         onClick={handleGenerateAiSummary}
                                         disabled={isGeneratingAi}
-                                        className="inline-flex items-center gap-2 rounded-xl border border-[#6d5dfc]/30 bg-[#eeebff] px-4 py-2.5 text-sm font-semibold text-[#5848e8] shadow-sm transition hover:bg-[#e4e0ff] disabled:opacity-50"
+                                        className="inline-flex items-center gap-2 rounded-xl border border-[#6d5dfc]/30 bg-[#eeebff] dark:bg-[#5848e8]/25 px-4 py-2.5 text-sm font-semibold text-[#5848e8] dark:text-[#a59bff] shadow-sm transition hover:bg-[#e4e0ff] dark:hover:bg-[#5848e8]/35 disabled:opacity-50"
                                     >
                                         {isGeneratingAi ? (
                                             <Loader2 size={16} className="animate-spin text-[#6d5dfc]" />
@@ -333,17 +333,17 @@ function ReportDetailContent({
 
                             {/* Executive Summary Card if generated */}
                             {aiSummary && (
-                                <div className="mb-6 relative overflow-hidden rounded-2xl border border-[#6d5dfc]/20 bg-gradient-to-br from-white via-white to-[#f5f3ff] p-6 shadow-sm">
+                                <div className="mb-6 relative overflow-hidden rounded-2xl border border-[#ded9ff] dark:border-[#6d5dfc]/40 bg-[#faf9ff] dark:bg-[#161e2e] dark:bg-none p-6 shadow-sm">
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center gap-2">
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6d5dfc] text-white">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6d5dfc] text-white shadow-sm">
                                                 <Sparkles size={16} />
                                             </div>
                                             <div>
-                                                <h2 className="text-base font-bold text-gray-900">
+                                                <h2 className="text-base font-bold text-gray-900 dark:text-white">
                                                     Executive Summary
                                                 </h2>
-                                                <p className="text-xs text-gray-500">
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">
                                                     {aiSource === "llm"
                                                         ? "Synthesized by Bounded LLM Service"
                                                         : "Deterministic Diagnostic Synthesis"}
@@ -352,13 +352,13 @@ function ReportDetailContent({
                                         </div>
 
                                         {aiSource && (
-                                            <span className="rounded-full bg-[#eeebff] px-2.5 py-0.5 text-[11px] font-semibold text-[#5848e8]">
+                                            <span className="rounded-full bg-[#eeebff] dark:bg-[#5848e8]/30 px-2.5 py-0.5 text-[11px] font-semibold text-[#5848e8] dark:text-[#a59bff]">
                                                 {aiSource.toUpperCase()}
                                             </span>
                                         )}
                                     </div>
 
-                                    <div className="rounded-xl bg-white/80 p-4 border border-[#6d5dfc]/10 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
+                                    <div className="rounded-xl bg-white dark:bg-[#0f172a] p-4 border border-[#6d5dfc]/15 dark:border-[#6d5dfc]/30 text-sm leading-relaxed text-gray-800 dark:text-gray-100 whitespace-pre-line shadow-xs">
                                         {aiSummary}
                                     </div>
                                 </div>

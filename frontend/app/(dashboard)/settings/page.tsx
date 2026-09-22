@@ -245,10 +245,10 @@ export default function SettingsPage() {
                                     setActiveTab(tab.id as any);
                                     setErrorMessage(null);
                                 }}
-                                className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
+                                className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
                                     isActive
-                                        ? "bg-[#eeebff] text-[#5848e8] font-semibold shadow-2xs"
-                                        : "text-gray-600 hover:bg-gray-100/80 hover:text-gray-900"
+                                        ? "bg-[#eeebff] dark:bg-[#5848e8]/30 text-[#5848e8] dark:text-[#a59bff] font-bold shadow-xs border border-transparent dark:border-[#6d5dfc]/40"
+                                        : "text-gray-600 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-800 dark:hover:text-white"
                                 }`}
                             >
                                 <Icon size={18} strokeWidth={isActive ? 2.2 : 1.8} />
@@ -257,11 +257,11 @@ export default function SettingsPage() {
                         );
                     })}
 
-                    <div className="pt-4 mt-4 border-t border-gray-200/80">
+                    <div className="pt-4 mt-4 border-t border-gray-200/80 dark:border-gray-800">
                         <button
                             type="button"
                             onClick={logout}
-                            className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-rose-600 hover:bg-rose-50 transition"
+                            className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                         >
                             <LogOut size={18} strokeWidth={1.8} />
                             <span>Sign Out</span>
@@ -557,121 +557,121 @@ export default function SettingsPage() {
                                             onClick={() => handleThemeSelect("light")}
                                             className={`relative flex flex-col items-start rounded-xl border p-4 text-left transition ${
                                                 theme === "light"
-                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 ring-2 ring-[#6d5dfc]/20"
-                                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 dark:bg-[#5848e8]/25 ring-2 ring-[#6d5dfc]/30"
+                                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/80"
                                             }`}
                                         >
                                             {theme === "light" && (
-                                                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
-                                                    <Check size={12} strokeWidth={3} />
-                                                </span>
-                                            )}
-                                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 mb-3">
-                                                <Sun size={18} />
-                                            </div>
-                                            <p className="text-sm font-bold text-gray-900">Cleanroom Day</p>
-                                            <p className="text-[11px] text-gray-500 mt-0.5">
-                                                High-contrast light interface optimized for brightly lit cleanrooms.
-                                            </p>
-                                        </button>
+                                                 <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
+                                                     <Check size={12} strokeWidth={3} />
+                                                 </span>
+                                             )}
+                                             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 mb-3">
+                                                 <Sun size={18} />
+                                             </div>
+                                             <p className="text-sm font-bold text-gray-900">Cleanroom Day</p>
+                                             <p className="text-[11px] text-gray-500 mt-0.5">
+                                                 High-contrast light interface optimized for brightly lit cleanrooms.
+                                             </p>
+                                         </button>
 
-                                        {/* Dark Mode */}
-                                        <button
+                                         {/* Dark Mode */}
+                                         <button
                                             type="button"
                                             onClick={() => handleThemeSelect("dark")}
                                             className={`relative flex flex-col items-start rounded-xl border p-4 text-left transition ${
                                                 theme === "dark"
-                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 ring-2 ring-[#6d5dfc]/20"
-                                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 dark:bg-[#5848e8]/25 ring-2 ring-[#6d5dfc]/30"
+                                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/80"
                                             }`}
                                         >
                                             {theme === "dark" && (
-                                                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
-                                                    <Check size={12} strokeWidth={3} />
-                                                </span>
-                                            )}
-                                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-900 text-indigo-300 mb-3">
-                                                <Moon size={18} />
-                                            </div>
-                                            <p className="text-sm font-bold text-gray-900">Low-Glare Night</p>
-                                            <p className="text-[11px] text-gray-500 mt-0.5">
-                                                Deep obsidian tones reducing eye fatigue on microscope screens.
-                                            </p>
-                                        </button>
+                                                 <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
+                                                     <Check size={12} strokeWidth={3} />
+                                                 </span>
+                                             )}
+                                             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-900 text-indigo-300 mb-3">
+                                                 <Moon size={18} />
+                                             </div>
+                                             <p className="text-sm font-bold text-gray-900">Low-Glare Night</p>
+                                             <p className="text-[11px] text-gray-500 mt-0.5">
+                                                 Deep obsidian tones reducing eye fatigue on microscope screens.
+                                             </p>
+                                         </button>
 
-                                        {/* System Mode */}
-                                        <button
+                                         {/* System Mode */}
+                                         <button
                                             type="button"
                                             onClick={() => handleThemeSelect("system")}
                                             className={`relative flex flex-col items-start rounded-xl border p-4 text-left transition ${
                                                 theme === "system"
-                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 ring-2 ring-[#6d5dfc]/20"
-                                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 dark:bg-[#5848e8]/25 ring-2 ring-[#6d5dfc]/30"
+                                                    : "border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/80"
                                             }`}
                                         >
                                             {theme === "system" && (
-                                                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
-                                                    <Check size={12} strokeWidth={3} />
-                                                </span>
-                                            )}
-                                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600 mb-3">
-                                                <Monitor size={18} />
-                                            </div>
-                                            <p className="text-sm font-bold text-gray-900">System Sync</p>
-                                            <p className="text-[11px] text-gray-500 mt-0.5">
-                                                Automatically mirrors your operating system appearance preferences.
-                                            </p>
-                                        </button>
-                                    </div>
-                                </div>
+                                                 <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#6d5dfc] text-white">
+                                                     <Check size={12} strokeWidth={3} />
+                                                 </span>
+                                             )}
+                                             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600 mb-3">
+                                                 <Monitor size={18} />
+                                             </div>
+                                             <p className="text-sm font-bold text-gray-900">System Sync</p>
+                                             <p className="text-[11px] text-gray-500 mt-0.5">
+                                                 Automatically mirrors your operating system appearance preferences.
+                                             </p>
+                                         </button>
+                                     </div>
+                                 </div>
 
-                                {/* Density Selection */}
-                                <div className="pt-4 border-t border-gray-100">
-                                    <label className="block text-xs font-semibold text-gray-800 mb-3">
-                                        Interface Density
-                                    </label>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDensitySelect("comfortable")}
-                                            className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
-                                                density === "comfortable"
-                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 ring-2 ring-[#6d5dfc]/20"
-                                                    : "border-gray-200 hover:bg-gray-50"
-                                            }`}
-                                        >
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
-                                                <Laptop size={16} />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-900">Comfortable (Default)</p>
-                                                <p className="text-[11px] text-gray-500">
-                                                    Standard spacing for high-resolution desktop workstation monitors.
-                                                </p>
-                                            </div>
-                                        </button>
+                                 {/* Density Selection */}
+                                 <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                                     <label className="block text-xs font-semibold text-gray-800 mb-3">
+                                         Interface Density
+                                     </label>
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                         <button
+                                             type="button"
+                                             onClick={() => handleDensitySelect("comfortable")}
+                                             className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                                                 density === "comfortable"
+                                                     ? "border-[#6d5dfc] bg-[#eeebff]/30 dark:bg-[#5848e8]/25 ring-2 ring-[#6d5dfc]/30"
+                                                     : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                             }`}
+                                         >
+                                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                                 <Laptop size={16} />
+                                             </div>
+                                             <div>
+                                                 <p className="text-xs font-bold text-gray-900">Comfortable (Default)</p>
+                                                 <p className="text-[11px] text-gray-500">
+                                                     Standard spacing for high-resolution desktop workstation monitors.
+                                                 </p>
+                                             </div>
+                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDensitySelect("compact")}
-                                            className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
-                                                density === "compact"
-                                                    ? "border-[#6d5dfc] bg-[#eeebff]/30 ring-2 ring-[#6d5dfc]/20"
-                                                    : "border-gray-200 hover:bg-gray-50"
-                                            }`}
-                                        >
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
-                                                <Smartphone size={16} />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-900">Compact Cleanroom</p>
-                                                <p className="text-[11px] text-gray-500">
-                                                    Denser data tables and tight padding for 1080p touch terminals.
-                                                </p>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
+                                         <button
+                                             type="button"
+                                             onClick={() => handleDensitySelect("compact")}
+                                             className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                                                 density === "compact"
+                                                     ? "border-[#6d5dfc] bg-[#eeebff]/30 dark:bg-[#5848e8]/25 ring-2 ring-[#6d5dfc]/30"
+                                                     : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                             }`}
+                                         >
+                                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                                 <Smartphone size={16} />
+                                             </div>
+                                             <div>
+                                                 <p className="text-xs font-bold text-gray-900">Compact Cleanroom</p>
+                                                 <p className="text-[11px] text-gray-500">
+                                                     Denser data tables and tight padding for 1080p touch terminals.
+                                                 </p>
+                                             </div>
+                                         </button>
+                                     </div>
+                                 </div>
                             </div>
                         </div>
                     )}
@@ -717,7 +717,7 @@ export default function SettingsPage() {
                                     return (
                                         <div
                                             key={item.key}
-                                            className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition"
+                                            className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 hover:bg-gray-100/70 dark:hover:bg-gray-800 transition"
                                         >
                                             <div>
                                                 <p className="text-xs font-bold text-gray-900">{item.title}</p>
@@ -735,7 +735,7 @@ export default function SettingsPage() {
                                                     }
                                                     className="sr-only peer"
                                                 />
-                                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#6d5dfc]"></div>
+                                                <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#6d5dfc]"></div>
                                             </label>
                                         </div>
                                     );

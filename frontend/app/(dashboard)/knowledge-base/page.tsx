@@ -265,20 +265,22 @@ function KnowledgeBaseContent() {
 
             {/* Search + Tabs Navigation */}
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`rounded-lg px-4 py-2 text-sm font-medium transition whitespace-nowrap ${
+                            className={`rounded-xl px-4 py-2 text-sm font-semibold transition whitespace-nowrap ${
                                 activeTab === tab
-                                    ? "bg-[#6d5dfc] text-white shadow-sm"
-                                    : "text-gray-600 hover:bg-gray-100"
+                                    ? "bg-[#6d5dfc] text-white shadow-sm ring-1 ring-white/20"
+                                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-white"
                             }`}
                         >
                             {tab}
-                            <span className={`ml-2 text-xs rounded-full px-1.5 py-0.5 ${
-                                activeTab === tab ? "bg-white/25 text-white" : "bg-gray-200 text-gray-700"
+                            <span className={`ml-2 text-xs rounded-full px-2 py-0.5 font-bold transition ${
+                                activeTab === tab
+                                    ? "bg-white/25 text-white"
+                                    : "bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-transparent dark:border-gray-700"
                             }`}>
                                 {tab === "Defects" && defects.length}
                                 {tab === "Causes" && causes.length}
@@ -301,13 +303,13 @@ function KnowledgeBaseContent() {
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder={`Search ${activeTab.toLowerCase()} by name, code, or cause...`}
-                        className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-9 text-sm outline-none transition focus:border-[#6d5dfc] focus:bg-white focus:ring-1 focus:ring-[#6d5dfc]"
+                        className="h-10 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 pl-9 pr-9 text-sm text-gray-900 dark:text-gray-100 outline-none transition focus:border-[#6d5dfc] focus:bg-white dark:focus:bg-gray-900 focus:ring-1 focus:ring-[#6d5dfc]"
                     />
 
                     {search && (
                         <button
                             onClick={() => setSearch("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                             title="Clear search"
                         >
                             <X size={15} />
