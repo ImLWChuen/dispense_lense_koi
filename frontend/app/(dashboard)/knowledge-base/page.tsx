@@ -15,6 +15,8 @@ import {
     Database,
     ExternalLink,
     Tag,
+    Sparkles,
+    ShieldCheck,
 } from "lucide-react";
 
 import PageContainer from "@/components/layout/PageContainer";
@@ -31,8 +33,12 @@ import {
     FALLBACK_RULES,
     FALLBACK_QUESTIONS,
 } from "@/lib/api/knowledge";
+import {
+    HISTORICAL_LEARNING_DATABASE,
+    HistoricalLearningCase,
+} from "@/lib/learning-database";
 
-const tabs = ["Defects", "Causes", "Actions", "Rules", "Questions"] as const;
+const tabs = ["Defects", "Causes", "Actions", "Rules", "Questions", "Learning Database"] as const;
 type TabType = (typeof tabs)[number];
 
 function KnowledgeBaseContent() {
@@ -177,6 +183,19 @@ function KnowledgeBaseContent() {
         );
     });
 
+    const filteredLearningCases = HISTORICAL_LEARNING_DATABASE.filter((c) => {
+        if (!q) return true;
+        return (
+            c.dispensingProblem.toLowerCase().includes(q) ||
+            c.defectCode.toLowerCase().includes(q) ||
+            c.category.toLowerCase().includes(q) ||
+            c.mainCause.toLowerCase().includes(q) ||
+            c.possibleCauses.some((cause) => cause.toLowerCase().includes(q)) ||
+            c.recommendedSolutions.some((sol) => sol.toLowerCase().includes(q)) ||
+            c.successfulSolution.toLowerCase().includes(q)
+        );
+    });
+
     return (
         <PageContainer>
             {/* Header with Title and Live API Synchronization Status */}
@@ -287,6 +306,7 @@ function KnowledgeBaseContent() {
                                 {tab === "Actions" && actions.length}
                                 {tab === "Rules" && rules.length}
                                 {tab === "Questions" && questions.length}
+                                {tab === "Learning Database" && HISTORICAL_LEARNING_DATABASE.length}
                             </span>
                         </button>
                     ))}
@@ -785,6 +805,157 @@ function KnowledgeBaseContent() {
                                         <button
                                             onClick={() => setSearch("")}
                                             className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                        >
+                                            Clear Search
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ======================================================= */}
+                        {/* TAB 6: HISTORICAL LEARNING DATABASE (NSW BONUS CHALLENGE 3) */}
+                        {/* ======================================================= */}
+                        {activeTab === "Learning Database" && (
+                            <div className="space-y-6">
+                                {/* Concept Banner */}
+                                <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-[#f7f5ff] via-white to-[#faf8ff] dark:from-[#13162b] dark:via-gray-900 dark:to-[#161a35] p-5 shadow-xs">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div className="flex items-start gap-3.5">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
+                                                <Sparkles size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                                        Historical Troubleshooting Learning Database
+                                                    </h3>
+                                                    <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                                        NSW Bonus Challenge 3
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
+                                                    Industrial fluid dispensing knowledge base that records past troubleshooting cases, candidate causes, recommended procedures, and verified successful solutions. Over time, AI leverages this dataset to synthesize learning insights (e.g. <em>&ldquo;Similar problems occurred 12 times previously. In 8 cases, the main cause was air trapped inside the syringe.&rdquo;</em>).
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 px-3.5 py-2 text-center">
+                                                <span className="text-[10px] uppercase font-bold text-gray-400 block">Total Cases</span>
+                                                <span className="text-lg font-black text-gray-900 dark:text-white">
+                                                    {HISTORICAL_LEARNING_DATABASE.reduce((acc, c) => acc + c.occurrences, 0)}
+                                                </span>
+                                            </div>
+                                            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/20 px-3.5 py-2 text-center">
+                                                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Avg Success Rate</span>
+                                                <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+                                                    90.8%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 4-Column Historical Learning Database Table */}
+                                {filteredLearningCases.length > 0 ? (
+                                    <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-800/60 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                                        <th scope="col" className="py-3.5 px-4 w-[22%]">1. Dispensing Problem</th>
+                                                        <th scope="col" className="py-3.5 px-4 w-[26%]">2. Possible Causes</th>
+                                                        <th scope="col" className="py-3.5 px-4 w-[26%]">3. Recommended Solutions</th>
+                                                        <th scope="col" className="py-3.5 px-4 w-[26%]">4. Successful Solution</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                                    {filteredLearningCases.map((c) => (
+                                                        <tr key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
+                                                            {/* 1. Dispensing Problem */}
+                                                            <td className="py-4 px-4 align-top">
+                                                                <div className="space-y-1.5">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-mono text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40">
+                                                                            {c.defectCode}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-400">
+                                                                            {c.caseReference}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="font-bold text-gray-900 dark:text-white text-sm leading-snug">
+                                                                        {c.dispensingProblem}
+                                                                    </p>
+                                                                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                                        Category: <span className="font-medium text-gray-700 dark:text-gray-300">{c.category}</span>
+                                                                    </p>
+                                                                    <div className="pt-1">
+                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40">
+                                                                            {c.occurrences} historical occurrences
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+
+                                                            {/* 2. Possible Causes */}
+                                                            <td className="py-4 px-4 align-top">
+                                                                <ul className="space-y-1.5">
+                                                                    {c.possibleCauses.map((cause, idx) => (
+                                                                        <li key={idx} className="flex items-start gap-1.5 text-gray-700 dark:text-gray-300 leading-relaxed">
+                                                                            <span className="text-[#6d5dfc] dark:text-[#a59bff] font-bold shrink-0">•</span>
+                                                                            <span>{cause}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </td>
+
+                                                            {/* 3. Recommended Solutions */}
+                                                            <td className="py-4 px-4 align-top">
+                                                                <ol className="space-y-1.5 list-decimal list-inside text-gray-700 dark:text-gray-300 leading-relaxed">
+                                                                    {c.recommendedSolutions.map((sol, idx) => (
+                                                                        <li key={idx} className="marker:text-gray-400 marker:font-bold">
+                                                                            <span>{sol}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ol>
+                                                            </td>
+
+                                                            {/* 4. Successful Solution */}
+                                                            <td className="py-4 px-4 align-top">
+                                                                <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 space-y-2">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                                                            <ShieldCheck size={13} />
+                                                                            Verified Solution
+                                                                        </span>
+                                                                        <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded shadow-xs border border-emerald-200 dark:border-emerald-800">
+                                                                            {c.successRate}% Success
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-800 dark:text-gray-200 font-medium leading-relaxed">
+                                                                        {c.successfulSolution}
+                                                                    </p>
+                                                                    <div className="pt-1 border-t border-emerald-100 dark:border-emerald-900/40 text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                                                                        <span>Verified by: <strong className="text-gray-700 dark:text-gray-300">{c.verifiedBy}</strong></span>
+                                                                        <span>{c.lastResolvedDate}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-12 text-center">
+                                        <Database size={28} className="mx-auto text-gray-300 mb-2" />
+                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">No learning cases match your search</p>
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">No records found matching &quot;{search}&quot;.</p>
+                                        <button
+                                            onClick={() => setSearch("")}
+                                            className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                                         >
                                             Clear Search
                                         </button>

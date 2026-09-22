@@ -35,6 +35,10 @@ from reportlab.platypus import (
 
 from app.schemas.case import CaseReportResponse
 from app.schemas.diagnosis import CauseConclusion
+from app.services.reporting.quality_assessment import (
+    calculate_dispensing_quality,
+    get_learning_insight_report,
+)
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -199,9 +203,26 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     story: list[Any] = []
 
     # ---------------------------------------------------------
-    # Document Header
+    # Document Header (NSW Automation Challenge Branding)
     # ---------------------------------------------------------
-    story.append(Paragraph("Dispense Lens Diagnostic Case Report", title_style))
+    nsw_badge_style = ParagraphStyle(
+        "NSWBadge",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#4338ca"),  # indigo-700
+        spaceAfter=2,
+    )
+    story.append(Paragraph("<b>AI HORIZON SOLUTION CHALLENGE 2026 &bull; NSW AUTOMATION</b>", nsw_badge_style))
+    story.append(Paragraph("AI Dispensing Defect Detective &mdash; Troubleshooting Report", title_style))
+    story.append(
+        Paragraph(
+            "<b>Tagline:</b> <i>&ldquo;Helping Manufacturers Identify Dispensing Problems Faster with AI&rdquo;</i> &nbsp;|&nbsp; "
+            "Dispense Lens Diagnostic Case Report",
+            subtitle_style,
+        )
+    )
     story.append(
         Paragraph(
             f"Case Identifier: <b>{_escape(report.case_id)}</b> &nbsp;|&nbsp; "
@@ -269,6 +290,79 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
         )
     )
     story.append(overview_table)
+    story.append(Spacer(1, 8))
+
+    # ---------------------------------------------------------
+    # Dispensing Quality Assessment (NSW Bonus Challenge 2)
+    # ---------------------------------------------------------
+    quality = calculate_dispensing_quality(report.defect_code, report.defect_name)
+    story.append(
+        Paragraph(
+            f"Dispensing Quality Assessment (NSW Bonus Challenge 2) &nbsp;&mdash;&nbsp; "
+            f"<b>Overall Quality Score: {quality.overall_score} / 100</b>",
+            section_heading_style,
+        )
+    )
+
+    quality_rows = [
+        [
+            Paragraph("Quality Metric", cell_header),
+            Paragraph("Rating", cell_header),
+            Paragraph("Score", cell_header),
+            Paragraph("Status Assessment", cell_header),
+            Paragraph("Engineering Details", cell_header),
+        ],
+        [
+            Paragraph(quality.shape.name, cell_bold),
+            Paragraph(f"{quality.shape.star_display} ({quality.shape.stars}/5)", cell_normal),
+            Paragraph(f"{quality.shape.score}%", cell_normal),
+            Paragraph(quality.shape.label, cell_bold),
+            Paragraph(quality.shape.description, cell_normal),
+        ],
+        [
+            Paragraph(quality.size.name, cell_bold),
+            Paragraph(f"{quality.size.star_display} ({quality.size.stars}/5)", cell_normal),
+            Paragraph(f"{quality.size.score}%", cell_normal),
+            Paragraph(quality.size.label, cell_bold),
+            Paragraph(quality.size.description, cell_normal),
+        ],
+        [
+            Paragraph(quality.position.name, cell_bold),
+            Paragraph(f"{quality.position.star_display} ({quality.position.stars}/5)", cell_normal),
+            Paragraph(f"{quality.position.score}%", cell_normal),
+            Paragraph(quality.position.label, cell_bold),
+            Paragraph(quality.position.description, cell_normal),
+        ],
+        [
+            Paragraph(quality.defect_risk.name, cell_bold),
+            Paragraph(f"{quality.defect_risk.star_display} ({quality.defect_risk.stars}/5)", cell_normal),
+            Paragraph(f"{quality.defect_risk.score}%", cell_normal),
+            Paragraph(quality.defect_risk.label, cell_bold),
+            Paragraph(quality.defect_risk.description, cell_normal),
+        ],
+    ]
+    quality_table = Table(quality_rows, colWidths=[105, 80, 45, 95, 215])
+    quality_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(quality_table)
+    story.append(Spacer(1, 4))
+    story.append(
+        Paragraph(
+            f"<b>Quality Assessment Rationale:</b> {_escape(quality.summary)}",
+            cell_normal,
+        )
+    )
     story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------
@@ -489,6 +583,36 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     else:
         story.append(Paragraph("<b>Recommended Next Troubleshooting Check:</b> None recorded.", cell_normal))
 
+    story.append(Spacer(1, 8))
+
+    # ---------------------------------------------------------
+    # AI Learning Database Insight (NSW Bonus Challenge 3)
+    # ---------------------------------------------------------
+    insight = get_learning_insight_report(report.defect_code, report.defect_name)
+    story.append(
+        Paragraph(
+            "AI Learning Database Insight (NSW Bonus Challenge 3)",
+            section_heading_style,
+        )
+    )
+    insight_content = (
+        f"<b>AI Learning Insight:</b> &ldquo;{_escape(insight.insight_text)}&rdquo;<br/>"
+        f"<b>Historical Verified Resolution:</b> <font color='#166534'>{_escape(insight.successful_solution)}</font>"
+    )
+    insight_table = Table([[Paragraph(insight_content, cell_normal)]], colWidths=[540])
+    insight_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5f3ff")),
+                ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#a78bfa")),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    story.append(insight_table)
     story.append(Spacer(1, 10))
 
     # ---------------------------------------------------------

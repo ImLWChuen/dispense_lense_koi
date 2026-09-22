@@ -17,6 +17,8 @@ import DiagnosisSummary from "@/components/diagnosis/DiagnosisSummary";
 import CauseRanking from "@/components/diagnosis/CauseRanking";
 import EvidencePanel from "@/components/diagnosis/EvidencePanel";
 import SimilarCases from "@/components/cases/SimilarCases";
+import LearningInsightBanner from "@/components/diagnosis/LearningInsightBanner";
+import DispensingQualityCard from "@/components/diagnosis/DispensingQualityCard";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
 
@@ -172,6 +174,11 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                 </Link>
             </div>
 
+            {/* NSW Bonus Challenge 3: Learning Database Insight Banner */}
+            <div className="mt-6">
+                <LearningInsightBanner caseData={caseData} />
+            </div>
+
             <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-3">
                 {/* Left: Summary + Evidence */}
                 <div className="space-y-6 xl:col-span-2">
@@ -188,6 +195,9 @@ export default function DiagnosisDetailPage({ params }: { params: Promise<{ id: 
                 {/* Right: Summary + Workflow */}
                 <div className="space-y-6">
                     <DiagnosisSummary caseData={caseData} />
+
+                    {/* NSW Bonus Challenge 2: Dispensing Quality Assessment */}
+                    <DispensingQualityCard caseData={caseData} />
 
                     {/* Workflow Actions */}
                     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
