@@ -101,22 +101,29 @@ export default function ImageCalibrationPanel({
     const hasRefLimitError = refMin !== null && refMax !== null && refMin > refMax;
 
     return (
-        <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50/70 p-4">
-            <div className="flex items-center gap-2">
-                <Sliders size={16} className="text-[#6d5dfc]" />
-                <h3 className="text-sm font-semibold text-gray-900">Analysis Mode & Calibration</h3>
+        <div className="space-y-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-800/30 p-4 sm:p-5 shadow-2xs">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                    <Sliders size={16} className="text-[#6d5dfc] shrink-0" />
+                    <h3 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        Analysis Mode & Calibration
+                    </h3>
+                </div>
+                <span className="rounded-md bg-white dark:bg-gray-800 px-2.5 py-1 text-[11px] font-semibold text-[#5848e8] dark:text-[#a397ff] border border-gray-200 dark:border-gray-700 shrink-0">
+                    {mode === "FEATURES_ONLY" ? "Features" : mode === "PROCESS_LIMITS" ? "Limits" : "Golden Ref"}
+                </span>
             </div>
 
             {/* Mode Selector */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-col sm:flex-row gap-1.5 p-1.5 bg-gray-200/70 dark:bg-gray-800/70 rounded-xl">
                 <button
                     type="button"
                     disabled={disabled}
                     onClick={() => handleModeSelect("FEATURES_ONLY")}
-                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs transition text-center ${
                         mode === "FEATURES_ONLY"
-                            ? "border-[#6d5dfc] bg-[#eeebff] text-[#5848e8] shadow-sm"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                            ? "bg-white dark:bg-gray-700 text-[#5848e8] dark:text-white shadow-xs font-semibold"
+                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50"
                     }`}
                 >
                     Features Only
@@ -125,10 +132,10 @@ export default function ImageCalibrationPanel({
                     type="button"
                     disabled={disabled}
                     onClick={() => handleModeSelect("PROCESS_LIMITS")}
-                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs transition text-center ${
                         mode === "PROCESS_LIMITS"
-                            ? "border-[#6d5dfc] bg-[#eeebff] text-[#5848e8] shadow-sm"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                            ? "bg-white dark:bg-gray-700 text-[#5848e8] dark:text-white shadow-xs font-semibold"
+                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50"
                     }`}
                 >
                     Process Limits
@@ -137,10 +144,10 @@ export default function ImageCalibrationPanel({
                     type="button"
                     disabled={disabled}
                     onClick={() => handleModeSelect("REFERENCE_IMAGE")}
-                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs transition text-center ${
                         mode === "REFERENCE_IMAGE"
-                            ? "border-[#6d5dfc] bg-[#eeebff] text-[#5848e8] shadow-sm"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                            ? "bg-white dark:bg-gray-700 text-[#5848e8] dark:text-white shadow-xs font-semibold"
+                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50"
                     }`}
                 >
                     Reference Image
@@ -149,20 +156,20 @@ export default function ImageCalibrationPanel({
 
             {/* Mode Descriptions */}
             {mode === "FEATURES_ONLY" && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed px-1">
                     Extracts resolution-independent geometric features without threshold evaluation. Returns status{" "}
-                    <code className="rounded bg-gray-200 px-1 text-[11px]">UNCALIBRATED</code> with no diagnostic observations.
+                    <code className="rounded bg-gray-200/80 dark:bg-gray-700 px-1.5 py-0.5 text-[11px] font-mono">UNCALIBRATED</code> with no diagnostic observations.
                 </p>
             )}
 
             {mode === "PROCESS_LIMITS" && (
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-gray-800">Process Thresholds</span>
                         <span className="text-[11px] text-gray-500">At least 1 limit required</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                         <div>
                             <label className="block text-[11px] font-medium text-gray-600">
                                 Min Coverage Ratio
@@ -250,7 +257,7 @@ export default function ImageCalibrationPanel({
 
                     {hasCoverageError && (
                         <div className="flex items-center gap-1.5 text-[11px] text-red-600">
-                            <AlertTriangle size={12} />
+                            <AlertTriangle size={12} className="shrink-0" />
                             <span>Min coverage ratio cannot be greater than max coverage ratio.</span>
                         </div>
                     )}
@@ -258,7 +265,7 @@ export default function ImageCalibrationPanel({
             )}
 
             {mode === "REFERENCE_IMAGE" && (
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-gray-800">Golden Reference Image</span>
                         <span className="text-[11px] text-amber-700 font-medium">Required for Reference mode</span>
@@ -274,16 +281,16 @@ export default function ImageCalibrationPanel({
                     />
 
                     {referenceFile && referencePreviewUrl ? (
-                        <div className="flex items-center justify-between rounded-lg border border-gray-200 p-2 text-xs">
-                            <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-2 text-xs">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src={referencePreviewUrl}
                                     alt="Reference"
-                                    className="h-10 w-10 rounded object-cover border"
+                                    className="h-10 w-10 shrink-0 rounded object-cover border"
                                 />
-                                <div>
-                                    <p className="font-medium text-gray-800 truncate max-w-[180px]">
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-gray-800 truncate">
                                         {referenceFile.name}
                                     </p>
                                     <p className="text-[11px] text-gray-500">
@@ -295,7 +302,7 @@ export default function ImageCalibrationPanel({
                                 <button
                                     type="button"
                                     onClick={handleRemoveRefFile}
-                                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                    className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                                     title="Remove reference image"
                                 >
                                     <X size={14} />
@@ -307,16 +314,16 @@ export default function ImageCalibrationPanel({
                             type="button"
                             disabled={disabled}
                             onClick={() => refFileInputRef.current?.click()}
-                            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-2.5 px-2 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition"
                         >
-                            <ImageIcon size={15} />
-                            Upload Reference Image (PNG/JPEG &le; 10 MB)
+                            <ImageIcon size={15} className="shrink-0" />
+                            <span className="truncate">Upload Reference Image (PNG/JPEG &le; 10 MB)</span>
                         </button>
                     )}
 
-                    <div className="grid grid-cols-3 gap-2 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                         <div>
-                            <label className="block text-[11px] font-medium text-gray-600">
+                            <label className="block text-[11px] font-medium text-gray-600 truncate">
                                 Tolerance Ratio
                             </label>
                             <input
@@ -333,7 +340,7 @@ export default function ImageCalibrationPanel({
                         </div>
 
                         <div>
-                            <label className="block text-[11px] font-medium text-gray-600">
+                            <label className="block text-[11px] font-medium text-gray-600 truncate">
                                 Min Ref Ratio
                             </label>
                             <input
@@ -349,7 +356,7 @@ export default function ImageCalibrationPanel({
                         </div>
 
                         <div>
-                            <label className="block text-[11px] font-medium text-gray-600">
+                            <label className="block text-[11px] font-medium text-gray-600 truncate">
                                 Max Ref Ratio
                             </label>
                             <input
@@ -367,7 +374,7 @@ export default function ImageCalibrationPanel({
 
                     {hasRefLimitError && (
                         <div className="flex items-center gap-1.5 text-[11px] text-red-600">
-                            <AlertTriangle size={12} />
+                            <AlertTriangle size={12} className="shrink-0" />
                             <span>Min reference ratio cannot be greater than max reference ratio.</span>
                         </div>
                     )}
@@ -375,17 +382,17 @@ export default function ImageCalibrationPanel({
             )}
 
             {/* Optional Scale (mm_per_pixel) */}
-            <div className="border-t border-gray-200/80 pt-3">
+            <div className="border-t border-gray-200/80 dark:border-gray-800 pt-4">
                 <div className="flex items-center gap-2">
-                    <Ruler size={14} className="text-gray-500" />
-                    <label className="text-xs font-medium text-gray-700">
+                    <Ruler size={15} className="text-gray-500 dark:text-gray-400 shrink-0" />
+                    <label className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200">
                         Physical Scale (mm per pixel)
                     </label>
-                    <span className="rounded bg-gray-200/70 px-1.5 py-0.2 text-[10px] text-gray-600">
+                    <span className="rounded-md bg-gray-200/70 dark:bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">
                         Optional
                     </span>
                 </div>
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2.5">
                     <input
                         type="number"
                         step="0.0001"
@@ -397,10 +404,10 @@ export default function ImageCalibrationPanel({
                             onMmPerPixelChange(val !== null && !isNaN(val) && val > 0 ? val : null);
                         }}
                         placeholder="e.g. 0.005"
-                        className="w-40 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[#6d5dfc]"
+                        className="w-full sm:w-40 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#141b29] px-3 py-2 text-xs sm:text-sm font-mono outline-none focus:border-[#6d5dfc] transition"
                     />
-                    <span className="text-[11px] text-gray-500">
-                        Required to calculate physical diameter in mm.
+                    <span className="text-xs text-gray-500 dark:text-gray-400 leading-normal">
+                        Required to calculate physical diameter in millimeters (mm).
                     </span>
                 </div>
             </div>
