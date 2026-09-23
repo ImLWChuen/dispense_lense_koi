@@ -233,12 +233,10 @@ export default function Header({ onOpenMobileMenu, onOpenCommandPalette }: Heade
                 </button>
             </div>
 
-            {/* Center: NSW Automation Competition Badge */}
-            <div className="hidden xl:flex items-center gap-2 rounded-full border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/40 px-3.5 py-1 text-xs">
-                <span className="flex h-2 w-2 rounded-full bg-[#6d5dfc] animate-pulse" />
-                <span className="font-semibold text-[#5848e8] dark:text-[#a59bff]">AI Horizon Solution Challenge 2026</span>
-                <span className="text-gray-300 dark:text-gray-600">•</span>
-                <span className="font-medium text-gray-700 dark:text-gray-300">NSW Automation</span>
+            {/* Center: System Status Indicator */}
+            <div className="hidden xl:flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-800/60 px-3 py-1 text-xs text-gray-600 dark:text-gray-300">
+                <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-medium">Diagnostic Engine Active</span>
             </div>
 
             {/* Right side: Notifications + User Profile */}

@@ -79,10 +79,10 @@ export default function NewDiagnosisPage() {
                     data.recentChange === "material_refilled"
                         ? "material_state"
                         : data.recentChange === "nozzle_changed"
-                        ? "nozzle_condition"
-                        : data.recentChange === "parameters_changed"
-                        ? "process_parameter"
-                        : "equipment_condition";
+                            ? "nozzle_condition"
+                            : data.recentChange === "parameters_changed"
+                                ? "process_parameter"
+                                : "equipment_condition";
 
                 observations.push({
                     observation_type: obsType,
@@ -135,11 +135,10 @@ export default function NewDiagnosisPage() {
                     <button
                         type="button"
                         onClick={() => setLayoutMode("stacked")}
-                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                            layoutMode === "stacked"
+                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${layoutMode === "stacked"
                                 ? "bg-[#6d5dfc] text-white shadow-xs"
                                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                        }`}
+                            }`}
                         title="Spacious Full-Width Stacked View"
                     >
                         <Rows3 size={15} />
@@ -149,11 +148,10 @@ export default function NewDiagnosisPage() {
                     <button
                         type="button"
                         onClick={() => setLayoutMode("split")}
-                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                            layoutMode === "split"
+                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${layoutMode === "split"
                                 ? "bg-[#6d5dfc] text-white shadow-xs"
                                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                        }`}
+                            }`}
                         title="Balanced 50/50 Split View"
                     >
                         <Columns2 size={15} />
@@ -262,6 +260,6 @@ export default function NewDiagnosisPage() {
                     </div>
                 </div>
             )}
-                </PageContainer>
+        </PageContainer>
     );
 }

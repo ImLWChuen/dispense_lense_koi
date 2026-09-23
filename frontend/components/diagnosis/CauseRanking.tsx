@@ -49,17 +49,12 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
 
     return (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
-            {/* Header with NSW step badge and View Toggle */}
+            {/* Header with View Toggle */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-gray-100 dark:border-gray-800">
                 <div>
-                    <div className="flex items-center gap-2">
-                        <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider">
-                            Step 3 & 4
-                        </span>
-                        <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                            AI Cause Analysis & Troubleshooting Score
-                        </h2>
-                    </div>
+                    <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                        AI Cause Analysis & Troubleshooting Score
+                    </h2>
 
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         Candidate causes evaluated and ranked by multi-source evidence likelihood
@@ -79,7 +74,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-semibold shadow-2xs"
                                     : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                             }`}
-                            title="NSW Step 4 Scoring Table"
+                            title="Score Table"
                         >
                             <TableIcon size={13} />
                             <span>Score Table</span>
@@ -100,13 +95,13 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                 </div>
             </div>
 
-            {/* Step 4: AI Logical Reasoning Callout ("WHY It Provides the Recommendation") */}
+            {/* AI Logical Reasoning Callout ("WHY It Provides the Recommendation") */}
             {topCause && (
                 <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-[#faf9ff] dark:bg-indigo-950/20 p-4 text-xs">
                     <div className="flex items-center gap-1.5 mb-1 text-[#5848e8] dark:text-[#a59bff]">
                         <Sparkles size={14} className="shrink-0" />
                         <span className="font-bold uppercase tracking-wider text-[10px]">
-                            AI Logical Reasoning (Step 4)
+                            AI Logical Reasoning
                         </span>
                     </div>
                     <p className="text-gray-800 dark:text-gray-200 leading-relaxed">

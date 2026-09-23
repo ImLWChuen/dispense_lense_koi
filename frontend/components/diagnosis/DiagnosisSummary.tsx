@@ -91,26 +91,23 @@ export default function DiagnosisSummary({
     return (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
             <div className="border-b border-gray-100 dark:border-gray-800 px-6 py-5">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
-                        <Stethoscope size={20} />
-                    </div>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
+                            <Stethoscope size={20} />
+                        </div>
 
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider">
-                                Step 2
-                            </span>
-                            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                        <div className="min-w-0">
+                            <h2 className="text-base font-bold text-gray-900 dark:text-white truncate">
                                 Diagnosis Summary
                             </h2>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {caseIdText}
+                            </p>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {caseIdText}
-                        </p>
                     </div>
 
-                    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-blue-500/15 border border-transparent dark:border-blue-500/30 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                    <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-blue-500/15 border border-transparent dark:border-blue-500/30 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
                         {status}
                     </span>
                 </div>
