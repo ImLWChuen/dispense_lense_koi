@@ -333,18 +333,13 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Step 1 – Dispensing Problem Discovery */}
+            {/* Dispensing Problem Discovery */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
-                        <div className="flex items-center gap-2">
-                            <span className="rounded-md bg-indigo-50 text-[#5848e8] border border-indigo-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                                Step 1 • NSW Automation
-                            </span>
-                            <h2 className="text-base font-semibold text-gray-900">
-                                Dispensing Problem Discovery
-                            </h2>
-                        </div>
+                        <h2 className="text-base font-semibold text-gray-900">
+                            Dispensing Problem Discovery
+                        </h2>
                         <p className="mt-1 text-xs text-gray-500">
                             Smart discovery questions to establish defect characteristics and process variables
                         </p>

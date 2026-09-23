@@ -632,74 +632,83 @@ function KnowledgeBaseContent() {
                         {/* TAB 4: RULES                                            */}
                         {/* ======================================================= */}
                         {activeTab === "Rules" && (
-                            <div className="space-y-4">
-                                <div className="rounded-2xl border border-[#ded9ff] bg-[#faf9ff] p-6 text-center">
-                                    <BookOpen
-                                        size={32}
-                                        className="mx-auto text-[#6d5dfc]/70"
-                                    />
-
-                                    <h3 className="mt-2 text-base font-semibold text-gray-900">
-                                        Live Evidence Evaluation Rules ({rules.length} Active Rules)
-                                    </h3>
-
-                                    <p className="mt-1 text-xs text-gray-600 max-w-2xl mx-auto">
-                                        The diagnostic engine evaluates observations against this live codified knowledge rule set, computing deterministic evidence-support scores on a 0–100 scale.
-                                    </p>
+                            <div className="space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#ded9ff] bg-[#faf9ff] px-4 py-2.5">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6d5dfc]/10 text-[#6d5dfc] shrink-0">
+                                            <BookOpen size={15} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-xs font-semibold text-gray-900">
+                                                    Live Evidence Evaluation Rules
+                                                </h3>
+                                                <span className="rounded-full bg-[#6d5dfc]/10 text-[#6d5dfc] px-2 py-0.5 text-[10px] font-bold">
+                                                    {rules.length} Active Rules
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-500">
+                                                Codified rules evaluating physical observations against candidate causes (0–100 scale).
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-[11px] font-mono text-gray-500 shrink-0">
+                                        Showing {filteredRules.length} of {rules.length} rules
+                                    </div>
                                 </div>
 
                                 {filteredRules.length > 0 ? (
-                                    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-sm">
-                                                <thead>
-                                                    <tr className="border-b border-gray-100 bg-gray-50/50 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                        <th className="px-6 py-3.5">Rule ID</th>
-                                                        <th className="px-6 py-3.5">Observation Condition</th>
-                                                        <th className="px-6 py-3.5">Target Cause</th>
-                                                        <th className="px-6 py-3.5">Relation</th>
-                                                        <th className="px-6 py-3.5">Strength</th>
-                                                        <th className="px-6 py-3.5">Engineering Rationale</th>
+                                    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                                        <div className="overflow-x-auto max-h-[640px] overflow-y-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50/95 backdrop-blur-sm shadow-sm text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                                    <tr>
+                                                        <th className="px-3.5 py-2">Rule ID</th>
+                                                        <th className="px-3.5 py-2">Observation Condition</th>
+                                                        <th className="px-3.5 py-2">Target Cause</th>
+                                                        <th className="px-3.5 py-2">Relation</th>
+                                                        <th className="px-3.5 py-2">Strength</th>
+                                                        <th className="px-3.5 py-2">Engineering Rationale</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
                                                     {filteredRules.map((rule) => (
-                                                        <tr key={rule.id} className="transition hover:bg-gray-50/70">
-                                                            <td className="px-6 py-3.5 font-mono text-xs font-semibold text-gray-600 whitespace-nowrap">
+                                                        <tr key={rule.id} className="transition hover:bg-indigo-50/30">
+                                                            <td className="px-3.5 py-2 font-mono text-[11px] font-semibold text-gray-600 whitespace-nowrap">
                                                                 {rule.id}
                                                             </td>
 
-                                                            <td className="px-6 py-3.5 whitespace-nowrap">
-                                                                <span className="text-xs font-mono font-medium text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                            <td className="px-3.5 py-2 whitespace-nowrap">
+                                                                <span className="text-[11px] font-mono font-medium text-gray-800 bg-gray-100 border border-gray-200/60 px-1.5 py-0.5 rounded">
                                                                     {rule.observation_type}={rule.observation_value}
                                                                 </span>
                                                             </td>
 
-                                                            <td className="px-6 py-3.5 font-medium text-gray-900 whitespace-nowrap">
+                                                            <td className="px-3.5 py-2 font-medium text-gray-900 whitespace-nowrap text-xs">
                                                                 {causeNameMap[rule.cause_id] || rule.cause_id}
                                                             </td>
 
-                                                            <td className="px-6 py-3.5 whitespace-nowrap">
+                                                            <td className="px-3.5 py-2 whitespace-nowrap">
                                                                 <span
-                                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${
+                                                                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${
                                                                         rule.relation === "SUPPORTS"
                                                                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                                                             : rule.relation === "CONTRADICTS"
                                                                               ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                                                              : "bg-gray-100 text-gray-600"
+                                                                              : "bg-gray-100 text-gray-600 border border-gray-200"
                                                                     }`}
                                                                 >
                                                                     {rule.relation}
                                                                 </span>
                                                             </td>
 
-                                                            <td className="px-6 py-3.5 whitespace-nowrap">
+                                                            <td className="px-3.5 py-2 whitespace-nowrap">
                                                                 <span className="text-[11px] font-medium text-gray-500 capitalize">
                                                                     {rule.strength.toLowerCase()}
                                                                 </span>
                                                             </td>
 
-                                                            <td className="px-6 py-3.5 text-xs text-gray-600 max-w-sm">
+                                                            <td className="px-3.5 py-2 text-[11px] text-gray-600 leading-snug max-w-md">
                                                                 {rule.explanation}
                                                             </td>
                                                         </tr>
@@ -709,13 +718,13 @@ function KnowledgeBaseContent() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center">
-                                        <BookOpen size={28} className="mx-auto text-gray-300 mb-2" />
-                                        <p className="text-sm font-semibold text-gray-800">No rules match your search</p>
-                                        <p className="mt-1 text-xs text-gray-500">No evidence rules found matching &quot;{search}&quot;.</p>
+                                    <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+                                        <BookOpen size={24} className="mx-auto text-gray-300 mb-2" />
+                                        <p className="text-xs font-semibold text-gray-800">No rules match your search</p>
+                                        <p className="mt-1 text-[11px] text-gray-500">No evidence rules found matching &quot;{search}&quot;.</p>
                                         <button
                                             onClick={() => setSearch("")}
-                                            className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                                            className="mt-2.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
                                         >
                                             Clear Search
                                         </button>
@@ -826,14 +835,9 @@ function KnowledgeBaseContent() {
                                                 <Sparkles size={20} />
                                             </div>
                                             <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                                                        Historical Troubleshooting Learning Database
-                                                    </h3>
-                                                    <span className="rounded bg-indigo-50 dark:bg-[#5848e8]/20 text-[#5848e8] dark:text-[#a59bff] border border-indigo-200 dark:border-[#5848e8]/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                                                        NSW Bonus Challenge 3
-                                                    </span>
-                                                </div>
+                                                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                                    Historical Troubleshooting Learning Database
+                                                </h3>
                                                 <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
                                                     Industrial fluid dispensing knowledge base that records past troubleshooting cases, candidate causes, recommended procedures, and verified successful solutions. Over time, AI leverages this dataset to synthesize learning insights (e.g. <em>&ldquo;Similar problems occurred 12 times previously. In 8 cases, the main cause was air trapped inside the syringe.&rdquo;</em>).
                                                 </p>

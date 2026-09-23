@@ -34,12 +34,9 @@ export default function LearningInsightBanner({
                     </div>
 
                     <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center gap-1 rounded bg-[#eeebff] dark:bg-[#5848e8]/30 px-2 py-0.5 text-[10px] font-bold text-[#5848e8] dark:text-[#a59bff] border border-[#d8d1fc] dark:border-[#5848e8]/50 uppercase tracking-wide">
-                                <Database size={11} />
-                                NSW Bonus Challenge 3
-                            </span>
-                            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center gap-1.5">
+                            <Database size={13} className="text-[#5848e8] dark:text-[#a59bff]" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-[#5848e8] dark:text-[#a59bff]">
                                 AI Learning Database Insight
                             </span>
                         </div>
