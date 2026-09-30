@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-Repeatable local demo startup and competition rehearsal readiness
+Finalist image inspection improvements: trustworthy region-level results
 
 ## Accepted prerequisite
 
@@ -12,7 +12,7 @@ Repeatable local demo startup and competition rehearsal readiness
   - review: `.agents/handoff/reviews/DLK-M3-030-review.md`
   - next-stage evidence: root startup documentation and the existing database helper are still environment-specific/inaccurate, so repeatable local demo operation remains a release dependency
 
-## Active task
+## Accepted startup task
 
 - `DLK-M3-031` — Repeatable local demo startup and operator runbook — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-031-local-demo-readiness.md`
@@ -35,7 +35,7 @@ Repeatable local demo startup and competition rehearsal readiness
   - review: `.agents/handoff/reviews/DLK-M3-031-review.md`
   - next step: Member 3 feature implementation is complete for the authorized scope; proceed with final team rehearsal, submission evidence/video, and user-directed Git publication or merge
 
-## Active rehearsal correction
+## Accepted rehearsal correction
 
 - `DLK-M3-032` — Consolidate analytics defects by canonical code — **accepted**
   - reviewed commit: `01640a7fb3344d49a3dedc478d75ad3bc7f1d475`
@@ -57,6 +57,15 @@ Do not implement inside DLK-M3-031:
 - new testing frameworks
 - database/schema changes
 
-No additional Member 3 implementation task is currently authorized.
+## Active task
 
-DLK-M3-031 is accepted. Member 3 feature work should stop unless a rehearsal or teammate integration run identifies a new reproducible blocker. Remaining work is final team rehearsal, submission evidence/video, administrative upload, and merge/release coordination.
+- `DLK-M3-033` — Preserve region inspection reliability — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-032`; integrated baseline `a4cb267`
+  - authorized scope: additive per-region inspection statuses and warnings; distinguish unassessed from missing; trustworthy aggregates; conservative classification gates; regression tests and API documentation
+  - deferred: partial score-bearing analysis, overlays, template storage, automatic site detection/alignment, frontend changes
+  - planning roadmap: `docs/architecture/region-inspection-improvement-plan.md`
+  - inspection layout decision remains pending and does not block this foundation task
+
+The user authorized the first finalist image-improvement task. Execute only DLK-M3-033, then return for review. Earlier milestone completion statements describe the previous submission scope; they do not block this newly authorized task. Remote Git operations still require explicit user instruction.

@@ -29,6 +29,13 @@ class AnalysisStatus(str, Enum):
     UNRELIABLE = "UNRELIABLE"
 
 
+class RoiInspectionStatus(str, Enum):
+    """Observation reliability status for an individual ROI."""
+    DETECTED = "DETECTED"
+    MISSING = "MISSING"
+    UNASSESSED = "UNASSESSED"
+
+
 class NormalizedROI(BaseModel):
     """Normalized rectangular region of interest with coordinates in [0.0, 1.0]."""
     model_config = ConfigDict(extra="forbid")
@@ -223,6 +230,8 @@ class RoiMeasurement(BaseModel):
     bubble_details: list[dict[str, Any]] = Field(default_factory=list)
     segmentation_quality: float
     is_missing: bool = False
+    inspection_status: RoiInspectionStatus = Field(default=RoiInspectionStatus.UNASSESSED)
+    inspection_warnings: list[str] = Field(default_factory=list)
 
 
 class AggregateMeasurements(BaseModel):
@@ -232,6 +241,7 @@ class AggregateMeasurements(BaseModel):
     mean_coverage: float | None = None
     size_cv: float | None = None
     missing_roi_ids: list[str] = Field(default_factory=list)
+    unassessed_roi_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 

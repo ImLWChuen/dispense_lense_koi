@@ -115,3 +115,178 @@ def test_aggregate_measurements_size_cv() -> None:
     assert agg.size_cv is not None
     assert agg.size_cv > 0
     assert len(agg.missing_roi_ids) == 0
+
+
+def test_regression_unreliable_zero_area_not_mislabeled_as_missing() -> None:
+    """An unreliable segmentation with zero area must NOT be placed into missing_roi_ids."""
+    from app.services.vision.segmentation import SegmentationResult, SegmentationStatus
+
+    unreliable_seg = SegmentationResult(
+        status=SegmentationStatus.UNRELIABLE,
+        deposit_area_px=0.0,
+        deposit_inside_target_px=0.0,
+        deposit_outside_target_px=0.0,
+        target_area_px=100.0,
+        quality_score=0.0,
+        is_missing=False,
+        warnings=["Analysis window has zero size."],
+    )
+    from app.schemas.image import PixelROI
+    target = PixelROI(roi_id="roi_bad", x=10, y=10, width=50, height=50)
+    feat = calculate_roi_features(unreliable_seg, target, "roi_bad")
+
+    agg = calculate_aggregate_measurements([feat], all_roi_ids=["roi_bad"])
+    # Under bug: 'roi_bad' is put in missing_roi_ids because deposit_area_px == 0
+    # Required: must NOT be in missing_roi_ids, must be in unassessed_roi_ids
+    assert "roi_bad" not in agg.missing_roi_ids, "Unreliable zero-area ROI must not be in missing_roi_ids"
+    assert hasattr(agg, "unassessed_roi_ids")
+    assert "roi_bad" in agg.unassessed_roi_ids
+
+
+def test_regression_omitted_roi_not_mislabeled_as_missing() -> None:
+    """An expected ROI without a measurement must NOT be placed into missing_roi_ids."""
+    img_bytes = create_centered_dot_image(size=200, dot_radius=20)
+    img, dims = decode_and_validate_image(img_bytes)
+    roi1 = NormalizedROI(roi_id="roi_1", x=0.25, y=0.25, width=0.5, height=0.5)
+    px_roi1, win_roi1 = normalize_roi_to_pixels(roi1, dims.width, dims.height)
+    seg1 = segment_roi(img, px_roi1, win_roi1)
+    f1 = calculate_roi_features(seg1, px_roi1, "roi_1")
+
+    # Only roi_1 is measured, but all_roi_ids expects both roi_1 and roi_omitted
+    agg = calculate_aggregate_measurements([f1], all_roi_ids=["roi_1", "roi_omitted"])
+    # Under bug: 'roi_omitted' is put in missing_roi_ids
+    # Required: must NOT be in missing_roi_ids, must be in unassessed_roi_ids
+    assert "roi_omitted" not in agg.missing_roi_ids, "Omitted ROI must not be placed in missing_roi_ids"
+    assert hasattr(agg, "unassessed_roi_ids")
+    assert "roi_omitted" in agg.unassessed_roi_ids
+
+
+def test_aggregate_boundaries_all_unassessed_and_fewer_than_two_deposits() -> None:
+    """Verifies aggregate boundary conditions across unassessed, missing, and valid deposits."""
+    from app.schemas.image import RoiInspectionStatus, RoiMeasurement
+
+    m_detected_1 = RoiMeasurement(
+        roi_id="det_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=0.9,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m_detected_2 = m_detected_1.model_copy(
+        update={"roi_id": "det_2", "deposit_area_px": 600.0, "coverage_ratio": 0.60}
+    )
+    m_unassessed = RoiMeasurement(
+        roi_id="unassessed_1",
+        deposit_area_px=0.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.0,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0,
+        circularity=0.0,
+        solidity=0.0,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=0.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Low contrast ambiguous segmentation."],
+    )
+    m_missing = RoiMeasurement(
+        roi_id="missing_1",
+        deposit_area_px=0.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.0,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0,
+        circularity=0.0,
+        solidity=0.0,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=True,
+        inspection_status=RoiInspectionStatus.MISSING,
+    )
+
+    # 1. All-unassessed -> mean_coverage is None, size_cv is None
+    agg_unassessed = calculate_aggregate_measurements(
+        [m_unassessed], all_roi_ids=["unassessed_1"]
+    )
+    assert agg_unassessed.mean_coverage is None
+    assert agg_unassessed.size_cv is None
+    assert agg_unassessed.unassessed_roi_ids == ["unassessed_1"]
+    assert agg_unassessed.missing_roi_ids == []
+
+    # 2. Missing + Unassessed (0 eligible) -> mean_coverage is None, size_cv is None, disjoint lists
+    agg_mixed_zero = calculate_aggregate_measurements(
+        [m_missing, m_unassessed], all_roi_ids=["missing_1", "unassessed_1"]
+    )
+    assert agg_mixed_zero.mean_coverage is None
+    assert agg_mixed_zero.size_cv is None
+    assert agg_mixed_zero.missing_roi_ids == ["missing_1"]
+    assert agg_mixed_zero.unassessed_roi_ids == ["unassessed_1"]
+    assert set(agg_mixed_zero.missing_roi_ids).isdisjoint(set(agg_mixed_zero.unassessed_roi_ids))
+
+    # 3. Exactly 1 valid deposit + 1 unassessed -> mean_coverage is float, size_cv is None
+    agg_one = calculate_aggregate_measurements(
+        [m_detected_1, m_unassessed], all_roi_ids=["det_1", "unassessed_1"]
+    )
+    assert agg_one.mean_coverage == 0.50
+    assert agg_one.size_cv is None
+    assert agg_one.unassessed_roi_ids == ["unassessed_1"]
+    assert agg_one.missing_roi_ids == []
+
+    # 4. >=2 valid deposits + 1 unassessed -> valid mean_coverage, valid size_cv > 0 (excluding unassessed)
+    agg_two = calculate_aggregate_measurements(
+        [m_detected_1, m_detected_2, m_unassessed],
+        all_roi_ids=["det_1", "det_2", "unassessed_1"],
+    )
+    assert agg_two.mean_coverage == pytest.approx(0.55, rel=1e-3)
+    assert agg_two.size_cv is not None
+    assert agg_two.size_cv > 0.0
+    assert agg_two.unassessed_roi_ids == ["unassessed_1"]
+
+
+def test_legacy_serialized_measurement_defaults() -> None:
+    """Verifies that legacy serialized payloads missing new fields parse safely to defaults."""
+    from app.schemas.image import AggregateMeasurements, RoiInspectionStatus, RoiMeasurement
+
+    legacy_roi_data = {
+        "roi_id": "legacy_roi",
+        "deposit_area_px": 250.0,
+        "target_area_px": 500.0,
+        "coverage_ratio": 0.5,
+        "overflow_ratio": 0.0,
+        "equivalent_diameter_px": 17.8,
+        "circularity": 0.88,
+        "solidity": 0.92,
+        "aspect_ratio": 1.05,
+        "hole_void_ratio": 0.0,
+        "bubble_count": 0,
+        "has_bubbles": False,
+        "is_abnormal_shape": False,
+        "is_tailing": False,
+        "bubble_details": [],
+        "segmentation_quality": 0.85,
+        "is_missing": False,
+    }
+    m = RoiMeasurement.model_validate(legacy_roi_data)
+    assert m.inspection_status == RoiInspectionStatus.UNASSESSED
+    assert m.inspection_warnings == []
+
+    legacy_agg_data = {
+        "mean_coverage": 0.5,
+        "size_cv": 0.05,
+        "missing_roi_ids": ["legacy_missing"],
+        "warnings": ["Legacy warning"],
+    }
+    agg = AggregateMeasurements.model_validate(legacy_agg_data)
+    assert agg.unassessed_roi_ids == []
+    assert agg.missing_roi_ids == ["legacy_missing"]

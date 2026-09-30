@@ -346,3 +346,106 @@ def test_omitted_shape_limits_never_emit_d06_observations() -> None:
     assert not any(o.observation_type == "bubble_presence" for o in obs)
     assert not any(o.observation_type == "deposit_shape" for o in obs)
 
+
+def test_explicit_unassessed_overrides_high_numeric_quality_in_process_limits() -> None:
+    """Explicit UNASSESSED overrides artificial high numeric quality (1.0) and forces UNRELIABLE in PROCESS_LIMITS."""
+    from app.schemas.image import AggregateMeasurements, RoiInspectionStatus, RoiMeasurement
+
+    feat_unassessed = RoiMeasurement(
+        roi_id="roi_test",
+        deposit_area_px=100.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.10,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=11.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,  # Misleadingly high quality
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Contradictory segmentation candidate score."],
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["roi_test"],
+        warnings=[],
+    )
+
+    limits = ProcessLimits(min_coverage_ratio=0.20)  # Would normally trigger D01 undersized
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[feat_unassessed],
+        aggregate=agg,
+        process_limits=limits,
+    )
+    assert status == AnalysisStatus.UNRELIABLE
+    assert obs == []
+    assert any("roi_test" in w and "unassessed" in w for w in warnings)
+
+
+def test_explicit_unassessed_overrides_high_numeric_quality_in_reference_mode() -> None:
+    """Explicit UNASSESSED in reference measurement overrides quality 1.0 and forces UNRELIABLE."""
+    from app.schemas.image import AggregateMeasurements, RoiInspectionStatus, RoiMeasurement
+
+    curr_feat = RoiMeasurement(
+        roi_id="roi_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    ref_feat_unassessed = RoiMeasurement(
+        roi_id="roi_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,  # Misleadingly high quality
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Reference window boundary clipped."],
+    )
+
+    curr_agg = AggregateMeasurements(
+        mean_coverage=0.50,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    ref_agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["roi_1"],
+    )
+
+    ref_limits = ReferenceLimits(tolerance_ratio=0.10)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr_feat],
+        aggregate=curr_agg,
+        reference_measurements=[ref_feat_unassessed],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+    assert status == AnalysisStatus.UNRELIABLE
+    assert obs == []
+    assert any("Reference ROI 'roi_1' is unassessed" in w for w in warnings)
+

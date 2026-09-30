@@ -438,3 +438,94 @@ def test_image_analyze_defensible_empty_target_returns_calibrated_d04_missing(cl
     obs = data["observations"][0]
     assert obs["observation_type"] == "deposit_presence"
     assert obs["value"] == "missing"
+    assert data["roi_measurements"][0]["inspection_status"] == "MISSING"
+    assert data["roi_measurements"][0]["is_missing"] is True
+    assert data["aggregate_measurements"]["missing_roi_ids"] == ["r1"]
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_uniform_uninspectable_image_end_to_end(client: TestClient) -> None:
+    """Verifies that an uninspectable uniform image returns UNASSESSED status, no missing IDs, and no observations."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05, "min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("uninspectable.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    # Must NOT be mislabeled as missing deposit
+    assert data["aggregate_measurements"]["missing_roi_ids"] == []
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == ["r1"]
+    # Check region measurement
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "UNASSESSED"
+    assert m["is_missing"] is False
+    assert len(m["inspection_warnings"]) > 0
+    # Top-level warnings expose affected ROI ID and reason
+    assert any("r1" in w and "unassessed" in w for w in data["warnings"])
+
+
+def test_image_analyze_mixed_valid_and_unassessed_rois(client: TestClient) -> None:
+    """A mixed image preserves valid ROI measurement, excludes unassessed from aggregates, and conservatively gates observations."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image: Left side has a dark circular deposit; right side is completely flat/uniform
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (100, 100), 25, (30, 30, 30), -1)
+    mixed_img = encode_image(img)
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r_valid", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r_unassessed", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "process_limits": {"min_presence_ratio": 0.05, "min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("mixed.png", mixed_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # 1. Conservative gating: any unassessed region yields UNRELIABLE and zero observations in calibrated mode
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("r_unassessed" in w for w in data["warnings"])
+
+    # 2. Region measurements preserve individual valid details
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert "r_valid" in meas_by_id
+    assert "r_unassessed" in meas_by_id
+
+    m_valid = meas_by_id["r_valid"]
+    assert m_valid["inspection_status"] == "DETECTED"
+    assert m_valid["is_missing"] is False
+    assert m_valid["coverage_ratio"] > 0.15
+    assert m_valid["deposit_area_px"] > 0
+
+    m_unassessed = meas_by_id["r_unassessed"]
+    assert m_unassessed["inspection_status"] == "UNASSESSED"
+    assert m_unassessed["is_missing"] is False
+    assert len(m_unassessed["inspection_warnings"]) > 0
+
+    # 3. Aggregate measurements exclude unassessed from coverage and size CV
+    agg = data["aggregate_measurements"]
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == ["r_unassessed"]
+    assert agg["mean_coverage"] == pytest.approx(m_valid["coverage_ratio"], rel=1e-3)
+    assert agg["size_cv"] is None  # Only 1 valid deposit

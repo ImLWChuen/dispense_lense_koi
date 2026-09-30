@@ -11,8 +11,13 @@ import math
 import cv2
 import numpy as np
 
-from app.schemas.image import AggregateMeasurements, PixelROI, RoiMeasurement
-from app.services.vision.segmentation import SegmentationResult
+from app.schemas.image import (
+    AggregateMeasurements,
+    PixelROI,
+    RoiInspectionStatus,
+    RoiMeasurement,
+)
+from app.services.vision.segmentation import SegmentationResult, SegmentationStatus
 
 
 def calculate_roi_features(
@@ -87,6 +92,38 @@ def calculate_roi_features(
         if circularity < 0.78 or solidity < 0.88 or convexity < 0.88 or is_tailing:
             is_abnormal_shape = True
 
+    # Determine explicit inspection status and preserve detailed warnings
+    inspection_warnings: list[str] = list(seg_result.warnings)
+
+    is_reliable = (
+        seg_result.quality_score >= 0.4
+        and seg_result.status != SegmentationStatus.UNRELIABLE
+    )
+
+    if is_reliable and (seg_result.is_missing or seg_result.status == SegmentationStatus.MISSING):
+        inspection_status = RoiInspectionStatus.MISSING
+        is_missing = True
+    elif is_reliable and seg_result.status == SegmentationStatus.SUCCESS and deposit_area > 0 and not seg_result.is_missing:
+        inspection_status = RoiInspectionStatus.DETECTED
+        is_missing = False
+    else:
+        inspection_status = RoiInspectionStatus.UNASSESSED
+        is_missing = False
+        if seg_result.quality_score < 0.4:
+            warn = f"ROI '{roi_id}' segmentation quality ({seg_result.quality_score:.2f}) is below reliable threshold."
+            if warn not in inspection_warnings:
+                inspection_warnings.append(warn)
+        elif seg_result.status == SegmentationStatus.UNRELIABLE:
+            warn = f"ROI '{roi_id}' segmentation is unreliable."
+            if warn not in inspection_warnings:
+                inspection_warnings.append(warn)
+        elif deposit_area <= 0 and not seg_result.is_missing:
+            warn = f"ROI '{roi_id}' has zero deposit area without confirmed absence."
+            if warn not in inspection_warnings:
+                inspection_warnings.append(warn)
+        if not inspection_warnings:
+            inspection_warnings.append(f"ROI '{roi_id}' could not be reliably assessed.")
+
     return RoiMeasurement(
         roi_id=roi_id,
         deposit_area_px=deposit_area,
@@ -106,7 +143,9 @@ def calculate_roi_features(
         is_tailing=is_tailing,
         bubble_details=bubble_details,
         segmentation_quality=seg_result.quality_score,
-        is_missing=seg_result.is_missing,
+        is_missing=is_missing,
+        inspection_status=inspection_status,
+        inspection_warnings=inspection_warnings,
     )
 
 
@@ -115,22 +154,45 @@ def calculate_aggregate_measurements(
     all_roi_ids: list[str],
 ) -> AggregateMeasurements:
     """Compute aggregate statistics across multiple ROI measurements."""
-    missing_ids = [m.roi_id for m in roi_measurements if m.is_missing or m.deposit_area_px == 0]
-    # Identify any ROIs in all_roi_ids that have no measurement
-    measured_ids = {m.roi_id for m in roi_measurements}
-    for rid in all_roi_ids:
-        if rid not in measured_ids and rid not in missing_ids:
-            missing_ids.append(rid)
+    missing_ids: list[str] = []
+    unassessed_ids: list[str] = []
 
-    valid_coverages = [m.coverage_ratio for m in roi_measurements if not m.is_missing and m.deposit_area_px > 0]
+    measured_by_id = {m.roi_id: m for m in roi_measurements}
+
+    for m in roi_measurements:
+        if m.inspection_status == RoiInspectionStatus.MISSING:
+            if m.roi_id not in missing_ids:
+                missing_ids.append(m.roi_id)
+        elif m.inspection_status == RoiInspectionStatus.UNASSESSED:
+            if m.roi_id not in unassessed_ids:
+                unassessed_ids.append(m.roi_id)
+
+    # Expected IDs without measurements belong to unassessed, never missing
+    for rid in all_roi_ids:
+        if rid not in measured_by_id:
+            if rid not in unassessed_ids:
+                unassessed_ids.append(rid)
+
+    # Disjointness guarantee: ensure missing_ids and unassessed_ids never overlap
+    missing_ids = [rid for rid in missing_ids if rid not in unassessed_ids]
+
+    # Valid coverages strictly exclude missing and unassessed regions
+    valid_coverages = [
+        m.coverage_ratio
+        for m in roi_measurements
+        if m.inspection_status == RoiInspectionStatus.DETECTED and m.deposit_area_px > 0
+    ]
 
     mean_cov: float | None = None
     size_cv: float | None = None
     warnings: list[str] = []
 
     if valid_coverages:
-        mean_cov = float(np.mean(valid_coverages))
-        if len(valid_coverages) >= 2:
+        if len(valid_coverages) == 1:
+            mean_cov = float(valid_coverages[0])
+            size_cv = None
+        else:
+            mean_cov = float(np.mean(valid_coverages))
             std_cov = float(np.std(valid_coverages, ddof=1))
             if mean_cov > 1e-6:
                 size_cv = std_cov / mean_cov
@@ -140,9 +202,13 @@ def calculate_aggregate_measurements(
     if missing_ids:
         warnings.append(f"Missing deposits detected in {len(missing_ids)} ROI(s): {', '.join(missing_ids)}.")
 
+    if unassessed_ids:
+        warnings.append(f"Unassessed regions detected in {len(unassessed_ids)} ROI(s): {', '.join(unassessed_ids)}.")
+
     return AggregateMeasurements(
         mean_coverage=mean_cov,
         size_cv=size_cv,
         missing_roi_ids=missing_ids,
+        unassessed_roi_ids=unassessed_ids,
         warnings=warnings,
     )

@@ -2758,49 +2758,75 @@ Extracts resolution-independent geometric features from dispensing deposit image
   "roi_measurements": [
     {
       "roi_id": "dot_1",
+      "deposit_area_px": 8250.0,
+      "target_area_px": 100000.0,
       "coverage_ratio": 0.082,
       "overflow_ratio": 0.000,
-      "equivalent_diameter_px": 82.5,
-      "equivalent_diameter_mm": 0.4125,
+      "equivalent_diameter_px": 102.5,
+      "calibrated_diameter_mm": 0.5125,
       "circularity": 0.94,
       "solidity": 0.98,
+      "convexity": 1.0,
       "aspect_ratio": 1.02,
       "hole_void_ratio": 0.00,
-      "segmentation_quality": 0.96
+      "bubble_count": 0,
+      "has_bubbles": false,
+      "is_abnormal_shape": false,
+      "is_tailing": false,
+      "bubble_details": [],
+      "segmentation_quality": 0.96,
+      "is_missing": false,
+      "inspection_status": "DETECTED",
+      "inspection_warnings": []
     }
   ],
   "aggregate_measurements": {
-    "mean_coverage_ratio": 0.082,
-    "std_coverage_ratio": 0.000,
+    "mean_coverage": 0.082,
     "size_cv": null,
-    "mean_circularity": 0.94,
-    "mean_solidity": 0.98,
-    "mean_aspect_ratio": 1.02,
-    "mean_hole_void_ratio": 0.00,
-    "roi_count": 1,
-    "valid_roi_count": 1
+    "missing_roi_ids": [],
+    "unassessed_roi_ids": [],
+    "warnings": []
   },
   "observations": [
     {
-      "id": "obs_image_dot_1_undersized",
       "observation_type": "deposit_size",
       "value": "undersized",
-      "original_text": "Calibrated image analysis: coverage_ratio=0.082 < min_coverage_ratio=0.150 on ROI dot_1",
       "statement_type": "AI_INFERENCE",
       "source": "IMAGE",
-      "confidence": 0.95,
       "metadata": {
         "roi_id": "dot_1",
         "coverage_ratio": 0.082,
         "overflow_ratio": 0.000,
-        "equivalent_diameter_px": 82.5,
-        "mode": "PROCESS_LIMITS"
+        "mode": "PROCESS_LIMITS",
+        "status": "CALIBRATED"
       }
     }
   ],
   "warnings": []
 }
 ```
+
+##### Region Inspection Reliability & Status Semantics
+- **`RoiInspectionStatus` (`inspection_status`):**
+  - `"DETECTED"`: Deposit reliably segmented with positive area. Indicates observation reliability; does not imply acceptance against process limits.
+  - `"MISSING"`: Region reliably inspected with verified substrate/background context confirming deposit absence (`is_missing=true`).
+  - `"UNASSESSED"`: Region could not be reliably inspected (e.g. flat exposure, camera failure, low contrast, boundary clipping, or omitted measurement). `is_missing` is strictly `false` for unassessed regions to prevent false missing deposit defect reports.
+- **Additive Measurement & Aggregate Fields:**
+  - `RoiMeasurement.inspection_status`: `RoiInspectionStatus` enum (`DETECTED`, `MISSING`, `UNASSESSED`, default: `UNASSESSED`).
+  - `RoiMeasurement.inspection_warnings`: Detailed per-region failure or ambiguity explanations (default: `[]`).
+  - `AggregateMeasurements.unassessed_roi_ids`: List of ROI IDs that are unassessed or missing measurement data (default: `[]`). Strictly disjoint from `missing_roi_ids`.
+- **Aggregate Boundary Handling:**
+  - `mean_coverage` and `size_cv` are calculated strictly over eligible `DETECTED` deposits with `deposit_area_px > 0`. `MISSING` and `UNASSESSED` regions are excluded.
+  - Zero eligible deposits: `mean_coverage = null`, `size_cv = null`.
+  - Exactly one eligible deposit: `mean_coverage` is calculated, `size_cv = null`.
+  - Two or more eligible deposits: `size_cv` is calculated as sample coefficient of variation ($\text{std} / \text{mean}$).
+- **Conservative Whole-Image Classification Gating:**
+  - In calibrated modes (`PROCESS_LIMITS`, `REFERENCE_IMAGE`), any unassessed current or reference ROI forces overall analysis `status = "UNRELIABLE"`, emits zero score-bearing observations (`observations = []`), and surfaces affected ROI IDs and reasons in top-level `warnings`.
+  - Explicit `UNASSESSED` status strictly overrides misleadingly high numeric quality scores.
+  - `FEATURES_ONLY` mode remains neutral and `UNCALIBRATED`.
+- **Backward Compatibility:**
+  - Historical payloads missing new fields deserialize safely using defaults (`UNASSESSED`, `[]`, `[]`) without being promoted to reliable evidence.
+
 
 #### Status and Error Codes
 - `200 OK`: Image successfully processed and analyzed.
