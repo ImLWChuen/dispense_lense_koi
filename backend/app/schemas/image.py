@@ -281,5 +281,6 @@ class ImageAnalysisResponse(BaseModel):
     image_dimensions: ImageDimensions
     roi_measurements: list[RoiMeasurement] = Field(default_factory=list)
     aggregate_measurements: AggregateMeasurements
+    reference_aggregate_measurements: AggregateMeasurements | None = Field(default=None)
     observations: list[Observation] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

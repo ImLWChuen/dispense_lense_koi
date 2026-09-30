@@ -418,3 +418,51 @@ def test_inspection_coverage_empty_expected_list_internal_edge_case() -> None:
     assert agg.expected_roi_count == 0
     assert agg.assessed_roi_count == 0
     assert agg.inspection_coverage_status == InspectionCoverageStatus.NONE
+
+
+def test_image_analysis_response_deserialization_legacy_and_reference_aggregate() -> None:
+    """ImageAnalysisResponse defaults reference_aggregate_measurements to None on legacy payloads."""
+    from app.schemas.image import (
+        ImageAnalysisResponse,
+        InspectionCoverageStatus,
+    )
+
+    legacy_payload = {
+        "status": "CALIBRATED",
+        "mode": "PROCESS_LIMITS",
+        "image_dimensions": {"width": 100, "height": 100},
+        "roi_measurements": [],
+        "aggregate_measurements": {
+            "mean_coverage": 0.25,
+            "size_cv": None,
+            "missing_roi_ids": [],
+            "unassessed_roi_ids": [],
+            "expected_roi_count": 1,
+            "assessed_roi_count": 1,
+            "inspection_coverage_status": "COMPLETE",
+            "warnings": [],
+        },
+        "observations": [],
+        "warnings": [],
+    }
+
+    resp = ImageAnalysisResponse.model_validate(legacy_payload)
+    assert resp.reference_aggregate_measurements is None
+
+    # Providing explicit reference_aggregate_measurements
+    ref_payload = dict(legacy_payload)
+    ref_payload["mode"] = "REFERENCE_IMAGE"
+    ref_payload["reference_aggregate_measurements"] = {
+        "mean_coverage": 0.30,
+        "size_cv": None,
+        "missing_roi_ids": [],
+        "unassessed_roi_ids": [],
+        "expected_roi_count": 1,
+        "assessed_roi_count": 1,
+        "inspection_coverage_status": "COMPLETE",
+        "warnings": [],
+    }
+    resp_with_ref = ImageAnalysisResponse.model_validate(ref_payload)
+    assert resp_with_ref.reference_aggregate_measurements is not None
+    assert resp_with_ref.reference_aggregate_measurements.mean_coverage == 0.30
+    assert resp_with_ref.reference_aggregate_measurements.inspection_coverage_status == InspectionCoverageStatus.COMPLETE

@@ -123,6 +123,7 @@ def _sync_analyze_image(
         image_dimensions=dims,
         roi_measurements=roi_measurements,
         aggregate_measurements=agg,
+        reference_aggregate_measurements=ref_agg,
         observations=observations,
         warnings=warnings,
     )

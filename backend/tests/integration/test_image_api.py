@@ -910,3 +910,238 @@ def test_image_analyze_inspection_coverage_none_all_unassessed(client: TestClien
     assert agg["inspection_coverage_status"] == "NONE"
     assert set(agg["unassessed_roi_ids"]) == {"r1", "r2"}
     assert agg["missing_roi_ids"] == []
+
+
+def test_image_analyze_reference_mode_exposes_reference_aggregate(client: TestClient) -> None:
+    """REFERENCE_IMAGE mode exposes separate reference_aggregate_measurements alongside current aggregate."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    curr_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 20), (300, 100, 20)],
+    )
+    ref_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 30), (300, 100, 30)],
+    )
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [
+            {"roi_id": "r1", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "r2", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "reference_limits": {
+            "min_reference_ratio": 0.3,
+            "max_reference_ratio": 1.5,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    # Current aggregate describes current image
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+    assert agg["mean_coverage"] is not None
+
+    # Reference aggregate describes reference image
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 2
+    assert ref_agg["assessed_roi_count"] == 2
+    assert ref_agg["inspection_coverage_status"] == "COMPLETE"
+    assert ref_agg["missing_roi_ids"] == []
+    assert ref_agg["unassessed_roi_ids"] == []
+    assert ref_agg["mean_coverage"] is not None
+
+    # Distinct values verify aggregates are not swapped or merged (reference deposits are larger)
+    assert ref_agg["mean_coverage"] > agg["mean_coverage"]
+
+
+def test_image_analyze_non_reference_modes_return_null_reference_aggregate(client: TestClient) -> None:
+    """Non-reference modes explicitly serialize reference_aggregate_measurements as null."""
+    curr_bytes = create_centered_dot_image(size=200, dot_radius=25)
+
+    # FEATURES_ONLY mode
+    fo_profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+    }
+    fo_resp = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("curr.png", curr_bytes, "image/png")},
+        data={"profile": json.dumps(fo_profile)},
+    )
+    assert fo_resp.status_code == 200
+    fo_data = fo_resp.json()
+    assert "reference_aggregate_measurements" in fo_data
+    assert fo_data["reference_aggregate_measurements"] is None
+    assert fo_data["aggregate_measurements"] is not None
+
+    # PROCESS_LIMITS mode
+    pl_profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+        "process_limits": {"min_coverage_ratio": 0.05},
+    }
+    pl_resp = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("curr.png", curr_bytes, "image/png")},
+        data={"profile": json.dumps(pl_profile)},
+    )
+    assert pl_resp.status_code == 200
+    pl_data = pl_resp.json()
+    assert "reference_aggregate_measurements" in pl_data
+    assert pl_data["reference_aggregate_measurements"] is None
+    assert pl_data["aggregate_measurements"] is not None
+
+
+def test_image_analyze_reference_mode_unassessed_reference_image(client: TestClient) -> None:
+    """Reliable current image paired with unassessed reference reports UNRELIABLE with reference coverage failure."""
+    curr_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    ref_bytes = encode_image(create_blank_image(200, 200, bg_color=128))
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+        "reference_limits": {"min_reference_ratio": 0.8, "max_reference_ratio": 1.2},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("Reference ROI 'r1' is unassessed" in w for w in data["warnings"])
+
+    # Current aggregate is COMPLETE
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 1
+    assert agg["assessed_roi_count"] == 1
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["unassessed_roi_ids"] == []
+
+    # Reference aggregate exposes unassessed failure
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 1
+    assert ref_agg["assessed_roi_count"] == 0
+    assert ref_agg["inspection_coverage_status"] == "NONE"
+    assert ref_agg["unassessed_roi_ids"] == ["r1"]
+    assert ref_agg["missing_roi_ids"] == []
+
+
+def test_image_analyze_reference_mode_confirmed_missing_reference_deposit(client: TestClient) -> None:
+    """Confirmed missing reference deposit reports COMPLETE reference coverage but forces UNRELIABLE status."""
+    import cv2
+    import numpy as np
+
+    # Current image: 400x200 with 2 detected deposits
+    curr_img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(curr_img, (100, 100), 20, (30, 30, 30), -1)
+    cv2.circle(curr_img, (300, 100), 20, (30, 30, 30), -1)
+    curr_bytes = encode_image(curr_img)
+
+    # Reference image: 400x200 with detected deposit at r1, confirmed missing at r2 (surrounding fiducials)
+    ref_img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(ref_img, (100, 100), 20, (30, 30, 30), -1)
+    for pt in [(240, 40), (360, 40), (240, 160), (360, 160)]:
+        cv2.circle(ref_img, pt, 5, (60, 60, 60), -1)
+    ref_bytes = encode_image(ref_img)
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [
+            {"roi_id": "r1", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r2", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "reference_limits": {
+            "min_reference_ratio": 0.8,
+            "max_reference_ratio": 1.2,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("Reference ROI 'r2' is missing; downgrading analysis." in w for w in data["warnings"])
+
+    # Current aggregate
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+
+    # Reference aggregate: assessed_roi_count is 2 (both DETECTED and MISSING are assessed), status is COMPLETE
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 2
+    assert ref_agg["assessed_roi_count"] == 2
+    assert ref_agg["inspection_coverage_status"] == "COMPLETE"
+    assert ref_agg["missing_roi_ids"] == ["r2"]
+    assert ref_agg["unassessed_roi_ids"] == []
+
+
+def test_image_analysis_response_legacy_payload_deserialization() -> None:
+    """Historical ImageAnalysisResponse JSON without reference_aggregate_measurements deserializes as None."""
+    from app.schemas.image import ImageAnalysisResponse
+
+    legacy_payload = {
+        "status": "UNCALIBRATED",
+        "mode": "FEATURES_ONLY",
+        "image_dimensions": {"width": 200, "height": 200},
+        "roi_measurements": [],
+        "aggregate_measurements": {
+            "mean_coverage": None,
+            "size_cv": None,
+            "missing_roi_ids": [],
+            "unassessed_roi_ids": [],
+            "expected_roi_count": 0,
+            "assessed_roi_count": 0,
+            "inspection_coverage_status": "NONE",
+            "warnings": [],
+        },
+        "observations": [],
+        "warnings": [],
+    }
+
+    resp = ImageAnalysisResponse.model_validate(legacy_payload)
+    assert resp.reference_aggregate_measurements is None
+
+    dumped = resp.model_dump(mode="json")
+    assert "reference_aggregate_measurements" in dumped
+    assert dumped["reference_aggregate_measurements"] is None

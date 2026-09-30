@@ -2798,6 +2798,7 @@ Extracts resolution-independent geometric features from dispensing deposit image
     "inspection_coverage_status": "COMPLETE",
     "warnings": []
   },
+  "reference_aggregate_measurements": null,
   "observations": [
     {
       "observation_type": "deposit_size",
@@ -2831,6 +2832,7 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - `AggregateMeasurements.expected_roi_count`: Total count of unique expected ROIs in current profile (`int | null`, default: `null`).
   - `AggregateMeasurements.assessed_roi_count`: Count of expected ROIs with reliable `DETECTED` or confirmed `MISSING` status (`int | null`, default: `null`).
   - `AggregateMeasurements.inspection_coverage_status`: `InspectionCoverageStatus` enum (`COMPLETE`, `PARTIAL`, `NONE`, default: `null`).
+  - `ImageAnalysisResponse.reference_aggregate_measurements`: Separately scoped reference-image `AggregateMeasurements` object in `REFERENCE_IMAGE` mode with valid uploaded reference, or `null` for non-reference modes (default: `null`).
 - **Aggregate Boundary Handling:**
   - `mean_coverage` and `size_cv` are calculated strictly over eligible `DETECTED` deposits with `deposit_area_px > 0`. `MISSING` and `UNASSESSED` regions are excluded.
   - Zero eligible deposits: `mean_coverage = null`, `size_cv = null`.
@@ -2893,6 +2895,25 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - In calibrated modes, any unassessed region continues to enforce conservative zero-observation gating (`status = "UNRELIABLE"`, `observations = []`). `PARTIAL` coverage does not release partial score-bearing evidence.
 - **Backward Compatibility:**
   - Legacy aggregates missing these fields deserialize to `null` (representing **unknown** coverage, not 0 sites). Newly calculated API responses always populate all three fields.
+
+##### Reference-Image Inspection Coverage (`reference_aggregate_measurements`)
+- **Scope & Mode Availability:**
+  - In `REFERENCE_IMAGE` mode with a valid uploaded reference image, `reference_aggregate_measurements` returns an `AggregateMeasurements` object calculated independently from the reference image.
+  - In `FEATURES_ONLY` and `PROCESS_LIMITS` modes, `reference_aggregate_measurements` is explicitly `null`.
+- **Separation of Aggregate Scopes:**
+  - `aggregate_measurements` exclusively describes the current image.
+  - `reference_aggregate_measurements` exclusively describes the paired reference image across the same configured expected ROI IDs.
+  - The two aggregates are never merged, swapped, or combined; each maintains its own independent expected/assessed counts, missing/unassessed ROI ID lists, and summary metrics.
+- **Distinction Between Inspection Coverage and Reference Suitability:**
+  - `reference_aggregate_measurements.inspection_coverage_status` (`COMPLETE | PARTIAL | NONE`) indicates whether expected sites on the reference image were reliably inspected.
+  - `COMPLETE` reference inspection means every expected reference site was reliably assessed (`DETECTED` or confirmed `MISSING`). It does NOT imply that all deposits are present or within limits, that current and reference images match, or that the analysis is calibrated.
+  - A confirmed `MISSING` reference deposit is an assessed site for coverage (`is_missing=true`), but because a missing reference deposit cannot serve as a valid geometric comparison baseline, the classifier continues to downgrade top-level analysis to `status = "UNRELIABLE"` with zero observations (`observations = []`).
+  - An `UNASSESSED` reference site (due to low contrast, camera failure, flat exposure, or omitted measurement) similarly forces `status = "UNRELIABLE"` and `observations = []`.
+- **Process Acceptance & Evidence Support /100 Independence:**
+  - Reference inspection coverage reports software inspection completeness, not physical process compliance or diagnostic causality.
+  - Diagnostic Evidence Support /100 is computed downstream by the causal reasoning engine only from eligible score-bearing observations; an `UNRELIABLE` image emits zero observations and contributes zero evidence score.
+- **Backward Compatibility:**
+  - Legacy serialized `ImageAnalysisResponse` objects missing `reference_aggregate_measurements` deserialize safely with `None`.
 
 
 #### Status and Error Codes

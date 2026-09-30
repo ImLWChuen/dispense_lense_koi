@@ -97,12 +97,24 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-036` — Expose truthful expected-site inspection coverage — **implemented**
+- `DLK-M3-036` — Expose truthful expected-site inspection coverage — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-036-inspection-coverage-summary.md`
+  - reviewed commit: `86ae4ffd764213503e9e2dac6dbbe0c72784525c`
+  - review: `.agents/handoff/reviews/DLK-M3-036-review.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-035` at `2977003e72b8a8fd9a3697a95c543f3ce5465b31`
   - authorized outcome: additive current-image expected/assessed site counts and complete/partial/none inspection coverage, with unknown defaults for legacy aggregates
   - preserve: current conservative zero-observation gate for partially unassessed calibrated images, diagnostic scoring, frontend behavior, and reference-image safety
   - deferred: partial score-bearing evidence, frontend display, reusable layouts/alignment, and reference coverage reporting
+
+## Active task
+
+- `DLK-M3-037` — Expose reference-image inspection coverage separately — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-037-reference-inspection-coverage.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-036` at `86ae4ffd764213503e9e2dac6dbbe0c72784525c`
+  - authorized outcome: return the already calculated reference aggregate as an optional, separately scoped API field in reference-image mode
+  - preserve: existing current-image aggregate, conservative reference gate, observation eligibility and score, and Member 1 frontend ownership
+  - deferred: reference alignment, partial score-bearing evidence, frontend workbench, and reusable profiles
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
