@@ -32,40 +32,80 @@ def classify_defects_from_measurements(
     warnings: list[str] = list(aggregate.warnings)
     observations: list[Observation] = []
 
-    # 1. Mode: FEATURES_ONLY
-    if mode == ImageAnalysisMode.FEATURES_ONLY:
-        warnings.append("FEATURES_ONLY mode selected; measurements are uncalibrated and neutral.")
-        return AnalysisStatus.UNCALIBRATED, [], warnings
-
-    # Quality and inspection status check across current ROI measurements
+    # 1. Collect all current ROI reliability explanations
+    current_unreliable_reasons: list[str] = []
     if not roi_measurements:
-        warnings.append("No ROI measurements available to classify.")
-        return AnalysisStatus.UNRELIABLE, [], warnings
+        current_unreliable_reasons.append("No ROI measurements available to classify.")
+    else:
+        for m in roi_measurements:
+            if m.inspection_status == RoiInspectionStatus.UNASSESSED:
+                detail = "; ".join(m.inspection_warnings) if m.inspection_warnings else "unassessed region"
+                current_unreliable_reasons.append(f"ROI '{m.roi_id}' is unassessed ({detail}).")
+            elif m.segmentation_quality < 0.4:
+                current_unreliable_reasons.append(
+                    f"ROI '{m.roi_id}' segmentation quality ({m.segmentation_quality:.2f}) is below reliable threshold."
+                )
 
-    unreliable_reasons: list[str] = []
-    for m in roi_measurements:
-        if m.inspection_status == RoiInspectionStatus.UNASSESSED:
-            detail = "; ".join(m.inspection_warnings) if m.inspection_warnings else "unassessed region"
-            unreliable_reasons.append(f"ROI '{m.roi_id}' is unassessed ({detail}).")
-        elif m.segmentation_quality < 0.4:
-            unreliable_reasons.append(
-                f"ROI '{m.roi_id}' segmentation quality ({m.segmentation_quality:.2f}) is below reliable threshold."
+        # Check aggregate.unassessed_roi_ids for any expected ROI without measurement data
+        measured_ids = {m.roi_id for m in roi_measurements}
+        for uid in aggregate.unassessed_roi_ids:
+            if uid not in measured_ids:
+                current_unreliable_reasons.append(f"ROI '{uid}' is unassessed (missing measurement data).")
+
+    # 2. Collect all reference ROI reliability explanations (when in REFERENCE_IMAGE mode)
+    reference_unreliable_reasons: list[str] = []
+    if mode == ImageAnalysisMode.REFERENCE_IMAGE:
+        if not reference_measurements or not reference_limits:
+            reference_unreliable_reasons.append(
+                "REFERENCE_IMAGE mode requires reference measurements and explicit reference limits."
             )
+        else:
+            ref_measured_ids = {r.roi_id for r in reference_measurements}
+            for ref_m in reference_measurements:
+                if ref_m.inspection_status == RoiInspectionStatus.UNASSESSED:
+                    detail = "; ".join(ref_m.inspection_warnings) if ref_m.inspection_warnings else "unassessed region"
+                    reference_unreliable_reasons.append(
+                        f"Reference ROI '{ref_m.roi_id}' is unassessed ({detail}); downgrading analysis."
+                    )
+                elif ref_m.segmentation_quality < 0.4:
+                    reference_unreliable_reasons.append(
+                        f"Reference ROI '{ref_m.roi_id}' segmentation quality ({ref_m.segmentation_quality:.2f}) is below reliable threshold; downgrading analysis."
+                    )
+                elif ref_m.is_missing or ref_m.inspection_status == RoiInspectionStatus.MISSING:
+                    reference_unreliable_reasons.append(
+                        f"Reference ROI '{ref_m.roi_id}' is missing; downgrading analysis."
+                    )
 
-    # Check aggregate.unassessed_roi_ids for any expected ROI without measurement data
-    measured_ids = {m.roi_id for m in roi_measurements}
-    for uid in aggregate.unassessed_roi_ids:
-        if uid not in measured_ids:
-            unreliable_reasons.append(f"ROI '{uid}' is unassessed (missing measurement data).")
+            if reference_aggregate and reference_aggregate.unassessed_roi_ids:
+                for uid in reference_aggregate.unassessed_roi_ids:
+                    if uid not in ref_measured_ids:
+                        reference_unreliable_reasons.append(
+                            f"Reference ROI '{uid}' is unassessed (missing measurement data); downgrading analysis."
+                        )
 
-    if unreliable_reasons:
-        for r in unreliable_reasons:
+    # 3. Deduplicate and append all collected reliability explanations into top-level warnings
+    for r in current_unreliable_reasons:
+        if r not in warnings:
+            warnings.append(r)
+
+    if mode == ImageAnalysisMode.REFERENCE_IMAGE:
+        for r in reference_unreliable_reasons:
             if r not in warnings:
                 warnings.append(r)
-        return AnalysisStatus.UNRELIABLE, [], warnings
 
-    # 2. Mode: PROCESS_LIMITS
+    # 4. Mode: FEATURES_ONLY
+    # Preserved as UNCALIBRATED with no observations, carrying all top-level warnings
+    if mode == ImageAnalysisMode.FEATURES_ONLY:
+        msg = "FEATURES_ONLY mode selected; measurements are uncalibrated and neutral."
+        if msg not in warnings:
+            warnings.append(msg)
+        return AnalysisStatus.UNCALIBRATED, [], warnings
+
+    # 5. Mode: PROCESS_LIMITS
     if mode == ImageAnalysisMode.PROCESS_LIMITS:
+        if current_unreliable_reasons:
+            return AnalysisStatus.UNRELIABLE, [], warnings
+
         if not process_limits:
             warnings.append("PROCESS_LIMITS mode requires explicit process limits.")
             return AnalysisStatus.UNCALIBRATED, [], warnings
@@ -237,35 +277,15 @@ def classify_defects_from_measurements(
 
         return status, observations, warnings
 
-    # 3. Mode: REFERENCE_IMAGE
+    # 6. Mode: REFERENCE_IMAGE
     if mode == ImageAnalysisMode.REFERENCE_IMAGE:
-        if not reference_measurements or not reference_limits:
-            warnings.append("REFERENCE_IMAGE mode requires reference measurements and explicit reference limits.")
+        if current_unreliable_reasons or reference_unreliable_reasons:
             return AnalysisStatus.UNRELIABLE, [], warnings
-
-        ref_by_id = {r.roi_id: r for r in reference_measurements}
-        # Check reference quality and explicit inspection status
-        for ref_m in reference_measurements:
-            if ref_m.inspection_status == RoiInspectionStatus.UNASSESSED:
-                detail = "; ".join(ref_m.inspection_warnings) if ref_m.inspection_warnings else "unassessed region"
-                warnings.append(f"Reference ROI '{ref_m.roi_id}' is unassessed ({detail}); downgrading analysis.")
-                return AnalysisStatus.UNRELIABLE, [], warnings
-            if (
-                ref_m.segmentation_quality < 0.4
-                or ref_m.is_missing
-                or ref_m.inspection_status == RoiInspectionStatus.MISSING
-            ):
-                warnings.append(f"Reference ROI '{ref_m.roi_id}' is unreliable or missing; downgrading analysis.")
-                return AnalysisStatus.UNRELIABLE, [], warnings
-
-        if reference_aggregate and reference_aggregate.unassessed_roi_ids:
-            for uid in reference_aggregate.unassessed_roi_ids:
-                warnings.append(f"Reference ROI '{uid}' is unassessed; downgrading analysis.")
-            return AnalysisStatus.UNRELIABLE, [], warnings
-
 
         status = AnalysisStatus.CALIBRATED
         seen_obs_keys = set()
+        ref_by_id = {r.roi_id: r for r in reference_measurements}
+
 
         for curr_m in roi_measurements:
             ref_m = ref_by_id.get(curr_m.roi_id)

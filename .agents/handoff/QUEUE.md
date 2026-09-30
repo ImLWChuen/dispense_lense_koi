@@ -60,6 +60,9 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-033` — Preserve region inspection reliability — **implemented**
+  - reviewed commit: `6f2a66ab73898d92bc297e068e6b0ea36da2eda3`
+  - review: `.agents/handoff/reviews/DLK-M3-033-review.md`
+  - resolved correction R1: collected all applicable current/reference region reliability reasons (and expected-but-omitted measurement IDs) into top-level warnings before early returns; preserved FEATURES_ONLY as UNCALIBRATED with no observations; preserved calibrated whole-image UNRELIABLE gates; added regressions for real uniform FEATURES_ONLY upload, multiple unassessed reference regions, and simultaneous current/reference failures; verified focused suite (64 passed) and full backend suite (527 passed)
   - task: `.agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-032`; integrated baseline `a4cb267`

@@ -529,3 +529,29 @@ def test_image_analyze_mixed_valid_and_unassessed_rois(client: TestClient) -> No
     assert agg["unassessed_roi_ids"] == ["r_unassessed"]
     assert agg["mean_coverage"] == pytest.approx(m_valid["coverage_ratio"], rel=1e-3)
     assert agg["size_cv"] is None  # Only 1 valid deposit
+
+
+def test_image_analyze_features_only_uniform_uninspectable_image_exposes_warnings(client: TestClient) -> None:
+    """R1 regression: Real uniform FEATURES_ONLY image exposes top-level ROI ID and failure reason."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("uninspectable.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNCALIBRATED"
+    assert data["observations"] == []
+    assert data["aggregate_measurements"]["missing_roi_ids"] == []
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == ["r1"]
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "UNASSESSED"
+    # Top-level warnings must contain the ROI ID and the actual failure reason
+    assert any("r1" in w and "unassessed" in w and "Target and surroundings are both uniform" in w for w in data["warnings"])

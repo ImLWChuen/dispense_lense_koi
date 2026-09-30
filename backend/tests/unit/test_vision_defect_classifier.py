@@ -24,11 +24,14 @@ import pytest
 
 from app.schemas.diagnosis import EvidenceSource, StatementType
 from app.schemas.image import (
+    AggregateMeasurements,
     AnalysisStatus,
     ImageAnalysisMode,
     NormalizedROI,
     ProcessLimits,
     ReferenceLimits,
+    RoiInspectionStatus,
+    RoiMeasurement,
 )
 from app.services.vision.defect_classifier import classify_defects_from_measurements
 from app.services.vision.measurement import (
@@ -449,3 +452,159 @@ def test_explicit_unassessed_overrides_high_numeric_quality_in_reference_mode() 
     assert obs == []
     assert any("Reference ROI 'roi_1' is unassessed" in w for w in warnings)
 
+
+def test_multiple_unassessed_reference_regions_collects_all_ids_and_reasons() -> None:
+    """R1 regression: Multiple unassessed reference ROIs must all be named with their reasons."""
+    curr_feat_1 = RoiMeasurement(
+        roi_id="dot_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr_feat_2 = RoiMeasurement(
+        roi_id="dot_2",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    ref_unassessed_1 = RoiMeasurement(
+        roi_id="dot_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Clipping at window boundary."],
+    )
+    ref_unassessed_2 = RoiMeasurement(
+        roi_id="dot_2",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Low contrast ambiguous segmentation."],
+    )
+
+    curr_agg = AggregateMeasurements(
+        mean_coverage=0.50,
+        size_cv=0.0,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    ref_agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["dot_1", "dot_2"],
+    )
+
+    ref_limits = ReferenceLimits(tolerance_ratio=0.10)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr_feat_1, curr_feat_2],
+        aggregate=curr_agg,
+        reference_measurements=[ref_unassessed_1, ref_unassessed_2],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+    assert status == AnalysisStatus.UNRELIABLE
+    assert obs == []
+    assert any("dot_1" in w and "Clipping at window boundary" in w for w in warnings)
+    assert any("dot_2" in w and "Low contrast ambiguous segmentation" in w for w in warnings)
+
+
+def test_simultaneous_current_and_reference_failures_collects_both_explanations() -> None:
+    """R1 regression: Simultaneous current and reference failures must retain both sets of explanations."""
+    curr_unassessed = RoiMeasurement(
+        roi_id="dot_a",
+        deposit_area_px=0.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.0,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0,
+        circularity=0.0,
+        solidity=0.0,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=0.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Zero deposit area without confirmed absence."],
+    )
+    ref_unassessed = RoiMeasurement(
+        roi_id="dot_b",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.UNASSESSED,
+        inspection_warnings=["Reference window boundary clipped."],
+    )
+
+    curr_agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["dot_a"],
+    )
+    ref_agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["dot_b"],
+    )
+
+    ref_limits = ReferenceLimits(tolerance_ratio=0.10)
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr_unassessed],
+        aggregate=curr_agg,
+        reference_measurements=[ref_unassessed],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+    assert status == AnalysisStatus.UNRELIABLE
+    assert obs == []
+    # Both current and reference failure explanations must be collected into warnings
+    assert any("dot_a" in w and "Zero deposit area without confirmed absence" in w for w in warnings)
+    assert any("dot_b" in w and "Reference window boundary clipped" in w for w in warnings)

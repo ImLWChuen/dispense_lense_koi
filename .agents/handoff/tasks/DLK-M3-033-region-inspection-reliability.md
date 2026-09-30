@@ -117,25 +117,26 @@ Proposed commit message: `fix(vision): distinguish unassessed regions from missi
 - Updated `calculate_roi_features` to map reliable segmentations with `is_missing=True` to `MISSING`, reliable positive-area segmentations to `DETECTED`, and unreliable, low-quality (<0.4), failed, or contradictory zero-area segmentations to `UNASSESSED`. Set `is_missing=False` for all unassessed regions to strictly prevent false missing deposit reports.
 - Updated `calculate_aggregate_measurements` to separate confirmed `missing_roi_ids` from `unassessed_roi_ids`, ensure both lists are strictly disjoint, and compute `mean_coverage` and `size_cv` strictly over eligible `DETECTED` deposits with positive area (null statistics for 0 eligible; null size CV for <2 eligible). Expected ROIs lacking measurement data are mapped to `unassessed_roi_ids`, never `missing_roi_ids`.
 - Enforced conservative whole-image classification gating in `classify_defects_from_measurements`: any unassessed current or reference region forces `AnalysisStatus.UNRELIABLE`, zero score-bearing observations (`observations = []`), and surfaces affected ROI IDs and reasons in top-level `warnings`. Explicit `UNASSESSED` status strictly overrides artificial or misleading high numeric quality scores.
+- Resolved review finding R1: in `classify_defects_from_measurements`, collect and deduplicate all applicable current and reference reliability explanations (including expected-but-omitted measurement IDs) into top-level warnings before any mode or status early returns. Preserved `FEATURES_ONLY` as `UNCALIBRATED` with no observations, carrying top-level failure explanations; preserved calibrated-mode `UNRELIABLE` gating with empty observations in `PROCESS_LIMITS` and `REFERENCE_IMAGE`.
 - Documented additive fields, status semantics, aggregate boundaries, and conservative whole-image gating in `docs/api/api-spec.md`, and noted Phase 1 progress in `docs/architecture/region-inspection-improvement-plan.md`.
 
 ### Files changed
 
 - `backend/app/schemas/image.py`: added `RoiInspectionStatus` enum; added `inspection_status` and `inspection_warnings` to `RoiMeasurement`; added `unassessed_roi_ids` to `AggregateMeasurements`.
 - `backend/app/services/vision/measurement.py`: implemented reliable status mapping and warnings preservation in `calculate_roi_features`; updated aggregate calculations for disjoint `missing_roi_ids` and `unassessed_roi_ids`, and boundary metrics.
-- `backend/app/services/vision/defect_classifier.py`: enforced conservative gating on `UNASSESSED` current and reference ROIs, surfacing affected IDs in top-level warnings; preserved D04 presence checking gated on `min_presence_ratio`.
+- `backend/app/services/vision/defect_classifier.py`: enforced conservative gating on `UNASSESSED` current and reference ROIs; resolved R1 by collecting all current and reference reliability explanations before early returns across all analysis modes.
 - `backend/tests/unit/test_vision_measurement.py`: added regression tests for unreliable zero-area and omitted ROIs, aggregate boundary tests, and legacy serialized payload defaults tests.
-- `backend/tests/unit/test_vision_defect_classifier.py`: added tests verifying explicit `UNASSESSED` status overrides quality 1.0 in `PROCESS_LIMITS` and `REFERENCE_IMAGE` modes.
-- `backend/tests/integration/test_image_api.py`: added end-to-end integration tests for uniform uninspectable image, defensible missing deposit, and mixed valid/unassessed ROIs.
+- `backend/tests/unit/test_vision_defect_classifier.py`: added tests verifying explicit `UNASSESSED` status overrides quality 1.0; added R1 regressions for multiple unassessed reference regions and simultaneous current/reference failures.
+- `backend/tests/integration/test_image_api.py`: added end-to-end integration tests for uniform uninspectable image, defensible missing deposit, mixed valid/unassessed ROIs, and R1 regression for real uniform `FEATURES_ONLY` image exposing top-level warnings.
 - `docs/api/api-spec.md`: documented additive fields, status semantics, aggregate boundaries, and conservative whole-image classification gating.
 - `docs/architecture/region-inspection-improvement-plan.md`: recorded Phase 1 progress for increment DLK-M3-033.
-- `.agents/handoff/QUEUE.md`: updated DLK-M3-033 status to `implemented`.
-- `.agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md`: updated status to `implemented` and completed implementation report.
+- `.agents/handoff/QUEUE.md`: updated DLK-M3-033 status to `implemented` with R1 resolution details.
+- `.agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md`: updated status to `implemented` and completed implementation report with R1 review resolution.
 
 ### Decisions made
 
 - `is_missing` compatibility: strictly set to `False` for `UNASSESSED` outputs; only `True` when `inspection_status == RoiInspectionStatus.MISSING` to prevent downstream consumers from treating unassessed sites as absent deposits.
-- Unassessed warning propagation: detailed per-region warnings from segmentation are preserved on `RoiMeasurement.inspection_warnings`, and top-level `ImageAnalysisResponse.warnings` lists affected unassessed ROI IDs and reasons for clients ignoring additive fields.
+- Unassessed warning propagation: detailed per-region warnings from segmentation are preserved on `RoiMeasurement.inspection_warnings`, and top-level `ImageAnalysisResponse.warnings` lists affected unassessed ROI IDs and reasons for clients ignoring additive fields before any early returns.
 - Strict conservative whole-image gating: in calibrated modes (`PROCESS_LIMITS` and `REFERENCE_IMAGE`), any unassessed region returns `UNRELIABLE` with no diagnostic observations, deferring partial-evidence emission until consumers are designed for it.
 - Safe defaults: historical serialized data without new fields defaults to `UNASSESSED`, `[]`, and `[]`, ensuring backwards compatibility without promoting legacy unvalidated data to reliable evidence.
 
@@ -145,8 +146,8 @@ Proposed commit message: `fix(vision): distinguish unassessed regions from missi
   - `test_regression_unreliable_zero_area_not_mislabeled_as_missing`: `AssertionError: assert 'roi_bad' not in ['roi_bad']`
   - `test_regression_omitted_roi_not_mislabeled_as_missing`: `AssertionError: assert 'roi_omitted' not in ['roi_omitted']`
 - Post-implementation verification commands:
-  - Focused test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_segmentation.py backend/tests/unit/test_vision_measurement.py backend/tests/unit/test_vision_defect_classifier.py backend/tests/integration/test_image_api.py backend/tests/integration/test_image_diagnosis_integration.py backend/tests/integration/test_image_driven_case_workflow.py -q --basetemp=backend/.task033-focused -p no:cacheprovider` -> `61 passed, 20 warnings in 2.86s`
-  - Full test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task033-full -p no:cacheprovider` -> `524 passed, 42 warnings in 63.22s`
+  - Focused test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_segmentation.py backend/tests/unit/test_vision_measurement.py backend/tests/unit/test_vision_defect_classifier.py backend/tests/integration/test_image_api.py backend/tests/integration/test_image_diagnosis_integration.py backend/tests/integration/test_image_driven_case_workflow.py -q --basetemp=backend/.task033-focused -p no:cacheprovider` -> `64 passed, 20 warnings in 2.50s`
+  - Full test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task033-full -p no:cacheprovider` -> `527 passed, 42 warnings in 61.83s`
   - Task packet validation: `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md` -> `VALID: .agents\handoff\tasks\DLK-M3-033-region-inspection-reliability.md`
   - Git whitespace diff check: `git diff --check` -> clean (exit code 0)
 
@@ -157,4 +158,4 @@ Proposed commit message: `fix(vision): distinguish unassessed regions from missi
 
 ### Proposed commit message
 
-`fix(vision): distinguish unassessed regions from missing deposits`
+`fix(vision): collect all region reliability reasons before early returns (R1)`
