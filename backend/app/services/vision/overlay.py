@@ -123,22 +123,28 @@ def extract_deposit_outline(
             return None, f"ROI '{roi_id}' deposit outline unavailable (non-finite coordinate detected)."
 
         # Deduplicate consecutive identical points
+        pt_key = (round(x_clamped, 6), round(y_clamped, 6))
         if norm_points:
-            prev = norm_points[-1]
-            if abs(prev.x - x_clamped) < 1e-7 and abs(prev.y - y_clamped) < 1e-7:
+            prev_key = (round(norm_points[-1].x, 6), round(norm_points[-1].y, 6))
+            if pt_key == prev_key:
                 continue
 
         norm_points.append(NormalizedPoint(x=x_clamped, y=y_clamped))
 
     # Remove redundant closing point if identical to the first point
     if len(norm_points) > 1:
-        if abs(norm_points[-1].x - norm_points[0].x) < 1e-7 and abs(norm_points[-1].y - norm_points[0].y) < 1e-7:
+        first_key = (round(norm_points[0].x, 6), round(norm_points[0].y, 6))
+        last_key = (round(norm_points[-1].x, 6), round(norm_points[-1].y, 6))
+        if first_key == last_key:
             norm_points.pop()
 
     # 4. Final polygon validity checks
-    distinct_set = {(round(p.x, 6), round(p.y, 6)) for p in norm_points}
-    if len(norm_points) < 3 or len(distinct_set) < 3:
+    distinct_keys = {(round(p.x, 6), round(p.y, 6)) for p in norm_points}
+    if len(norm_points) < 3 or len(distinct_keys) < 3:
         return None, f"ROI '{roi_id}' deposit outline unavailable (fewer than 3 distinct points)."
+
+    if len(distinct_keys) < len(norm_points):
+        return None, f"ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected)."
 
     if len(norm_points) > 128:
         return None, f"ROI '{roi_id}' deposit outline unavailable (polygon exceeds 128 points)."

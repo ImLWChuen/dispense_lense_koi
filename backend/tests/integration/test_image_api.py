@@ -674,3 +674,39 @@ def test_image_analyze_detected_region_with_unavailable_outline_exposes_warning_
     assert m["deposit_outline_normalized"] is None
     # Specific warning reaches top-level warnings
     assert any("deposit outline unavailable (simulated test omission)" in w for w in data["warnings"])
+
+
+def test_image_analyze_detected_region_with_nonconsecutive_duplicate_vertices_warning(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R1 regression: Nonconsecutive duplicate vertices rejection keeps region DETECTED and CALIBRATED."""
+    import app.api.images as images_mod
+
+    def mock_extract(*args, **kwargs):
+        roi_id = kwargs.get("roi_id") or (args[5] if len(args) > 5 else "r_dup")
+        return None, f"ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected)."
+
+    monkeypatch.setattr(images_mod, "extract_deposit_outline", mock_extract)
+
+    img_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_dup", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("dot.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r_dup"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["deposit_outline_normalized"] is None
+    assert any("nonconsecutive duplicate vertices detected" in w for w in m["inspection_warnings"])
+    assert any("nonconsecutive duplicate vertices detected" in w for w in data["warnings"])

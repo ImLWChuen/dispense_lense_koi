@@ -112,6 +112,8 @@ Proposed commit message: `feat(vision): expose bounded deposit outlines for regi
   - Caps polygon vertices to 3–128 finite distinct points using deterministic Douglas-Peucker approximation (`cv2.approxPolyDP`) without slicing or bounding box substitutions.
   - Restricts outline emission strictly to `DETECTED` current-image regions; `MISSING` and `UNASSESSED` regions strictly emit `null` outlines even if candidate contours exist.
   - Rejects substantially out-of-bounds, degenerate (<3 distinct points), or zero-perimeter geometry without silent fake clamping.
+  - Resolved Review Finding R1: Enforced strict distinctness across all published polygon vertices. Unified coordinate key hashing `(round(x, 6), round(y, 6))` across consecutive deduplication, closing-point popping, and distinctness checking. Explicitly rejects nonconsecutive duplicate vertices (such as `[A, B, C, A, D]`) with specific warning `ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected).`
+  - Preserves `DETECTED` region status and diagnostic observations unchanged when an outline is omitted due to nonconsecutive duplicate vertices or unavailable geometry.
   - Returns explicit overlay warnings on `DETECTED` regions when geometry is unavailable, without downgrading overall analysis status or changing diagnostic observations.
 - Integrated outline extraction and top-level warning propagation in `backend/app/api/images.py`. Reference image measurements strictly omit outlines.
 - Documented data contracts, display-aid nature, and coordinate conventions in `docs/api/api-spec.md` and recorded increment progress in `docs/architecture/region-inspection-improvement-plan.md`.
@@ -119,27 +121,28 @@ Proposed commit message: `feat(vision): expose bounded deposit outlines for regi
 ### Files changed
 
 - `backend/app/schemas/image.py`: added `NormalizedPoint` schema and `deposit_outline_normalized` field to `RoiMeasurement`.
-- `backend/app/services/vision/overlay.py`: implemented `extract_deposit_outline` helper with bounded approximation and window-to-full-image translation.
+- `backend/app/services/vision/overlay.py`: implemented `extract_deposit_outline` helper with bounded approximation, window-to-full-image translation, and strict nonconsecutive duplicate vertex rejection.
 - `backend/app/api/images.py`: integrated outline extraction and warning propagation in `_sync_analyze_image`.
-- `backend/tests/unit/test_vision_overlay.py`: added comprehensive unit tests for window offset translation, resolution scaling invariance, complex contour capping, missing/unassessed omission, and degenerate warnings.
-- `backend/tests/integration/test_image_api.py`: added integration tests verifying real synthetic off-center deposit outlines, null outlines for missing/unassessed regions, and unavailable outline warnings without analysis status downgrade.
-- `docs/api/api-spec.md`: documented the `deposit_outline_normalized` contract, coordinate conventions, and approximation boundaries.
+- `backend/tests/unit/test_vision_overlay.py`: added comprehensive unit tests for window offset translation, resolution scaling invariance, complex contour capping, missing/unassessed omission, degenerate warnings, nonconsecutive duplicate rejection (R1), closing point popping, and consecutive deduplication.
+- `backend/tests/integration/test_image_api.py`: added integration tests verifying real synthetic off-center deposit outlines, null outlines for missing/unassessed regions, unavailable outline warnings without analysis status downgrade, and nonconsecutive duplicate vertex preservation (R1).
+- `docs/api/api-spec.md`: documented the `deposit_outline_normalized` contract, coordinate conventions, approximation boundaries, and nonconsecutive duplicate rejection.
 - `docs/architecture/region-inspection-improvement-plan.md`: recorded Phase 2 progress for increment DLK-M3-034.
-- `.agents/handoff/QUEUE.md`: updated DLK-M3-034 status to `implemented`.
+- `.agents/handoff/QUEUE.md`: synchronized DLK-M3-034 status to `implemented` with R1 resolution details.
 - `.agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md`: completed implementation report and set status to `implemented`.
 
 ### Decisions made
 
 - Window offset translation: window coordinates are converted to global image coordinates using `window_roi.x` and `window_roi.y` (the analysis window origin), not `target_roi.x`/`y`, guaranteeing that contours segmented within expanded analysis windows properly align when rendered over the full image.
 - Bounded approximation: used binary search with `cv2.approxPolyDP` across epsilon values to find the finest valid approximation yielding 3–128 points, avoiding slicing or bounding box approximation.
+- Strict vertex distinctness (R1): all polygon vertices must be unique. Normalized coordinates use consistent 6-decimal rounded keys for consecutive deduplication, closing point stripping, and distinctness validation. Contours containing self-intersections or repeated vertices are safely omitted with an explanatory warning rather than arbitrarily mutated.
 - Non-degrading unavailability: unavailable outline geometry on a `DETECTED` deposit emits an explanatory warning in `inspection_warnings` and top-level `warnings` while leaving `inspection_status = DETECTED` and diagnostic observations intact. Old clients and non-visual workflows remain unaffected.
 - Reference image omission: reference image measurements do not serialize outlines in this increment to keep response payloads small and bounded.
 
 ### Verification results
 
 - Verification commands:
-  - Focused test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_segmentation.py backend/tests/unit/test_vision_measurement.py backend/tests/unit/test_vision_overlay.py backend/tests/integration/test_image_api.py -q --basetemp=backend/.task034-focused -p no:cacheprovider` -> `48 passed, 20 warnings in 2.14s`
-  - Full test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task034-full -p no:cacheprovider` -> `539 passed, 42 warnings in 57.07s`
+  - Focused test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_segmentation.py backend/tests/unit/test_vision_measurement.py backend/tests/unit/test_vision_overlay.py backend/tests/integration/test_image_api.py -q --basetemp=backend/.task034-focused -p no:cacheprovider` -> `52 passed, 20 warnings in 2.00s`
+  - Full test suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task034-full -p no:cacheprovider` -> `543 passed, 42 warnings in 57.32s`
   - Task packet validation: `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md` -> `VALID: .agents\handoff\tasks\DLK-M3-034-bounded-deposit-outline.md`
   - Git whitespace diff check: `git diff --check` -> clean (exit code 0)
 
@@ -151,4 +154,4 @@ Proposed commit message: `feat(vision): expose bounded deposit outlines for regi
 
 ### Proposed commit message
 
-`feat(vision): expose bounded deposit outlines for region overlays`
+`fix(vision): reject nonconsecutive duplicate vertices in deposit outlines`

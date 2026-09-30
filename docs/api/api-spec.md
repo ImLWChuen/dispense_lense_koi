@@ -2849,7 +2849,7 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - Contours with $>128$ vertices are deterministically simplified using bounded Douglas-Peucker approximation (`cv2.approxPolyDP`). Arbitrary point slicing, bounding rectangles, or fabricated contours are strictly prohibited.
 - **Omission & Unavailability Handling:**
   - Regions marked `MISSING` or `UNASSESSED` strictly emit `deposit_outline_normalized = null`.
-  - If a `DETECTED` region has unavailable outline geometry (e.g. missing contour, degenerate points, out-of-bounds vertices, or inability to simplify within 128 points), `deposit_outline_normalized` is `null`. The region remains `DETECTED`, calibrated analysis status and observations remain intact, and an explicit explanatory warning is surfaced in `RoiMeasurement.inspection_warnings` and top-level response `warnings`.
+  - If a `DETECTED` region has unavailable outline geometry (e.g. missing contour, degenerate points, nonconsecutive duplicate vertices, out-of-bounds vertices, or inability to simplify within 128 points), `deposit_outline_normalized` is `null`. The region remains `DETECTED`, calibrated analysis status and observations remain intact, and an explicit explanatory warning is surfaced in `RoiMeasurement.inspection_warnings` and top-level response `warnings`.
 
 
 #### Status and Error Codes

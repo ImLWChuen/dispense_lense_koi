@@ -204,6 +204,85 @@ def test_extract_deposit_outline_detected_unavailable_geometry_warnings() -> Non
     assert "out of image bounds" in warn
 
 
+def test_extract_deposit_outline_nonconsecutive_duplicate_vertices_rejected() -> None:
+    """R1 regression: Nonconsecutive duplicate vertices in contour are rejected with specific warning."""
+    # Contour [A, B, C, A, D] with 4 distinct points and nonconsecutive duplicate A:
+    # A = (10, 10), B = (40, 10), C = (40, 40), A = (10, 10), D = (10, 40)
+    cnt = np.array([[[10, 10]], [[40, 10]], [[40, 40]], [[10, 10]], [[10, 40]]], dtype=np.int32)
+    win = PixelROI(roi_id="r_nonconsec", x=0, y=0, width=100, height=100)
+    seg = SegmentationResult(
+        status=SegmentationStatus.SUCCESS,
+        deposit_contour=cnt,
+        deposit_area_px=600.0,
+    )
+
+    outline, warn = extract_deposit_outline(
+        seg_result=seg,
+        inspection_status=RoiInspectionStatus.DETECTED,
+        window_roi=win,
+        image_width=100,
+        image_height=100,
+        roi_id="r_nonconsec",
+    )
+
+    assert outline is None
+    assert warn is not None
+    assert "nonconsecutive duplicate vertices detected" in warn
+
+
+def test_extract_deposit_outline_closing_duplicate_point_popped_successfully() -> None:
+    """Closed contour [A, B, C, A] with closing point identical to first point pops closing point."""
+    cnt = np.array([[[10, 10]], [[40, 10]], [[40, 40]], [[10, 10]]], dtype=np.int32)
+    win = PixelROI(roi_id="r_closed", x=0, y=0, width=100, height=100)
+    seg = SegmentationResult(
+        status=SegmentationStatus.SUCCESS,
+        deposit_contour=cnt,
+        deposit_area_px=450.0,
+    )
+
+    outline, warn = extract_deposit_outline(
+        seg_result=seg,
+        inspection_status=RoiInspectionStatus.DETECTED,
+        window_roi=win,
+        image_width=100,
+        image_height=100,
+        roi_id="r_closed",
+    )
+
+    assert warn is None
+    assert outline is not None
+    assert len(outline) == 3
+    distinct_pts = {(p.x, p.y) for p in outline}
+    assert len(distinct_pts) == 3
+
+
+def test_extract_deposit_outline_consecutive_duplicates_deduplicated() -> None:
+    """Consecutive duplicate points are collapsed without affecting outline validity."""
+    # [A, A, B, B, C, C]
+    cnt = np.array([[[10, 10]], [[10, 10]], [[40, 10]], [[40, 10]], [[40, 40]], [[40, 40]]], dtype=np.int32)
+    win = PixelROI(roi_id="r_consec", x=0, y=0, width=100, height=100)
+    seg = SegmentationResult(
+        status=SegmentationStatus.SUCCESS,
+        deposit_contour=cnt,
+        deposit_area_px=450.0,
+    )
+
+    outline, warn = extract_deposit_outline(
+        seg_result=seg,
+        inspection_status=RoiInspectionStatus.DETECTED,
+        window_roi=win,
+        image_width=100,
+        image_height=100,
+        roi_id="r_consec",
+    )
+
+    assert warn is None
+    assert outline is not None
+    assert len(outline) == 3
+    distinct_pts = {(p.x, p.y) for p in outline}
+    assert len(distinct_pts) == 3
+
+
 def test_roi_measurement_defaults_null_deposit_outline_normalized() -> None:
     """Legacy serialized ROI measurement deserializes with deposit_outline_normalized = None."""
     legacy_data = {

@@ -73,11 +73,14 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-034` — Expose bounded deposit outlines for trustworthy region overlays — **in_progress**
+- `DLK-M3-034` — Expose bounded deposit outlines for trustworthy region overlays — **implemented**
+  - reviewed commit: `6782ca0db0fb3c889686658fa248dcea8d6019f7`
+  - review: `.agents/handoff/reviews/DLK-M3-034-review.md`
+  - resolved correction R1: rejected nonconsecutive duplicate polygon vertices after normalization with specific overlay warning `ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected).`; preserved DETECTED region status and diagnostic observations; added unit and integration regressions; synchronized queue state with implementation report
   - task: `.agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-033` at `3d1fb6f5adb6d50a975704527f21f23334549546`
-  - outcome: optional full-image normalized outer contour geometry for reliable detected deposits, with bounded size and explicit omission warnings
+  - outcome: optional full-image normalized outer contour geometry for reliable detected deposits, with bounded size, strict vertex distinctness, and explicit omission warnings
   - deferred: frontend overlays, templates/alignment, partial evidence, database changes
 
-Gemini should execute only the ready DLK-M3-034 task, then return for review. The accepted DLK-M3-033 review and queue update remain planner-authored and uncommitted for inclusion in the next atomic implementation commit. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
+Gemini should submit DLK-M3-034 for review before dependent overlay work. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
