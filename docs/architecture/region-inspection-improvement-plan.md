@@ -49,6 +49,8 @@ Specify additive response fields and compatibility behavior for existing clients
 
 Acceptance: reviewed fixture manifest, explicit expected results, agreed supported scope, and a compatible API contract. Synthetic fixtures demonstrate software behavior, not industrial accuracy.
 
+- **Increment DLK-M3-038 Status (Implemented):** Delivered deterministic synthetic fixture manifest (`synthetic_region_inspection_baseline_v1`), offline CLI benchmark runner (`backend/tests/vision_inspection_baseline.py`), and baseline evaluation document (`docs/evaluation/region-inspection-synthetic-baseline.md`). Evaluated 6 scenarios (9 expected sites) covering detected dots, confirmed missing sites with fiducials, uniform unassessed sites, and mixed configurations. Achieved 100% status accuracy, 22.2% abstention, 0.0% false-missing rate, 100% outline availability, and 0.9970 mean IoU against construction-grounded circular masks without altering production code.
+
 ### Phase 1: Trustworthy per-region results
 
 Preserve segmentation statuses and warnings through measurement and API layers. Exclude unassessed regions from missing counts and diagnostic observations. Permit valid regions to contribute evidence while explicitly reporting partial coverage. Recompute comparable-region aggregates and preserve affected-site metadata without duplicate scoring.
@@ -88,6 +90,8 @@ Acceptance: saved cases and reports preserve the assessed scope, limits, and unc
 Measure boundary agreement, per-defect precision/recall where labels exist, missing-site errors, abstention rate, latency, and technician correction effort. Keep images from the same physical board/capture series together when separating development and evaluation data. Set numerical targets after the baseline and before tuning against held-out data; do not invent accuracy claims.
 
 Acceptance: repeatable end-to-end demonstration including a normal image, mixed defects, and an unassessed region; recorded measured results and limitations; affected backend tests and frontend lint/build pass.
+
+- **Increment DLK-M3-038 Status (Implemented):** Established offline synthetic baseline runner and evaluation report (`docs/evaluation/region-inspection-synthetic-baseline.md`) measuring status confusion, abstention, outline availability, and polygon-mask IoU before tuning segmentation on production data.
 
 ## Implementation ownership and sequence
 

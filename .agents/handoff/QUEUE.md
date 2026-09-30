@@ -109,12 +109,24 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-037` — Expose reference-image inspection coverage separately — **implemented**
+- `DLK-M3-037` — Expose reference-image inspection coverage separately — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-037-reference-inspection-coverage.md`
+  - reviewed commit: `a124dbcd5a6cd58c54f0435c548bdf95348e9442`
+  - review: `.agents/handoff/reviews/DLK-M3-037-review.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-036` at `86ae4ffd764213503e9e2dac6dbbe0c72784525c`
   - authorized outcome: return the already calculated reference aggregate as an optional, separately scoped API field in reference-image mode
   - preserve: existing current-image aggregate, conservative reference gate, observation eligibility and score, and Member 1 frontend ownership
   - deferred: reference alignment, partial score-bearing evidence, frontend workbench, and reusable profiles
+
+## Active task
+
+- `DLK-M3-038` — Establish a repeatable synthetic region-inspection baseline — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-037` at `a124dbcd5a6cd58c54f0435c548bdf95348e9442`
+  - authorized outcome: deterministic labeled synthetic fixture manifest, offline region-inspection benchmark, measured baseline report
+  - preserve: production CV/API/diagnosis behavior and existing safety gates; no industrial-accuracy claim from synthetic data
+  - deferred: real-image evaluation, numerical acceptance targets, partial score-bearing evidence, Member 1 visual workbench, reusable profiles/alignment
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
