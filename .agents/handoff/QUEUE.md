@@ -85,8 +85,8 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-035` — Preserve every affected region ID in deduplicated image observations — **implemented**
-  - reviewed commit: `65798812e104c620470ab66d57a06d02dca38407`
+- `DLK-M3-035` — Preserve every affected region ID in deduplicated image observations — **accepted**
+  - reviewed commit: `2977003e72b8a8fd9a3697a95c543f3ce5465b31`
   - review: `.agents/handoff/reviews/DLK-M3-035-review.md`
   - resolved corrections R1/R2: clarified in api-spec.md that affected ROI lists are exact per observation and may overlap across different rules; corrected task report to clarify unmatched reference sites are skipped with warning while UNASSESSED sites retain the whole-image gate; marked supported acceptance checkboxes
   - task: `.agents/handoff/tasks/DLK-M3-035-affected-region-provenance.md`
@@ -95,4 +95,14 @@ Do not implement inside DLK-M3-031:
   - outcome: one observation per defect type/value with ordered unique affected ROI IDs in metadata; same scoring contribution and durable case round-trip
   - deferred: frontend display, Member 2 scoring/interpretation changes, partial evidence, templates/alignment
 
-Gemini should make the bounded DLK-M3-035 documentation corrections and return for review before dependent work. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
+## Active task
+
+- `DLK-M3-036` — Expose truthful expected-site inspection coverage — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-036-inspection-coverage-summary.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-035` at `2977003e72b8a8fd9a3697a95c543f3ce5465b31`
+  - authorized outcome: additive current-image expected/assessed site counts and complete/partial/none inspection coverage, with unknown defaults for legacy aggregates
+  - preserve: current conservative zero-observation gate for partially unassessed calibrated images, diagnostic scoring, frontend behavior, and reference-image safety
+  - deferred: partial score-bearing evidence, frontend display, reusable layouts/alignment, and reference coverage reporting
+
+Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

@@ -13,6 +13,7 @@ import numpy as np
 
 from app.schemas.image import (
     AggregateMeasurements,
+    InspectionCoverageStatus,
     PixelROI,
     RoiInspectionStatus,
     RoiMeasurement,
@@ -205,10 +206,34 @@ def calculate_aggregate_measurements(
     if unassessed_ids:
         warnings.append(f"Unassessed regions detected in {len(unassessed_ids)} ROI(s): {', '.join(unassessed_ids)}.")
 
+    # Deduplicate expected ROI IDs in input order
+    unique_expected_ids = list(dict.fromkeys(all_roi_ids))
+    expected_roi_count = len(unique_expected_ids)
+
+    # An expected site is assessed if present in measurements with DETECTED or MISSING status
+    assessed_expected_ids = [
+        rid
+        for rid in unique_expected_ids
+        if rid in measured_by_id
+        and measured_by_id[rid].inspection_status
+        in (RoiInspectionStatus.DETECTED, RoiInspectionStatus.MISSING)
+    ]
+    assessed_roi_count = len(assessed_expected_ids)
+
+    if expected_roi_count > 0 and assessed_roi_count == expected_roi_count:
+        coverage_status = InspectionCoverageStatus.COMPLETE
+    elif assessed_roi_count > 0:
+        coverage_status = InspectionCoverageStatus.PARTIAL
+    else:
+        coverage_status = InspectionCoverageStatus.NONE
+
     return AggregateMeasurements(
         mean_coverage=mean_cov,
         size_cv=size_cv,
         missing_roi_ids=missing_ids,
         unassessed_roi_ids=unassessed_ids,
+        expected_roi_count=expected_roi_count,
+        assessed_roi_count=assessed_roi_count,
+        inspection_coverage_status=coverage_status,
         warnings=warnings,
     )

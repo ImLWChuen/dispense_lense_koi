@@ -523,12 +523,15 @@ def test_image_analyze_mixed_valid_and_unassessed_rois(client: TestClient) -> No
     assert m_unassessed["is_missing"] is False
     assert len(m_unassessed["inspection_warnings"]) > 0
 
-    # 3. Aggregate measurements exclude unassessed from coverage and size CV
+    # 3. Aggregate measurements exclude unassessed from coverage and size CV, and report PARTIAL coverage
     agg = data["aggregate_measurements"]
     assert agg["missing_roi_ids"] == []
     assert agg["unassessed_roi_ids"] == ["r_unassessed"]
     assert agg["mean_coverage"] == pytest.approx(m_valid["coverage_ratio"], rel=1e-3)
     assert agg["size_cv"] is None  # Only 1 valid deposit
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 1
+    assert agg["inspection_coverage_status"] == "PARTIAL"
 
 
 def test_image_analyze_features_only_uniform_uninspectable_image_exposes_warnings(client: TestClient) -> None:
@@ -787,3 +790,123 @@ def test_image_analyze_multi_site_different_defects_isolates_affected_roi_ids(cl
     assert "oversized" in obs_by_val
     assert obs_by_val["undersized"]["metadata"]["affected_roi_ids"] == ["site_small"]
     assert obs_by_val["oversized"]["metadata"]["affected_roi_ids"] == ["site_large"]
+
+
+def test_image_analyze_inspection_coverage_complete_with_detected_and_missing(client: TestClient) -> None:
+    """A multi-site image with detected and confirmed missing deposits yields COMPLETE inspection coverage."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image:
+    # Left window [0.0..0.5]: target box [0.125, 0.25, 0.25, 0.5] has a dark circular deposit at (100, 100)
+    # Right window [0.5..1.0]: target box [0.625, 0.25, 0.25, 0.5] is empty, with fiducials inside window margin
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (100, 100), 20, (30, 30, 30), -1)
+    for pt in [(240, 40), (360, 40), (240, 160), (360, 160)]:
+        cv2.circle(img, pt, 5, (60, 60, 60), -1)
+
+    img_bytes = encode_image(img)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r_detected", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r_missing", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "process_limits": {
+            "min_presence_ratio": 0.05,
+            "min_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("complete_mixed.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert meas_by_id["r_detected"]["inspection_status"] == "DETECTED"
+    assert meas_by_id["r_missing"]["inspection_status"] == "MISSING"
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == ["r_missing"]
+    assert agg["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_inspection_coverage_complete_all_detected(client: TestClient) -> None:
+    """A multi-site image with all sites reliably detected yields COMPLETE inspection coverage."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 20), (300, 100, 20)],
+    )
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r1", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "r2", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.01,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("complete.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert meas_by_id["r1"]["inspection_status"] == "DETECTED"
+    assert meas_by_id["r2"]["inspection_status"] == "DETECTED"
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_inspection_coverage_none_all_unassessed(client: TestClient) -> None:
+    """An all-unassessed image reports NONE coverage status and 0 assessed count with UNRELIABLE status."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.35, "height": 0.8},
+            {"roi_id": "r2", "x": 0.55, "y": 0.1, "width": 0.35, "height": 0.8},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("all_unassessed.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 0
+    assert agg["inspection_coverage_status"] == "NONE"
+    assert set(agg["unassessed_roi_ids"]) == {"r1", "r2"}
+    assert agg["missing_roi_ids"] == []

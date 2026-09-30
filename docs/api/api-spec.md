@@ -2793,6 +2793,9 @@ Extracts resolution-independent geometric features from dispensing deposit image
     "size_cv": null,
     "missing_roi_ids": [],
     "unassessed_roi_ids": [],
+    "expected_roi_count": 1,
+    "assessed_roi_count": 1,
+    "inspection_coverage_status": "COMPLETE",
     "warnings": []
   },
   "observations": [
@@ -2825,6 +2828,9 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - `RoiMeasurement.inspection_warnings`: Detailed per-region failure or ambiguity explanations (default: `[]`).
   - `RoiMeasurement.deposit_outline_normalized`: Optional ordered list of `NormalizedPoint` coordinates (`x`, `y` in $[0.0, 1.0]$) representing the outer deposit contour, or `null`.
   - `AggregateMeasurements.unassessed_roi_ids`: List of ROI IDs that are unassessed or missing measurement data (default: `[]`). Strictly disjoint from `missing_roi_ids`.
+  - `AggregateMeasurements.expected_roi_count`: Total count of unique expected ROIs in current profile (`int | null`, default: `null`).
+  - `AggregateMeasurements.assessed_roi_count`: Count of expected ROIs with reliable `DETECTED` or confirmed `MISSING` status (`int | null`, default: `null`).
+  - `AggregateMeasurements.inspection_coverage_status`: `InspectionCoverageStatus` enum (`COMPLETE`, `PARTIAL`, `NONE`, default: `null`).
 - **Aggregate Boundary Handling:**
   - `mean_coverage` and `size_cv` are calculated strictly over eligible `DETECTED` deposits with `deposit_area_px > 0`. `MISSING` and `UNASSESSED` regions are excluded.
   - Zero eligible deposits: `mean_coverage = null`, `size_cv = null`.
@@ -2865,6 +2871,28 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - For `deposit_size=inconsistent`, `affected_roi_ids` identifies all eligible `DETECTED`, positive-area ROIs that contributed to the sample coefficient of variation calculation. It identifies comparison participants rather than asserting individual limit breaches.
 - **Persistence Compatibility:**
   - `metadata.affected_roi_ids` is stored as a primitive JSON list of strings, persisting losslessly through the durable case workflow across diagnostic revisions.
+
+##### Expected-Site Inspection Coverage (`expected_roi_count`, `assessed_roi_count`, `inspection_coverage_status`)
+- **Current-Image Scope:**
+  - The coverage summary describes inspection completeness across expected dispensing sites in the uploaded **current image** only.
+  - In `REFERENCE_IMAGE` mode, this summary does not represent reference-image inspection coverage or guarantee reference-image reliability.
+- **Distinction from Deposit Coverage and Evidence Support:**
+  - **Inspection Coverage (`COMPLETE | PARTIAL | NONE`)**: Quantifies whether the vision pipeline was able to reliably assess all expected inspection locations. It does NOT indicate that deposits met process limits, passed quality standards, or had no defects.
+  - **Deposit Coverage Ratio (`coverage_ratio` / `mean_coverage`)**: Physical ratio of deposit pixel area to target ROI area.
+  - **Evidence Support (`/100`)**: Diagnostic ranking score computed by the causal reasoning engine for suspected failure causes.
+- **Assessment Rules:**
+  - An expected site is counted as **assessed** only when its measurement has explicit `DETECTED` or confirmed `MISSING` status.
+  - `UNASSESSED` regions (due to uniform exposure, camera failure, ambiguous contrast, boundary clipping) or expected sites omitted from measurements are NOT assessed.
+  - A confirmed `MISSING` deposit **is** an assessed site (the absence of deposit was conclusively verified), distinguishing it from an unassessed region.
+  - Unexpected measurement IDs (not present in `rois`) and repeated expected ROI IDs do not distort counts.
+- **Coverage Status Values:**
+  - `COMPLETE`: Every expected site was reliably assessed (`assessed_roi_count == expected_roi_count > 0`).
+  - `PARTIAL`: At least one expected site was assessed, but one or more expected sites were `UNASSESSED` or omitted (`0 < assessed_roi_count < expected_roi_count`).
+  - `NONE`: No expected sites were assessed (`assessed_roi_count == 0`), including the empty-expected-list internal edge case (`0/0 -> NONE`).
+- **Gating Unchanged:**
+  - In calibrated modes, any unassessed region continues to enforce conservative zero-observation gating (`status = "UNRELIABLE"`, `observations = []`). `PARTIAL` coverage does not release partial score-bearing evidence.
+- **Backward Compatibility:**
+  - Legacy aggregates missing these fields deserialize to `null` (representing **unknown** coverage, not 0 sites). Newly calculated API responses always populate all three fields.
 
 
 #### Status and Error Codes

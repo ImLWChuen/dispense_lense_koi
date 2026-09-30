@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-035
-reviewed_commit: 65798812e104c620470ab66d57a06d02dca38407
-decision: changes_requested
+reviewed_commit: 2977003e72b8a8fd9a3697a95c543f3ce5465b31
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,14 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested for two inaccurate contract/report statements. The implementation of ordered affected ROI IDs appears to meet the task's behavior requirements; no code correction has been identified in this review. Correct the documentation and report before acceptance so downstream teammates do not rely on false semantics.
+Accepted at `2977003e72b8a8fd9a3697a95c543f3ce5465b31`. Gemini corrected both documentation findings without changing product code. The original findings below remain for traceability.
+
+## Final correction review
+
+- R1 resolved: the API spec now promises exact affected ROI IDs per observation and explicitly allows overlap across different defect rules.
+- R2 resolved: the task report now distinguishes unmatched reference ROIs, which are skipped with a warning while matched ROIs can still be classified, from UNASSESSED ROIs, which retain the whole-image gate.
+- Supported acceptance checkboxes are marked complete. The correction commit changes only the API spec and handoff documents; its committed diff passes the whitespace check.
+- The original implementation's 65 focused and 555 backend passing tests were reported by Gemini. The reviewer inspected the correction diff and did not rerun backend suites for this documentation-only commit under the `PROJECT.md` role split.
 
 ## R1 — P2: API spec incorrectly promises disjoint affected-site lists
 
@@ -33,4 +40,4 @@ The report says unmatched ROIs in REFERENCE_IMAGE mode “trigger safe zero-obse
 
 ## Follow-up
 
-Correct R1 and R2, align acceptance checkboxes and queue/report state, run task validation and whitespace checks. Because the correction is documentation-only, do not repeat backend suites unless code changes. Commit locally and return for review. No new feature task was generated and no remote Git operation is authorized.
+No further DLK-M3-035 correction is needed. No new feature task was generated. No remote Git operation was performed.

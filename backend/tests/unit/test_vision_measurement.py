@@ -290,3 +290,131 @@ def test_legacy_serialized_measurement_defaults() -> None:
     agg = AggregateMeasurements.model_validate(legacy_agg_data)
     assert agg.unassessed_roi_ids == []
     assert agg.missing_roi_ids == ["legacy_missing"]
+    assert agg.expected_roi_count is None
+    assert agg.assessed_roi_count is None
+    assert agg.inspection_coverage_status is None
+
+
+def _make_measurement(
+    roi_id: str,
+    status: RoiInspectionStatus,
+    coverage: float = 0.5,
+    area: float = 500.0,
+) -> RoiMeasurement:
+    """Helper to construct minimal RoiMeasurement instances for coverage tests."""
+    from app.schemas.image import RoiInspectionStatus, RoiMeasurement
+
+    is_missing = status == RoiInspectionStatus.MISSING
+    return RoiMeasurement(
+        roi_id=roi_id,
+        deposit_area_px=0.0 if is_missing or status == RoiInspectionStatus.UNASSESSED else area,
+        target_area_px=1000.0,
+        coverage_ratio=0.0 if is_missing or status == RoiInspectionStatus.UNASSESSED else coverage,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0 if is_missing or status == RoiInspectionStatus.UNASSESSED else 25.0,
+        circularity=0.0 if is_missing or status == RoiInspectionStatus.UNASSESSED else 0.9,
+        solidity=0.0 if is_missing or status == RoiInspectionStatus.UNASSESSED else 0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=0.9 if is_missing or status == RoiInspectionStatus.DETECTED else 0.1,
+        is_missing=is_missing,
+        inspection_status=status,
+    )
+
+
+def test_inspection_coverage_complete_detected_and_missing() -> None:
+    """A complete inspection includes all expected sites as DETECTED or confirmed MISSING."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.DETECTED)
+    m2 = _make_measurement("r2", RoiInspectionStatus.MISSING)
+
+    agg = calculate_aggregate_measurements([m1, m2], all_roi_ids=["r1", "r2"])
+    assert agg.expected_roi_count == 2
+    assert agg.assessed_roi_count == 2
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.COMPLETE
+    assert agg.missing_roi_ids == ["r2"]
+    assert agg.unassessed_roi_ids == []
+
+
+def test_inspection_coverage_partial_detected_and_unassessed() -> None:
+    """Mixed detected and unassessed expected sites report exact counts and PARTIAL."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.DETECTED)
+    m2 = _make_measurement("r2", RoiInspectionStatus.UNASSESSED)
+
+    agg = calculate_aggregate_measurements([m1, m2], all_roi_ids=["r1", "r2"])
+    assert agg.expected_roi_count == 2
+    assert agg.assessed_roi_count == 1
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.PARTIAL
+    assert agg.unassessed_roi_ids == ["r2"]
+    assert agg.missing_roi_ids == []
+
+
+def test_inspection_coverage_none_all_unassessed() -> None:
+    """When no expected site is assessed, coverage status is NONE with 0 assessed count."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.UNASSESSED)
+    m2 = _make_measurement("r2", RoiInspectionStatus.UNASSESSED)
+
+    agg = calculate_aggregate_measurements([m1, m2], all_roi_ids=["r1", "r2"])
+    assert agg.expected_roi_count == 2
+    assert agg.assessed_roi_count == 0
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.NONE
+    assert set(agg.unassessed_roi_ids) == {"r1", "r2"}
+
+
+def test_inspection_coverage_omitted_expected_measurement() -> None:
+    """Omitted expected measurements are treated as unassessed, yielding PARTIAL coverage."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.DETECTED)
+
+    agg = calculate_aggregate_measurements([m1], all_roi_ids=["r1", "r2", "r3"])
+    assert agg.expected_roi_count == 3
+    assert agg.assessed_roi_count == 1
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.PARTIAL
+    assert agg.unassessed_roi_ids == ["r2", "r3"]
+    assert agg.missing_roi_ids == []
+
+
+def test_inspection_coverage_duplicate_expected_ids() -> None:
+    """Duplicate expected IDs in all_roi_ids do not inflate expected or assessed counts."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.DETECTED)
+    m2 = _make_measurement("r2", RoiInspectionStatus.DETECTED)
+
+    agg = calculate_aggregate_measurements([m1, m2], all_roi_ids=["r1", "r1", "r2", "r2"])
+    assert agg.expected_roi_count == 2
+    assert agg.assessed_roi_count == 2
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.COMPLETE
+
+
+def test_inspection_coverage_unexpected_measurement_ids() -> None:
+    """Measurements with ROI IDs not in expected all_roi_ids are ignored for coverage counts."""
+    from app.schemas.image import InspectionCoverageStatus, RoiInspectionStatus
+
+    m1 = _make_measurement("r1", RoiInspectionStatus.DETECTED)
+    m_extra = _make_measurement("r_extra", RoiInspectionStatus.DETECTED)
+    m_unassessed_extra = _make_measurement("r_unassessed_extra", RoiInspectionStatus.UNASSESSED)
+
+    agg = calculate_aggregate_measurements(
+        [m1, m_extra, m_unassessed_extra],
+        all_roi_ids=["r1"],
+    )
+    assert agg.expected_roi_count == 1
+    assert agg.assessed_roi_count == 1
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.COMPLETE
+
+
+def test_inspection_coverage_empty_expected_list_internal_edge_case() -> None:
+    """An empty expected ROI list reports 0/0 and NONE, never COMPLETE."""
+    from app.schemas.image import InspectionCoverageStatus
+
+    agg = calculate_aggregate_measurements([], all_roi_ids=[])
+    assert agg.expected_roi_count == 0
+    assert agg.assessed_roi_count == 0
+    assert agg.inspection_coverage_status == InspectionCoverageStatus.NONE

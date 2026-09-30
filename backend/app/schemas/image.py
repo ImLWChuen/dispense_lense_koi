@@ -37,6 +37,13 @@ class RoiInspectionStatus(str, Enum):
     UNASSESSED = "UNASSESSED"
 
 
+class InspectionCoverageStatus(str, Enum):
+    """Overall inspection coverage status across expected sites."""
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    NONE = "NONE"
+
+
 class NormalizedROI(BaseModel):
     """Normalized rectangular region of interest with coordinates in [0.0, 1.0]."""
     model_config = ConfigDict(extra="forbid")
@@ -259,6 +266,9 @@ class AggregateMeasurements(BaseModel):
     size_cv: float | None = None
     missing_roi_ids: list[str] = Field(default_factory=list)
     unassessed_roi_ids: list[str] = Field(default_factory=list)
+    expected_roi_count: int | None = None
+    assessed_roi_count: int | None = None
+    inspection_coverage_status: InspectionCoverageStatus | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
