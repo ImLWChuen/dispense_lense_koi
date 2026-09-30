@@ -2858,8 +2858,9 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - The ordered, unique list of all ROI IDs triggering that exact defect is preserved in `Observation.metadata["affected_roi_ids"]`.
   - For backward compatibility, `metadata["roi_id"]` and initial measurement metrics from the first triggering site are preserved.
 - **Rule Dimension & Value Isolation:**
-  - Different defect values (e.g. `undersized` vs `oversized`) produce separate observations with disjoint affected lists.
-  - If a single region violates multiple independent defect dimensions (e.g. `undersized` and `tailing`), its ROI ID appears once in each relevant observation's `affected_roi_ids`.
+  - Each observation maintains an exact list of ROI IDs that triggered its specific observation type and defect value (`Observation.metadata["affected_roi_ids"]`).
+  - Separate defect values for the same dimension (such as `undersized` versus `oversized` for `deposit_size`) produce separate observations, containing non-overlapping affected lists for that rule.
+  - When a single region violates multiple independent defect rules or dimensions (e.g. triggering both `deposit_size=undersized` and `deposit_shape=tailing`, or triggering both `deposit_shape=tailing` and `deposit_shape=abnormal`), its ROI ID appears in each relevant observation's `affected_roi_ids`; affected lists across different rules may therefore overlap.
 - **D03 Inconsistent Size Comparison Participants:**
   - For `deposit_size=inconsistent`, `affected_roi_ids` identifies all eligible `DETECTED`, positive-area ROIs that contributed to the sample coefficient of variation calculation. It identifies comparison participants rather than asserting individual limit breaches.
 - **Persistence Compatibility:**

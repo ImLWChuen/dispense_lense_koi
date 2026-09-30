@@ -86,10 +86,13 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-035` — Preserve every affected region ID in deduplicated image observations — **implemented**
+  - reviewed commit: `65798812e104c620470ab66d57a06d02dca38407`
+  - review: `.agents/handoff/reviews/DLK-M3-035-review.md`
+  - resolved corrections R1/R2: clarified in api-spec.md that affected ROI lists are exact per observation and may overlap across different rules; corrected task report to clarify unmatched reference sites are skipped with warning while UNASSESSED sites retain the whole-image gate; marked supported acceptance checkboxes
   - task: `.agents/handoff/tasks/DLK-M3-035-affected-region-provenance.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-034` at `7a55e65f4f3ad3a733289393f6f5a832ba47db52`
   - outcome: one observation per defect type/value with ordered unique affected ROI IDs in metadata; same scoring contribution and durable case round-trip
   - deferred: frontend display, Member 2 scoring/interpretation changes, partial evidence, templates/alignment
 
-Gemini should execute only the active DLK-M3-035 task and return for review. Include the planner-authored accepted DLK-M3-034 review and queue update in its local commit. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
+Gemini should make the bounded DLK-M3-035 documentation corrections and return for review before dependent work. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

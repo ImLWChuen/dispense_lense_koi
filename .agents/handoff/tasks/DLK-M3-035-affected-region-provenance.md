@@ -73,14 +73,14 @@ Frontend edits, changing diagnostic weights or knowledge rules, changing metadat
 
 ## Acceptance criteria
 
-- [ ] PROCESS_LIMITS emits one observation for two or more ROIs with the same rule/value, with every violating ID in input order and no duplicates.
-- [ ] Different values and rule dimensions have independent exact affected-ID lists; nonviolating sites are absent.
-- [ ] REFERENCE_IMAGE preserves exact affected IDs only for matched, evaluated, violating sites.
-- [ ] D03 metadata lists the eligible aggregate CV participants and states their role accurately in documentation.
-- [ ] FEATURES_ONLY and UNASSESSED gates still emit zero observations; observation count and scoring contribution for duplicate sites remain unchanged.
-- [ ] A real synthetic multi-site API path and the durable case create/read path preserve `affected_roi_ids` without altering existing metadata.
-- [ ] No new DB/API envelope fields, diagnostic weights, frontend changes, or unreviewed scope. Prior self-intersection wording is corrected narrowly.
-- [ ] Required checks pass and only task-related files are committed locally.
+- [x] PROCESS_LIMITS emits one observation for two or more ROIs with the same rule/value, with every violating ID in input order and no duplicates.
+- [x] Different values and rule dimensions have independent exact affected-ID lists; nonviolating sites are absent.
+- [x] REFERENCE_IMAGE preserves exact affected IDs only for matched, evaluated, violating sites.
+- [x] D03 metadata lists the eligible aggregate CV participants and states their role accurately in documentation.
+- [x] FEATURES_ONLY and UNASSESSED gates still emit zero observations; observation count and scoring contribution for duplicate sites remain unchanged.
+- [x] A real synthetic multi-site API path and the durable case create/read path preserve `affected_roi_ids` without altering existing metadata.
+- [x] No new DB/API envelope fields, diagnostic weights, frontend changes, or unreviewed scope. Prior self-intersection wording is corrected narrowly.
+- [x] Required checks pass and only task-related files are committed locally.
 
 ## Verification
 
@@ -116,11 +116,12 @@ Implemented `metadata.affected_roi_ids` across all defect classification rules i
 - `backend/tests/integration/test_image_api.py`: Added 2 end-to-end integration tests using synthetic multi-ROI images to verify `affected_roi_ids` propagation in `PROCESS_LIMITS` and `REFERENCE_IMAGE` analysis modes.
 - `backend/tests/integration/test_image_diagnosis_integration.py`: Added integration test asserting that multiple sites with identical defect values yield identical diagnosis scores to single-site breaches (no score inflation).
 - `backend/tests/integration/test_image_driven_case_workflow.py`: Updated single-ROI end-to-end test and added multi-site durable case test verifying `affected_roi_ids` persists and round-trips correctly across case revisions in PostgreSQL.
-- `docs/api/api-spec.md`: Documented `affected_roi_ids` in `metadata` schema, updated example JSON payload, and outlined provenance contract.
+- `docs/api/api-spec.md`: Documented `affected_roi_ids` in `metadata` schema, updated example JSON payload, outlined provenance contract, and clarified that affected ROI lists are exact per observation and may overlap across different rules (resolving review R1).
 - `docs/architecture/region-inspection-improvement-plan.md`: Updated Phase 1 increment status for DLK-M3-035.
 - `.agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md`: Corrected wording regarding nonconsecutive repeated vertex rejection.
-- `.agents/handoff/tasks/DLK-M3-035-affected-region-provenance.md`: Updated status to implemented and completed implementation report.
-- `.agents/handoff/QUEUE.md`: Updated DLK-M3-035 status to implemented.
+- `.agents/handoff/tasks/DLK-M3-035-affected-region-provenance.md`: Updated status to implemented, completed implementation report, marked supported acceptance checkboxes, and corrected reference-mode skip vs UNASSESSED gating description (resolving review R2).
+- `.agents/handoff/QUEUE.md`: Updated DLK-M3-035 status to implemented with R1/R2 resolution details.
+- `.agents/handoff/reviews/DLK-M3-035-review.md`: Review record addressing R1 and R2.
 
 ### Decisions made
 
@@ -148,8 +149,8 @@ Implemented `metadata.affected_roi_ids` across all defect classification rules i
 
 - Frontend display of `affected_roi_ids` (e.g. multi-site highlight badges on image viewer and case report) is owned by Member 1 and was not modified in this task.
 - AI prompt manager currently filters metadata keys when constructing LLM context. Adding `affected_roi_ids` to prompt narratives can be addressed in a future task if desired.
-- In `REFERENCE_IMAGE` mode, reference comparison requires matching calibrated ROIs between current and reference images; unmatched or unassessed ROIs trigger safe zero-observation gating.
+- In `REFERENCE_IMAGE` mode, current regions missing a matching reference region are safely skipped with an explanatory warning while matched regions are evaluated normally. In contrast, any region with an `UNASSESSED` inspection status in either current or reference images retains the whole-image conservative gate (suppressing all observations).
 
 ### Proposed commit message
 
-`feat(vision): preserve affected ROI IDs in image observations`
+`docs(vision): clarify affected ROI list isolation and reference mode skip behavior`
