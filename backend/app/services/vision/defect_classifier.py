@@ -46,8 +46,9 @@ def classify_defects_from_measurements(
                     f"ROI '{m.roi_id}' segmentation quality ({m.segmentation_quality:.2f}) is below reliable threshold."
                 )
 
-        # Check aggregate.unassessed_roi_ids for any expected ROI without measurement data
-        measured_ids = {m.roi_id for m in roi_measurements}
+    # Check aggregate.unassessed_roi_ids for any expected ROI without measurement data
+    measured_ids = {m.roi_id for m in roi_measurements} if roi_measurements else set()
+    if aggregate and aggregate.unassessed_roi_ids:
         for uid in aggregate.unassessed_roi_ids:
             if uid not in measured_ids:
                 current_unreliable_reasons.append(f"ROI '{uid}' is unassessed (missing measurement data).")
@@ -60,7 +61,6 @@ def classify_defects_from_measurements(
                 "REFERENCE_IMAGE mode requires reference measurements and explicit reference limits."
             )
         else:
-            ref_measured_ids = {r.roi_id for r in reference_measurements}
             for ref_m in reference_measurements:
                 if ref_m.inspection_status == RoiInspectionStatus.UNASSESSED:
                     detail = "; ".join(ref_m.inspection_warnings) if ref_m.inspection_warnings else "unassessed region"
@@ -76,12 +76,14 @@ def classify_defects_from_measurements(
                         f"Reference ROI '{ref_m.roi_id}' is missing; downgrading analysis."
                     )
 
-            if reference_aggregate and reference_aggregate.unassessed_roi_ids:
-                for uid in reference_aggregate.unassessed_roi_ids:
-                    if uid not in ref_measured_ids:
-                        reference_unreliable_reasons.append(
-                            f"Reference ROI '{uid}' is unassessed (missing measurement data); downgrading analysis."
-                        )
+        # Check reference_aggregate.unassessed_roi_ids for any expected reference ROI without measurement data
+        ref_measured_ids = {r.roi_id for r in reference_measurements} if reference_measurements else set()
+        if reference_aggregate and reference_aggregate.unassessed_roi_ids:
+            for uid in reference_aggregate.unassessed_roi_ids:
+                if uid not in ref_measured_ids:
+                    reference_unreliable_reasons.append(
+                        f"Reference ROI '{uid}' is unassessed (missing measurement data); downgrading analysis."
+                    )
 
     # 3. Deduplicate and append all collected reliability explanations into top-level warnings
     for r in current_unreliable_reasons:

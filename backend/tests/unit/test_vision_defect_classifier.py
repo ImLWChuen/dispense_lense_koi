@@ -608,3 +608,97 @@ def test_simultaneous_current_and_reference_failures_collects_both_explanations(
     # Both current and reference failure explanations must be collected into warnings
     assert any("dot_a" in w and "Zero deposit area without confirmed absence" in w for w in warnings)
     assert any("dot_b" in w and "Reference window boundary clipped" in w for w in warnings)
+
+
+def test_empty_current_measurements_with_populated_unassessed_ids() -> None:
+    """R1 regression: Empty current measurements with unassessed IDs generates missing-measurement warnings and preserves status."""
+    aggregate = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["roi_a", "roi_b"],
+    )
+
+    # FEATURES_ONLY: preserves UNCALIBRATED with empty observations and expected warnings
+    status_fo, obs_fo, warnings_fo = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.FEATURES_ONLY,
+        roi_measurements=[],
+        aggregate=aggregate,
+    )
+    assert status_fo == AnalysisStatus.UNCALIBRATED
+    assert obs_fo == []
+    assert any("ROI 'roi_a' is unassessed (missing measurement data)." in w for w in warnings_fo)
+    assert any("ROI 'roi_b' is unassessed (missing measurement data)." in w for w in warnings_fo)
+
+    # PROCESS_LIMITS: preserves UNRELIABLE with empty observations and expected warnings
+    limits = ProcessLimits(min_coverage_ratio=0.10)
+    status_pl, obs_pl, warnings_pl = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[],
+        aggregate=aggregate,
+        process_limits=limits,
+    )
+    assert status_pl == AnalysisStatus.UNRELIABLE
+    assert obs_pl == []
+    assert any("ROI 'roi_a' is unassessed (missing measurement data)." in w for w in warnings_pl)
+    assert any("ROI 'roi_b' is unassessed (missing measurement data)." in w for w in warnings_pl)
+
+
+def test_empty_reference_measurements_with_populated_unassessed_ids() -> None:
+    """R1 regression: Empty/None reference measurements with unassessed IDs generates missing-measurement warnings."""
+    curr_feat = RoiMeasurement(
+        roi_id="dot_1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr_agg = AggregateMeasurements(
+        mean_coverage=0.50,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    ref_agg = AggregateMeasurements(
+        mean_coverage=None,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=["ref_roi_1", "ref_roi_2"],
+    )
+    ref_limits = ReferenceLimits(tolerance_ratio=0.10)
+
+    # Empty list [] for reference_measurements
+    status_empty, obs_empty, warnings_empty = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr_feat],
+        aggregate=curr_agg,
+        reference_measurements=[],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+    assert status_empty == AnalysisStatus.UNRELIABLE
+    assert obs_empty == []
+    assert any("Reference ROI 'ref_roi_1' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_empty)
+    assert any("Reference ROI 'ref_roi_2' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_empty)
+
+    # None for reference_measurements
+    status_none, obs_none, warnings_none = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr_feat],
+        aggregate=curr_agg,
+        reference_measurements=None,
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+    assert status_none == AnalysisStatus.UNRELIABLE
+    assert obs_none == []
+    assert any("Reference ROI 'ref_roi_1' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_none)
+    assert any("Reference ROI 'ref_roi_2' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_none)
