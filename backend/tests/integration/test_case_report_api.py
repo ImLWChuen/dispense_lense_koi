@@ -17,6 +17,7 @@ Tests DLK-M3-022:
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 import os
 import uuid
 from typing import Any, Generator
@@ -33,6 +34,8 @@ from app.core.config import get_database_url
 from app.db.database import reset_engine
 from app.db.session import get_session_factory
 from app.main import app
+from app.schemas.case import CaseReportResponse
+from app.services.reporting.report_generator import build_case_report
 from app.models.case import (
     AnalysisRevisionModel,
     CaseCauseConfirmationModel,
@@ -530,3 +533,206 @@ def test_report_consistency_under_concurrent_update(tracked_cases: list[str]):
         state_after_second = capture_complete_case_state(session, case_id)
 
     assert state_before_second == state_after_second, "Report generation created persistent database mutations!"
+
+
+def test_report_exposes_persisted_image_observations_with_region_evidence(tracked_cases: list[str]):
+    """Verify GET /cases/{id}/report exposes persisted image observations and region evidence snapshots."""
+    region_evidence_payload = [
+        {
+            "site_id": "site_01",
+            "inspection_status": "DEFECTIVE",
+            "current_measurements": {
+                "deposit_area_px": 1750.5,
+                "equivalent_diameter_px": 47.21,
+                "calibrated_diameter_mm": 0.472,
+                "coverage_ratio": 0.70,
+                "overflow_ratio": 0.0,
+                "circularity": 0.89,
+                "solidity": 0.94,
+                "convexity": 0.96,
+                "aspect_ratio": 1.05,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.97,
+                "target_area_px": 2500.0,
+            },
+            "reference_measurements": {
+                "deposit_area_px": 2500.0,
+                "equivalent_diameter_px": 56.42,
+                "calibrated_diameter_mm": 0.564,
+                "coverage_ratio": 1.0,
+                "overflow_ratio": 0.0,
+                "inspection_status": "ACCEPTABLE",
+            },
+        },
+        {
+            "site_id": "site_02",
+            "inspection_status": "ACCEPTABLE",
+            "current_measurements": {
+                "deposit_area_px": 2490.0,
+                "equivalent_diameter_px": 56.31,
+                "calibrated_diameter_mm": None,
+                "coverage_ratio": 0.99,
+                "overflow_ratio": 0.0,
+                "circularity": 0.95,
+                "solidity": 0.98,
+                "convexity": 0.99,
+                "aspect_ratio": 1.01,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.98,
+            },
+            "reference_measurements": None,
+        },
+    ]
+
+    create_payload = {
+        "description": "Vision inspection detected undersized deposit at site_01",
+        "material": "solder_paste",
+        "method": "jetting",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "original_text": "Site 01 deposit is below lower limit",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "confidence": 0.95,
+                "metadata": {
+                    "region_evidence_scope": "individual_regions",
+                    "affected_roi_ids": ["site_01", "site_02"],
+                    "applied_limits": {
+                        "target_area_px": 2500.0,
+                        "tolerance_pct": 10.0,
+                        "min_coverage_ratio": 0.85,
+                    },
+                    "region_evidence": region_evidence_payload,
+                },
+            },
+            {
+                "observation_type": "visual_appearance",
+                "value": "normal",
+                "statement_type": "USER_OBSERVATION",
+                "source": "USER",
+            },
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201, f"Failed to create case: {create_resp.text}"
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    # Fetch report
+    report_resp = client.get(f"/api/v1/cases/{case_id}/report")
+    assert report_resp.status_code == 200
+    report = report_resp.json()
+
+    assert "image_observations" in report
+    img_obs_list = report["image_observations"]
+    # Only the IMAGE observation is projected; the USER observation is excluded
+    assert len(img_obs_list) == 1
+
+    img_obs = img_obs_list[0]
+    assert img_obs["source"] == "IMAGE"
+    assert img_obs["statement_type"] == "AI_INFERENCE"
+    assert img_obs["observation_type"] == "deposit_size"
+    assert img_obs["value"] == "undersized"
+    assert img_obs["confidence"] == 0.95
+    assert img_obs["first_seen_revision"] == 1
+    assert "id" in img_obs
+    assert "created_at" in img_obs
+
+    # Verify metadata fields
+    meta = img_obs["metadata"]
+    assert meta["region_evidence_scope"] == "individual_regions"
+    assert meta["affected_roi_ids"] == ["site_01", "site_02"]
+    assert meta["applied_limits"]["target_area_px"] == 2500.0
+    assert len(meta["region_evidence"]) == 2
+
+    # Site 1
+    s1 = meta["region_evidence"][0]
+    assert s1["site_id"] == "site_01"
+    assert s1["inspection_status"] == "DEFECTIVE"
+    assert s1["current_measurements"]["deposit_area_px"] == 1750.5
+    assert s1["current_measurements"]["calibrated_diameter_mm"] == 0.472
+    assert s1["reference_measurements"]["deposit_area_px"] == 2500.0
+
+    # Site 2
+    s2 = meta["region_evidence"][1]
+    assert s2["site_id"] == "site_02"
+    assert s2["inspection_status"] == "ACCEPTABLE"
+    assert s2["reference_measurements"] is None
+
+
+def test_report_image_observations_later_revision_isolation(tracked_cases: list[str]):
+    """Verify observations added in later revisions do not leak into earlier pinned report."""
+    case_data = _create_initial_case(tracked_cases)
+    case_id = case_data["case_id"]
+
+    # Initial case is rev 1, without image observations
+    report_r1 = client.get(f"/api/v1/cases/{case_id}/report").json()
+    assert report_r1["current_revision"] == 1
+    assert report_r1["image_observations"] == []
+
+    # Inject an observation directly at revision 2 in the DB
+    factory = get_session_factory()
+    with factory() as session:
+        obs_r2 = ObservationModel(
+            case_id=case_id,
+            observation_id="obs_rev_2_image",
+            observation_type="deposit_size",
+            value="undersized",
+            original_text="Rev 2 vision finding",
+            statement_type="AI_INFERENCE",
+            source="IMAGE",
+            confidence=0.88,
+            first_seen_revision=2,
+            created_at=datetime.now(timezone.utc),
+            observation_metadata={"affected_roi_ids": ["site_rev2"]},
+        )
+        session.add(obs_r2)
+        session.commit()
+
+    # Pinned report at revision 1 must NOT include obs_rev_2_image
+    with factory() as sess:
+        repo = CaseRepository(sess)
+        report_pinned = build_case_report(case_id, repo, pinned_revision=1)
+
+    assert report_pinned is not None
+    assert report_pinned.current_revision == 1
+    assert report_pinned.image_observations == []
+
+
+def test_report_backward_compatibility_empty_image_observations():
+    """Verify CaseReportResponse defaults image_observations to [] when omitted."""
+    dummy_summary = {
+        "issue_condition": "UNRESOLVED",
+        "current_revision": 1,
+        "confirmed_causes": [],
+        "is_resolved": False,
+        "resolved": False,
+    }
+    dummy_diag = {
+        "case_id": "11111111-1111-4111-8111-111111111111",
+        "defect": "D03_INCONSISTENT_SIZE",
+        "ranked_causes": [],
+        "issue_condition": "UNRESOLVED",
+    }
+    raw = {
+        "case_id": "11111111-1111-4111-8111-111111111111",
+        "current_revision": 1,
+        "issue_condition": "UNRESOLVED",
+        "defect_code": "D03_INCONSISTENT_SIZE",
+        "defect_name": "Inconsistent Dot Size",
+        "created_at": datetime.now(timezone.utc),
+        "diagnosis": dummy_diag,
+        "current_diagnosis": dummy_diag,
+        "outcome_summary": dummy_summary,
+        "current_outcome_summary": dummy_summary,
+    }
+    parsed = CaseReportResponse.model_validate(raw)
+    assert parsed.image_observations == []

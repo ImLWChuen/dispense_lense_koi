@@ -656,6 +656,12 @@ class CaseReportResponse(BaseModel):
         description="Compact direct projection of current persisted outcome state (alias).",
     )
 
+    # Persisted image observations (scoped up to the effective revision)
+    image_observations: list[CaseObservationResponse] = Field(
+        default_factory=list,
+        description="Persisted image observations associated with this case up to the effective revision.",
+    )
+
 
 class SubmitCheckRequest(BaseModel):
     """Transport schema for submitting a troubleshooting check execution."""

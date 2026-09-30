@@ -17,6 +17,7 @@ Tests DLK-M3-023:
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 import io
 import os
 from typing import Any, Generator
@@ -665,3 +666,284 @@ def test_pdf_report_sanitized_500_on_internal_error(tracked_cases: list[str]):
         state_after = capture_complete_case_state(session, case_id)
 
     assert state_before == state_after, "Durable database state was modified during failing PDF report GET!"
+
+
+def test_pdf_report_with_image_observations_and_region_evidence(tracked_cases: list[str]):
+    """Verify downloadable PDF includes Section 8 with rich region evidence, measurements, limits, and notices."""
+    region_evidence_payload = [
+        {
+            "site_id": "site_01",
+            "inspection_status": "DEFECTIVE",
+            "current_measurements": {
+                "deposit_area_px": 1800.0,
+                "equivalent_diameter_px": 47.87,
+                "calibrated_diameter_mm": 0.479,
+                "coverage_ratio": 0.72,
+                "overflow_ratio": 0.0,
+                "circularity": 0.88,
+                "solidity": 0.95,
+                "convexity": 0.96,
+                "aspect_ratio": 1.05,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.96,
+                "target_area_px": 2500.0,
+            },
+            "reference_measurements": {
+                "deposit_area_px": 2500.0,
+                "equivalent_diameter_px": 56.42,
+                "calibrated_diameter_mm": 0.564,
+                "coverage_ratio": 1.0,
+                "overflow_ratio": 0.0,
+                "inspection_status": "ACCEPTABLE",
+            },
+        },
+        {
+            "site_id": "site_02",
+            "inspection_status": "ACCEPTABLE",
+            "current_measurements": {
+                "deposit_area_px": 2480.0,
+                "equivalent_diameter_px": 56.19,
+                "calibrated_diameter_mm": None,
+                "coverage_ratio": 0.99,
+                "overflow_ratio": 0.0,
+                "circularity": 0.96,
+                "solidity": 0.98,
+                "convexity": 0.99,
+                "aspect_ratio": 1.01,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.98,
+            },
+            "reference_measurements": None,
+        },
+    ]
+
+    create_payload = {
+        "description": "Multi-region inspection case with rich region evidence",
+        "material": "solder_paste",
+        "method": "jetting",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "original_text": "Site 01 deposit is below nominal specification",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "confidence": 0.95,
+                "metadata": {
+                    "region_evidence_scope": "individual_regions",
+                    "affected_roi_ids": ["site_01", "site_02"],
+                    "applied_limits": {
+                        "target_area_px": 2500.0,
+                        "tolerance_pct": 10.0,
+                        "min_coverage_ratio": 0.85,
+                    },
+                    "region_evidence": region_evidence_payload,
+                },
+            },
+            {
+                "observation_type": "deposit_shape",
+                "value": "irregular",
+                "original_text": "Group comparison detected shape variance across sites",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "confidence": 0.85,
+                "metadata": {
+                    "region_evidence_scope": "comparison_group",
+                    "affected_roi_ids": ["site_01", "site_02"],
+                    "applied_limits": {"max_aspect_ratio": 1.20},
+                    "region_evidence": [region_evidence_payload[0]],
+                },
+            },
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201, f"Failed to create case: {create_resp.text}"
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    # Request PDF
+    pdf_resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.headers["Content-Type"] == "application/pdf"
+    assert f'filename="dispenselens-case-{case_id}-r1.pdf"' in pdf_resp.headers["Content-Disposition"]
+
+    reader = pypdf.PdfReader(io.BytesIO(pdf_resp.content))
+    assert len(reader.pages) >= 1
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    # Section 8 presence and required automated observation notice
+    assert "8. Image Inspection Evidence" in extracted_text
+    assert "Image findings represent automated visual observations and inferences" in extracted_text
+    assert "Absence of image findings does not imply inspection passed" in extracted_text
+
+    # Observation details and scope distinctions
+    assert "deposit_size" in extracted_text
+    assert "undersized" in extracted_text
+    assert "individual_regions" in extracted_text
+    assert "comparison_group" in extracted_text
+    assert "Group comparison finding: listed regions are eligible" in extracted_text
+    assert "configuration snapshot; not an assertion of failure for all limits" in extracted_text
+
+    # Distinct site measurements and units
+    assert "site_01" in extracted_text
+    assert "DEFECTIVE" in extracted_text
+    assert "1800.00 px²" in extracted_text or "1800.00" in extracted_text
+    assert "47.87 px" in extracted_text
+    assert "0.479 mm" in extracted_text
+    assert "2500.00 px²" in extracted_text or "2500.00" in extracted_text
+    assert "0.564 mm" in extracted_text
+
+    # Site 2 without reference measurements
+    assert "site_02" in extracted_text
+    assert "ACCEPTABLE" in extracted_text
+    assert "56.19 px" in extracted_text
+    assert "Not recorded" in extracted_text  # null calibrated physical diameter
+    assert "None (not in reference mode or unmatched)" in extracted_text
+
+
+def test_pdf_report_empty_image_observations_notice(tracked_cases: list[str]):
+    """Verify Section 8 displays neutral explanatory notice when case has no image observations."""
+    case_data = _create_initial_case(tracked_cases)
+    case_id = case_data["case_id"]
+
+    resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert resp.status_code == 200
+
+    reader = pypdf.PdfReader(io.BytesIO(resp.content))
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert "8. Image Inspection Evidence" in extracted_text
+    assert "No image inspection evidence recorded for this case revision." in extracted_text
+
+
+def test_pdf_report_malformed_and_legacy_region_metadata(tracked_cases: list[str]):
+    """Verify PDF generates cleanly without crashing when metadata is legacy, missing, or malformed."""
+    create_payload = {
+        "description": "Case with malformed and legacy image metadata",
+        "material": "epoxy",
+        "method": "time_pressure",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "metadata": {
+                    "region_evidence_scope": "individual_regions",
+                    "applied_limits": "non_dict_limits_string",  # malformed applied limits
+                    "region_evidence": [
+                        "malformed_string_entry",  # malformed entry (not dict)
+                        {
+                            "site_id": "site_err",
+                            "inspection_status": "DEFECTIVE",
+                            "current_measurements": "malformed_current",  # malformed measurements
+                            "reference_measurements": "malformed_reference",  # malformed reference
+                        },
+                    ],
+                },
+            },
+            {
+                "observation_type": "deposit_shape",
+                "value": "irregular",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "metadata": {},  # legacy empty metadata
+            },
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert resp.status_code == 200
+    assert resp.headers["Content-Type"] == "application/pdf"
+
+    reader = pypdf.PdfReader(io.BytesIO(resp.content))
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert "8. Image Inspection Evidence" in extracted_text
+    assert "Detailed per-region evidence was not recorded for this observation." in extracted_text
+    assert "Malformed region entry" in extracted_text
+    assert "Malformed current measurement data." in extracted_text
+    assert "Malformed reference measurement data." in extracted_text
+
+
+def test_pdf_report_truncation_limits_and_escaping(tracked_cases: list[str]):
+    """Verify bounding to 20 observations, 50 regions, 200-char strings, HTML escaping, and multi-page layout."""
+    # Build 55 region snapshots
+    many_regions = []
+    for i in range(1, 56):
+        many_regions.append({
+            "site_id": f"site_{i:03d}",
+            "inspection_status": "ACCEPTABLE" if i % 2 == 0 else "DEFECTIVE",
+            "current_measurements": {
+                "deposit_area_px": 2500.0 + i,
+                "equivalent_diameter_px": 56.4,
+                "coverage_ratio": 0.95,
+            },
+            "reference_measurements": None,
+        })
+
+    long_str = "LongString<script>alert('xss')</script>&test" + ("A" * 250)
+
+    # Build 25 image observations
+    obs_list = []
+    for i in range(1, 26):
+        obs_list.append({
+            "observation_type": "deposit_size",
+            "value": long_str if i == 1 else f"undersized_{i}",
+            "original_text": long_str if i == 1 else f"Observation {i}",
+            "statement_type": "AI_INFERENCE",
+            "source": "IMAGE",
+            "metadata": {
+                "region_evidence_scope": "individual_regions",
+                "affected_roi_ids": [f"site_{i:03d}"],
+                "applied_limits": {"target_area_px": 2500.0},
+                "region_evidence": many_regions if i == 1 else [],
+            },
+        })
+
+    create_payload = {
+        "description": "Stress test case for PDF limits: 25 observations, 55 regions, long string with tags",
+        "material": "solder_paste",
+        "method": "jetting",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": obs_list,
+    }
+
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert resp.status_code == 200
+    assert resp.headers["Content-Type"] == "application/pdf"
+
+    reader = pypdf.PdfReader(io.BytesIO(resp.content))
+    # Must span multiple pages cleanly
+    assert len(reader.pages) >= 2, f"Expected >= 2 pages, got {len(reader.pages)}"
+
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    # Check string truncation marker and safe layout
+    assert "[truncated (exceeds 200 chars)]" in extracted_text
+
+    # Check 50-region bound notice (55 - 50 = 5 omitted)
+    assert "(5 omitted). Omission does not imply unlisted sites passed." in extracted_text
+    assert "site_050" in extracted_text
+    assert "site_051" not in extracted_text  # 51st site omitted from PDF
+
+    # Check 20-observation bound notice (25 - 20 = 5 omitted)
+    assert "Display bounded to first 20 observations" in extracted_text
+    assert "(5 omitted). Omission does not imply unlisted observations passed." in extracted_text

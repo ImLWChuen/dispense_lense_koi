@@ -2420,6 +2420,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 | `issue_lifecycle_history` | `array[LifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
 | `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the persisted outcome state (aliased as `current_outcome_summary`). |
 | `current_outcome_summary` | `CaseOutcomeSummary` | **Yes** | Alias for `outcome_summary`. |
+| `image_observations` | `array[CaseObservationResponse]` | No | Persisted IMAGE observations scoped to effective revision (defaults to `[]`). |
 
 ##### Outcome Summary Schema (`CaseOutcomeSummary`)
 
@@ -2623,7 +2624,42 @@ Accept: application/json
     ],
     "is_resolved": true,
     "resolved": true
-  }
+  },
+  "image_observations": [
+    {
+      "id": "obs_img_01",
+      "observation_id": "obs_img_01",
+      "observation_type": "deposit_size",
+      "value": "undersized",
+      "original_text": "Vision inspection detected undersized deposit",
+      "statement_type": "AI_INFERENCE",
+      "source": "IMAGE",
+      "confidence": 0.95,
+      "timestamp": "2026-09-14T10:00:00Z",
+      "created_at": "2026-09-14T10:00:00Z",
+      "first_seen_revision": 1,
+      "metadata": {
+        "region_evidence_scope": "individual_regions",
+        "affected_roi_ids": ["site_01"],
+        "applied_limits": {
+          "target_area_px": 2500.0,
+          "tolerance_pct": 10.0
+        },
+        "region_evidence": [
+          {
+            "site_id": "site_01",
+            "inspection_status": "DEFECTIVE",
+            "current_measurements": {
+              "deposit_area_px": 1750.5,
+              "equivalent_diameter_px": 47.21,
+              "calibrated_diameter_mm": 0.472
+            },
+            "reference_measurements": null
+          }
+        ]
+      }
+    }
+  ]
 }
 ```
 
@@ -2668,7 +2704,8 @@ Accept: application/pdf
 6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps with item count header (`Troubleshooting Checks (N)` or `None recorded.`).
 7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps with item count header (`Cause Confirmations (N)` or `None recorded.`).
 8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps with item count header (`Lifecycle Events (N)` or `None recorded.`).
-9. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
+9. **Image Inspection Evidence**: Bounded presentation of persisted vision findings (`image_observations`), region-evidence scope (`individual_regions` vs `comparison_group`), affected site IDs, applied limits (as a configuration snapshot), and 15-field scalar measurement snapshots with units (`px²`, `px`, `mm`) and reference comparisons where available, or neutral notice if none recorded.
+10. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
 
 ---
 

@@ -134,7 +134,9 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-039` — Preserve per-region measurements and limits in image evidence — **implemented**
+- `DLK-M3-039` — Preserve per-region measurements and limits in image evidence — **accepted**
+  - reviewed commit: `641328c0210cd31b56a50717792958fd39886bd3`
+  - review: `.agents/handoff/reviews/DLK-M3-039-review.md`
   - task: `.agents/handoff/tasks/DLK-M3-039-per-region-evidence-snapshots.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-038` at `899d36d64e7d04f0734423eb190b872fb2ac4d77`
@@ -142,6 +144,18 @@ Do not implement inside DLK-M3-031:
   - preserve: observation identity/order, affected-site membership, diagnostic scores, conservative gates, and legacy metadata
   - deferred: frontend workbench, partial evidence, report rendering, profiles/alignment, and real-image accuracy evaluation
   - verification: focused suite 82 passed; full backend suite 587 passed; task validation VALID; whitespace checks passed
-  - include pending planner-authored accepted DLK-M3-038 review in the implementation commit
+  - accepted DLK-M3-038 review included in the implementation commit
+
+## Active task
+
+- `DLK-M3-040` — Include persisted region evidence in case reports — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-039` at `641328c0210cd31b56a50717792958fd39886bd3`
+  - outcome: revision-scoped image observations in JSON reports and bounded readable region evidence in standard PDF reports
+  - preserve: read-only report assembly, pinned revision, diagnostic/lifecycle meaning, existing routes and legacy compatibility
+  - deferred: frontend workbench, partial evidence, reusable profiles/alignment, real-image evaluation, and 8D report changes
+  - verification: focused suite 37 passed; full backend suite 598 passed; task validation VALID; whitespace checks passed
+  - accepted DLK-M3-039 review included in the implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
