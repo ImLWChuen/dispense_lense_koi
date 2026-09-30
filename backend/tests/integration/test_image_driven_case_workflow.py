@@ -240,3 +240,108 @@ def test_legacy_observation_metadata_compatibility(client: TestClient, cleanup_c
     get_resp = client.get(f"/api/v1/cases/{case_id}")
     assert get_resp.status_code == 200
     assert get_resp.json()["observations"][0]["metadata"] == {}
+
+
+def test_per_region_evidence_snapshots_persist_through_case_lifecycle_and_revisions(
+    client: TestClient,
+    cleanup_cases: list[str],
+):
+    """Per-region evidence snapshots and applied limits survive case creation, retrieval, and revision 2."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # Two distinct deposits: dot_1 radius 10 (coverage ~0.03), dot_2 radius 15 (coverage ~0.07)
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 15)],
+    )
+    profile = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[
+            NormalizedROI(roi_id="site_alpha", x=0.0, y=0.0, width=0.5, height=1.0),
+            NormalizedROI(roi_id="site_beta", x=0.5, y=0.0, width=0.5, height=1.0),
+        ],
+        process_limits=ProcessLimits(min_coverage_ratio=0.10),
+    )
+    analysis_res = _sync_analyze_image(file_bytes=img_bytes, profile=profile)
+    assert len(analysis_res.observations) == 1
+    image_obs = analysis_res.observations[0]
+
+    # Verify initial analysis output has snapshots
+    meta = image_obs.metadata
+    assert meta["region_evidence_scope"] == "individual_regions"
+    assert meta["applied_limits"] == {"min_coverage_ratio": 0.10}
+    assert meta["affected_roi_ids"] == ["site_alpha", "site_beta"]
+    assert len(meta["region_evidence"]) == 2
+
+    alpha_cov = meta["region_evidence"][0]["current_measurements"]["coverage_ratio"]
+    beta_cov = meta["region_evidence"][1]["current_measurements"]["coverage_ratio"]
+    assert alpha_cov != beta_cov
+
+    # Create durable case
+    case_payload = {
+        "description": "Multi-site snapshot persistence verification",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": image_obs.value,
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "metadata": meta,
+            }
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=case_payload)
+    assert create_resp.status_code == 201
+    case_data = create_resp.json()
+    case_id = case_data["case_id"]
+    cleanup_cases.append(case_id)
+
+    # Verify created response
+    obs_c = case_data["observations"][0]
+    assert obs_c["metadata"]["region_evidence_scope"] == "individual_regions"
+    assert obs_c["metadata"]["applied_limits"] == {"min_coverage_ratio": 0.10}
+    assert len(obs_c["metadata"]["region_evidence"]) == 2
+    assert obs_c["metadata"]["region_evidence"][0]["current_measurements"]["coverage_ratio"] == alpha_cov
+    assert obs_c["metadata"]["region_evidence"][1]["current_measurements"]["coverage_ratio"] == beta_cov
+
+    # Retrieve from PostgreSQL via GET /cases/{id}
+    get_resp = client.get(f"/api/v1/cases/{case_id}")
+    assert get_resp.status_code == 200
+    retrieved = get_resp.json()
+    obs_r = retrieved["observations"][0]
+    assert obs_r["metadata"]["region_evidence_scope"] == "individual_regions"
+    assert obs_r["metadata"]["applied_limits"] == {"min_coverage_ratio": 0.10}
+    assert len(obs_r["metadata"]["region_evidence"]) == 2
+    assert obs_r["metadata"]["region_evidence"][0]["roi_id"] == "site_alpha"
+    assert obs_r["metadata"]["region_evidence"][0]["current_measurements"]["coverage_ratio"] == alpha_cov
+    assert obs_r["metadata"]["region_evidence"][1]["roi_id"] == "site_beta"
+    assert obs_r["metadata"]["region_evidence"][1]["current_measurements"]["coverage_ratio"] == beta_cov
+    # Legacy first-site metadata preserved
+    assert obs_r["metadata"]["roi_id"] == "site_alpha"
+
+    # Advance to Revision 2 with a check result
+    check_payload = {
+        "check_id": "ACT01",
+        "execution_status": "COMPLETED",
+        "finding": "SUPPORTS",
+        "outcome": "blockage_found",
+        "finding_details": "Observed partial material blockage at tip",
+        "expected_revision": 1,
+    }
+    check_resp = client.post(f"/api/v1/cases/{case_id}/check-results", json=check_payload)
+    assert check_resp.status_code == 200
+    assert check_resp.json()["current_revision"] == 2
+
+    # Verify Revision 2 still retains the snapshots losslessly
+    get_rev2_resp = client.get(f"/api/v1/cases/{case_id}")
+    assert get_rev2_resp.status_code == 200
+    case_rev2 = get_rev2_resp.json()
+    img_obs_rev2 = next(o for o in case_rev2["observations"] if o["source"] == "IMAGE")
+    assert img_obs_rev2["metadata"]["region_evidence_scope"] == "individual_regions"
+    assert img_obs_rev2["metadata"]["applied_limits"] == {"min_coverage_ratio": 0.10}
+    assert len(img_obs_rev2["metadata"]["region_evidence"]) == 2
+    assert img_obs_rev2["metadata"]["region_evidence"][0]["current_measurements"]["coverage_ratio"] == alpha_cov
+    assert img_obs_rev2["metadata"]["region_evidence"][1]["current_measurements"]["coverage_ratio"] == beta_cov

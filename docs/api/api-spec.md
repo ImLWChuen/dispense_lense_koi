@@ -2808,6 +2808,33 @@ Extracts resolution-independent geometric features from dispensing deposit image
       "metadata": {
         "roi_id": "dot_1",
         "affected_roi_ids": ["dot_1"],
+        "region_evidence_scope": "individual_regions",
+        "applied_limits": {
+          "min_coverage_ratio": 0.15
+        },
+        "region_evidence": [
+          {
+            "roi_id": "dot_1",
+            "current_measurements": {
+              "inspection_status": "DETECTED",
+              "deposit_area_px": 820.0,
+              "target_area_px": 10000.0,
+              "coverage_ratio": 0.082,
+              "overflow_ratio": 0.000,
+              "equivalent_diameter_px": 32.3,
+              "calibrated_diameter_mm": null,
+              "circularity": 0.92,
+              "solidity": 0.95,
+              "convexity": 1.0,
+              "aspect_ratio": 1.0,
+              "hole_void_ratio": 0.0,
+              "bubble_count": 0,
+              "has_bubbles": false,
+              "segmentation_quality": 0.96
+            },
+            "reference_measurements": null
+          }
+        ],
         "coverage_ratio": 0.082,
         "overflow_ratio": 0.000,
         "mode": "PROCESS_LIMITS",
@@ -2914,6 +2941,32 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - Diagnostic Evidence Support /100 is computed downstream by the causal reasoning engine only from eligible score-bearing observations; an `UNRELIABLE` image emits zero observations and contributes zero evidence score.
 - **Backward Compatibility:**
   - Legacy serialized `ImageAnalysisResponse` objects missing `reference_aggregate_measurements` deserialize safely with `None`.
+
+##### Per-Region Evidence Snapshots & Applied Limits (`metadata.region_evidence`, `metadata.applied_limits`, `metadata.region_evidence_scope`)
+- **Additive Provenance Enrichment:**
+  - For already-emitted calibrated `IMAGE` observations, `Observation.metadata` is enriched with `region_evidence_scope`, `applied_limits`, and `region_evidence`.
+  - Legacy first-site scalar metadata keys (`roi_id`, `coverage_ratio`, `overflow_ratio`, etc.) remain intact for backward compatibility and reflect only that initial triggering site.
+- **Evidence Scope (`metadata.region_evidence_scope`):**
+  - `"individual_regions"`: Ordinary site findings where each entry in `region_evidence` represents an affected region that individually triggered the rule.
+  - `"comparison_group"`: Aggregate comparison findings (`deposit_size=inconsistent`, D03) where `region_evidence` includes all eligible detected positive-area participants evaluated for variation (`size_cv`), without implying individual limit failure or assigning outlier labels.
+- **Applied Limits Snapshot (`metadata.applied_limits`):**
+  - Active validated process or reference limits serialized as a JSON-compatible dictionary with null fields omitted.
+  - In reference mode, tolerance ratios resolve effective lower and upper ratio bounds (`min_reference_ratio`, `max_reference_ratio`).
+  - Represents the caller-supplied inspection configuration snapshot at analysis time, not an assertion that every limit was evaluated or violated.
+- **Per-Region Measurement Snapshots (`metadata.region_evidence`):**
+  - Ordered list strictly corresponding to `affected_roi_ids`.
+  - Multiple conditions on a single site never duplicate its entry within an observation.
+  - Each item contains:
+    - `roi_id`: Site identifier.
+    - `current_measurements`: Detached dictionary of exactly the 15 allowed scalar fields: `inspection_status`, `deposit_area_px`, `target_area_px`, `coverage_ratio`, `overflow_ratio`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `convexity`, `aspect_ratio`, `hole_void_ratio`, `bubble_count`, `has_bubbles`, `segmentation_quality`.
+    - `reference_measurements`: Matching reference scalar snapshot in reference mode, or `null` in process mode or when no reference match exists.
+  - Immutability: Snapshots contain detached scalar primitives; mutations to runtime models cannot alter recorded evidence.
+- **Reconstruction Capability:**
+  - In reference mode, current and reference scalar snapshots plus effective limits permit downstream consumers to reconstruct comparisons without secondary algorithms.
+- **Persistence & Diagnostic Neutrality:**
+  - Persists losslessly in PostgreSQL JSONB storage across durable case creation, retrieval, and revision updates.
+  - Diagnostic scoring, cause rankings, candidate evidence counts, and reliability gates are strictly unchanged.
+  - Missing new fields in historical records signify unrecorded provenance, not zero measurements or clean inspection.
 
 
 #### Status and Error Codes

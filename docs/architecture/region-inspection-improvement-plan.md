@@ -83,6 +83,8 @@ Acceptance: profile round-trip preserves IDs and limits; displaced images either
 
 Carry inspection provenance into case evidence and reports, using the existing persistence path where possible. Confirm storage boundaries before adding schema or retention changes. Summaries identify affected and unassessed sites and recommend evidence-supported follow-up checks. Keep root-cause confirmation and recovery verification separate.
 
+- **Increment DLK-M3-039 Status (Implemented):** Delivered per-region evidence snapshots and applied limits: enriched calibrated `IMAGE` observations with `region_evidence_scope` (`individual_regions` | `comparison_group`), `applied_limits` (JSON-compatible process or reference bounds), and `region_evidence` (ordered detached scalar snapshots matching `affected_roi_ids`). Preserved legacy first-site metadata and verified lossless persistence through durable case creation, retrieval, and revision 2 in PostgreSQL.
+
 Acceptance: saved cases and reports preserve the assessed scope, limits, and uncertainties; repeated region findings do not inflate ranking; no image observation is presented as a confirmed cause.
 
 ### Phase 5: Evaluation and rehearsal

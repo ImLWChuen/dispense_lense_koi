@@ -1145,3 +1145,40 @@ def test_image_analysis_response_legacy_payload_deserialization() -> None:
     dumped = resp.model_dump(mode="json")
     assert "reference_aggregate_measurements" in dumped
     assert dumped["reference_aggregate_measurements"] is None
+
+
+def test_image_analyze_preserves_per_region_evidence_in_api_response(client: TestClient) -> None:
+    """API response preserves region_evidence_scope, applied_limits, and per-region snapshots."""
+    img_bytes = create_centered_dot_image(size=200, dot_radius=10)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.15,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    meta = obs["metadata"]
+
+    assert meta["region_evidence_scope"] == "individual_regions"
+    assert meta["applied_limits"] == {"min_coverage_ratio": 0.15}
+    assert meta["affected_roi_ids"] == ["site_1"]
+
+    evidence = meta["region_evidence"]
+    assert len(evidence) == 1
+    assert evidence[0]["roi_id"] == "site_1"
+    assert evidence[0]["current_measurements"]["inspection_status"] == "DETECTED"
+    assert evidence[0]["current_measurements"]["coverage_ratio"] < 0.15
+    assert evidence[0]["reference_measurements"] is None

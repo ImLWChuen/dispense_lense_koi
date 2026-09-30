@@ -26,6 +26,7 @@ from app.schemas.diagnosis import (
     EvidenceSource,
     Observation,
     ObservationType,
+    StatementType,
     StructuredCase,
 )
 from app.services.diagnosis.engine import DiagnosticEngine
@@ -340,3 +341,96 @@ def test_multiple_sites_same_defect_produces_identical_diagnosis_score():
         assert c_s.conclusion == c_m.conclusion
         assert len(c_s.supporting_evidence) == len(c_m.supporting_evidence)
 
+
+def test_enriched_observation_diagnostic_parity_with_legacy_metadata() -> None:
+    """DiagnosticEngine produces exact identical scores, conclusions, and evidence counts for legacy vs enriched observations."""
+    engine = DiagnosticEngine()
+
+    # Legacy observation (only base metadata + affected_roi_ids, no snapshots)
+    legacy_meta = {
+        "roi_id": "r1",
+        "coverage_ratio": 0.02,
+        "overflow_ratio": 0.0,
+        "aspect_ratio": 1.0,
+        "circularity": 0.9,
+        "solidity": 0.95,
+        "bubble_count": 0,
+        "hole_void_ratio": 0.0,
+        "mode": "PROCESS_LIMITS",
+        "status": "CALIBRATED",
+        "affected_roi_ids": ["r1", "r2"],
+    }
+    legacy_obs = Observation(
+        observation_type=ObservationType.DEPOSIT_SIZE,
+        value="undersized",
+        source=EvidenceSource.IMAGE,
+        statement_type=StatementType.AI_INFERENCE,
+        metadata=legacy_meta,
+    )
+
+    # Enriched observation (additive snapshots, limits, and scope)
+    enriched_meta = dict(legacy_meta)
+    enriched_meta["region_evidence_scope"] = "individual_regions"
+    enriched_meta["applied_limits"] = {"min_coverage_ratio": 0.10}
+    enriched_meta["region_evidence"] = [
+        {
+            "roi_id": "r1",
+            "current_measurements": {
+                "inspection_status": "DETECTED",
+                "deposit_area_px": 50.0,
+                "target_area_px": 1000.0,
+                "coverage_ratio": 0.05,
+                "overflow_ratio": 0.0,
+                "equivalent_diameter_px": 8.0,
+                "calibrated_diameter_mm": None,
+                "circularity": 0.90,
+                "solidity": 0.95,
+                "convexity": 1.0,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.95,
+            },
+            "reference_measurements": None,
+        },
+        {
+            "roi_id": "r2",
+            "current_measurements": {
+                "inspection_status": "DETECTED",
+                "deposit_area_px": 80.0,
+                "target_area_px": 1000.0,
+                "coverage_ratio": 0.08,
+                "overflow_ratio": 0.0,
+                "equivalent_diameter_px": 10.0,
+                "calibrated_diameter_mm": None,
+                "circularity": 0.90,
+                "solidity": 0.95,
+                "convexity": 1.0,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.95,
+            },
+            "reference_measurements": None,
+        },
+    ]
+    enriched_obs = Observation(
+        observation_type=ObservationType.DEPOSIT_SIZE,
+        value="undersized",
+        source=EvidenceSource.IMAGE,
+        statement_type=StatementType.AI_INFERENCE,
+        metadata=enriched_meta,
+    )
+
+    diag_legacy = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[legacy_obs]))
+    diag_enriched = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[enriched_obs]))
+
+    assert diag_legacy.defect == diag_enriched.defect
+    assert len(diag_legacy.ranked_causes) == len(diag_enriched.ranked_causes)
+    for c_leg, c_enr in zip(diag_legacy.ranked_causes, diag_enriched.ranked_causes):
+        assert c_leg.cause_id == c_enr.cause_id
+        assert c_leg.score == c_enr.score
+        assert c_leg.conclusion == c_enr.conclusion
+        assert len(c_leg.supporting_evidence) == len(c_enr.supporting_evidence)

@@ -53,6 +53,102 @@ def _record_observation(
                 affected.append(roi_id)
 
 
+def _snapshot_roi_measurements(m: RoiMeasurement) -> dict[str, Any]:
+    """Extract a detached scalar dictionary of the 15 allowed RoiMeasurement fields."""
+    status_val = m.inspection_status.value if hasattr(m.inspection_status, "value") else str(m.inspection_status)
+    return {
+        "inspection_status": status_val,
+        "deposit_area_px": float(m.deposit_area_px),
+        "target_area_px": float(m.target_area_px),
+        "coverage_ratio": float(m.coverage_ratio),
+        "overflow_ratio": float(m.overflow_ratio),
+        "equivalent_diameter_px": float(m.equivalent_diameter_px),
+        "calibrated_diameter_mm": float(m.calibrated_diameter_mm) if m.calibrated_diameter_mm is not None else None,
+        "circularity": float(m.circularity),
+        "solidity": float(m.solidity),
+        "convexity": float(m.convexity),
+        "aspect_ratio": float(m.aspect_ratio),
+        "hole_void_ratio": float(m.hole_void_ratio),
+        "bubble_count": int(m.bubble_count),
+        "has_bubbles": bool(m.has_bubbles),
+        "segmentation_quality": float(m.segmentation_quality),
+    }
+
+
+def _enrich_observations_with_evidence_snapshots(
+    obs_by_key: dict[tuple[str, str], Observation],
+    mode: ImageAnalysisMode,
+    roi_measurements: list[RoiMeasurement],
+    reference_measurements: list[RoiMeasurement] | None = None,
+    process_limits: ProcessLimits | None = None,
+    reference_limits: ReferenceLimits | None = None,
+) -> None:
+    """Enrich emitted observations with per-region evidence snapshots and applied limits."""
+    if not obs_by_key:
+        return
+
+    # 1. Resolve applied limits
+    if mode == ImageAnalysisMode.PROCESS_LIMITS and process_limits is not None:
+        applied_limits = process_limits.model_dump(exclude_none=True)
+    elif mode == ImageAnalysisMode.REFERENCE_IMAGE and reference_limits is not None:
+        applied_limits = reference_limits.model_dump(exclude_none=True)
+    else:
+        applied_limits = {}
+
+    curr_by_id = {m.roi_id: m for m in roi_measurements}
+    ref_by_id = {r.roi_id: r for r in reference_measurements} if reference_measurements else {}
+
+    for obs in obs_by_key.values():
+        if obs.metadata is None:
+            obs.metadata = {}
+
+        # 2. Scope
+        obs_type_val = (
+            obs.observation_type.value
+            if hasattr(obs.observation_type, "value")
+            else str(obs.observation_type)
+        )
+        is_d03_inconsistent = (
+            obs_type_val == ObservationType.DEPOSIT_SIZE.value
+            and obs.value == "inconsistent"
+        )
+        obs.metadata["region_evidence_scope"] = (
+            "comparison_group" if is_d03_inconsistent else "individual_regions"
+        )
+
+        # 3. Applied limits
+        obs.metadata["applied_limits"] = dict(applied_limits)
+
+        # 4. Region evidence snapshots
+        affected_roi_ids = obs.metadata.get("affected_roi_ids", [])
+        evidence_list: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        for roi_id in affected_roi_ids:
+            if roi_id in seen_ids:
+                continue
+            seen_ids.add(roi_id)
+
+            curr_m = curr_by_id.get(roi_id)
+            if curr_m is None:
+                continue
+
+            curr_snap = _snapshot_roi_measurements(curr_m)
+            ref_snap: dict[str, Any] | None = None
+            if mode == ImageAnalysisMode.REFERENCE_IMAGE and ref_by_id:
+                ref_m = ref_by_id.get(roi_id)
+                if ref_m is not None:
+                    ref_snap = _snapshot_roi_measurements(ref_m)
+
+            evidence_list.append({
+                "roi_id": roi_id,
+                "current_measurements": curr_snap,
+                "reference_measurements": ref_snap,
+            })
+
+        obs.metadata["region_evidence"] = evidence_list
+
+
 def classify_defects_from_measurements(
     mode: ImageAnalysisMode,
     roi_measurements: list[RoiMeasurement],
@@ -293,6 +389,14 @@ def classify_defects_from_measurements(
                     },
                 )
 
+        _enrich_observations_with_evidence_snapshots(
+            obs_by_key=obs_by_key,
+            mode=mode,
+            roi_measurements=roi_measurements,
+            reference_measurements=None,
+            process_limits=process_limits,
+            reference_limits=None,
+        )
         return status, list(obs_by_key.values()), warnings
 
     # 6. Mode: REFERENCE_IMAGE
@@ -372,6 +476,14 @@ def classify_defects_from_measurements(
                         roi_meta,
                     )
 
+        _enrich_observations_with_evidence_snapshots(
+            obs_by_key=obs_by_key,
+            mode=mode,
+            roi_measurements=roi_measurements,
+            reference_measurements=reference_measurements,
+            process_limits=None,
+            reference_limits=reference_limits,
+        )
         return status, list(obs_by_key.values()), warnings
 
     return AnalysisStatus.UNCALIBRATED, [], warnings

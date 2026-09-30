@@ -121,9 +121,9 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-038` — Establish a repeatable synthetic region-inspection baseline — **implemented**
+- `DLK-M3-038` — Establish a repeatable synthetic region-inspection baseline — **accepted**
   - task: `.agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md`
-  - reviewed commit: `0c65348b80e05cf9ddf88a9ed1ca04967e0fd7b3`
+  - reviewed commit: `899d36d64e7d04f0734423eb190b872fb2ac4d77`
   - review: `.agents/handoff/reviews/DLK-M3-038-review.md`
   - resolved corrections R1/R2/R3: added per-case elapsed_seconds and focused coverage; corrected Python version and verified reproduction commands; updated documented JSON output; executed full backend test suite against disposable test database (578 passed, 42 warnings in 59.67s) and recorded in task report
   - branch: `backend-database`
@@ -131,5 +131,17 @@ Do not implement inside DLK-M3-031:
   - authorized outcome: deterministic labeled synthetic fixture manifest, offline region-inspection benchmark, measured baseline report
   - preserve: production CV/API/diagnosis behavior and existing safety gates; no industrial-accuracy claim from synthetic data
   - deferred: real-image evaluation, numerical acceptance targets, partial score-bearing evidence, Member 1 visual workbench, reusable profiles/alignment
+
+## Active task
+
+- `DLK-M3-039` — Preserve per-region measurements and limits in image evidence — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-039-per-region-evidence-snapshots.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-038` at `899d36d64e7d04f0734423eb190b872fb2ac4d77`
+  - outcome: additive per-site measurement snapshots and supplied limits in existing observation metadata, preserved through durable cases
+  - preserve: observation identity/order, affected-site membership, diagnostic scores, conservative gates, and legacy metadata
+  - deferred: frontend workbench, partial evidence, report rendering, profiles/alignment, and real-image accuracy evaluation
+  - verification: focused suite 82 passed; full backend suite 587 passed; task validation VALID; whitespace checks passed
+  - include pending planner-authored accepted DLK-M3-038 review in the implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
