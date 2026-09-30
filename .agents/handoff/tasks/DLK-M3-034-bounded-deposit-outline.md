@@ -134,7 +134,7 @@ Proposed commit message: `feat(vision): expose bounded deposit outlines for regi
 
 - Window offset translation: window coordinates are converted to global image coordinates using `window_roi.x` and `window_roi.y` (the analysis window origin), not `target_roi.x`/`y`, guaranteeing that contours segmented within expanded analysis windows properly align when rendered over the full image.
 - Bounded approximation: used binary search with `cv2.approxPolyDP` across epsilon values to find the finest valid approximation yielding 3–128 points, avoiding slicing or bounding box approximation.
-- Strict vertex distinctness (R1): all polygon vertices must be unique. Normalized coordinates use consistent 6-decimal rounded keys for consecutive deduplication, closing point stripping, and distinctness validation. Contours containing self-intersections or repeated vertices are safely omitted with an explanatory warning rather than arbitrarily mutated.
+- Strict vertex distinctness (R1): all polygon vertices must be unique. Normalized coordinates use consistent 6-decimal rounded keys for consecutive deduplication, closing point stripping, and distinctness validation. Contours containing repeated vertices are safely omitted with an explanatory warning rather than arbitrarily mutated.
 - Non-degrading unavailability: unavailable outline geometry on a `DETECTED` deposit emits an explanatory warning in `inspection_warnings` and top-level `warnings` while leaving `inspection_status = DETECTED` and diagnostic observations intact. Old clients and non-visual workflows remain unaffected.
 - Reference image omission: reference image measurements do not serialize outlines in this increment to keep response payloads small and bounded.
 

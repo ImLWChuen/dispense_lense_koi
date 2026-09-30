@@ -710,3 +710,80 @@ def test_image_analyze_detected_region_with_nonconsecutive_duplicate_vertices_wa
     assert m["deposit_outline_normalized"] is None
     assert any("nonconsecutive duplicate vertices detected" in w for w in m["inspection_warnings"])
     assert any("nonconsecutive duplicate vertices detected" in w for w in data["warnings"])
+
+
+def test_image_analyze_multi_site_same_defect_preserves_all_affected_roi_ids(client: TestClient) -> None:
+    """Real synthetic multi-site image with same defect on 2 ROIs emits 1 observation with both affected IDs."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # 400x200 image with two small dots (radius 10) at (100, 100) and (300, 100)
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 10)],
+    )
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_left", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "site_right", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {"min_coverage_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("multi_undersized.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    # Must emit exactly 1 observation for deposit_size=undersized
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    assert obs["observation_type"] == "deposit_size"
+    assert obs["value"] == "undersized"
+    assert obs["metadata"]["affected_roi_ids"] == ["site_left", "site_right"]
+    assert obs["metadata"]["roi_id"] == "site_left"
+
+
+def test_image_analyze_multi_site_different_defects_isolates_affected_roi_ids(client: TestClient) -> None:
+    """Real synthetic multi-site image with different defects on 2 ROIs isolates affected IDs per value."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # 400x200 image: left dot small (radius 10), right dot large (radius 45)
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 45)],
+    )
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_small", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "site_large", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.03,
+            "max_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("multi_different.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    obs_by_val = {o["value"]: o for o in data["observations"]}
+    assert "undersized" in obs_by_val
+    assert "oversized" in obs_by_val
+    assert obs_by_val["undersized"]["metadata"]["affected_roi_ids"] == ["site_small"]
+    assert obs_by_val["oversized"]["metadata"]["affected_roi_ids"] == ["site_large"]

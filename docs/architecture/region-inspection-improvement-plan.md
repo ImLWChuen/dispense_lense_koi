@@ -54,6 +54,7 @@ Acceptance: reviewed fixture manifest, explicit expected results, agreed support
 Preserve segmentation statuses and warnings through measurement and API layers. Exclude unassessed regions from missing counts and diagnostic observations. Permit valid regions to contribute evidence while explicitly reporting partial coverage. Recompute comparable-region aggregates and preserve affected-site metadata without duplicate scoring.
 
 - **Increment DLK-M3-033 Status (Implemented):** Delivered foundation reliability layer: `RoiInspectionStatus` (`DETECTED`, `MISSING`, `UNASSESSED`), per-region warnings propagation, `unassessed_roi_ids` on aggregates, and conservative whole-image gating in calibrated modes. Unassessed regions are strictly prevented from mislabeling as missing deposits. Overlays, masks/contours, and partial-evidence classification remain for subsequent phases.
+- **Increment DLK-M3-035 Status (Implemented):** Delivered affected-region provenance: added `metadata.affected_roi_ids: list[str]` to calibrated `IMAGE` observations. Preserves all violating site IDs in input order without inflating diagnostic evidence scores or creating duplicate observations. D03 inconsistent-size records eligible comparison participants. Lossless persistence verified through durable case create/read.
 
 Acceptance: one blurred region does not erase valid findings elsewhere or become a missing deposit; all-unreliable input produces no diagnostic evidence; existing features-only behavior remains neutral; reference failures are handled per corresponding site.
 

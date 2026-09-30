@@ -73,8 +73,8 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-034` — Expose bounded deposit outlines for trustworthy region overlays — **implemented**
-  - reviewed commit: `6782ca0db0fb3c889686658fa248dcea8d6019f7`
+- `DLK-M3-034` — Expose bounded deposit outlines for trustworthy region overlays — **accepted**
+  - reviewed commit: `7a55e65f4f3ad3a733289393f6f5a832ba47db52`
   - review: `.agents/handoff/reviews/DLK-M3-034-review.md`
   - resolved correction R1: rejected nonconsecutive duplicate polygon vertices after normalization with specific overlay warning `ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected).`; preserved DETECTED region status and diagnostic observations; added unit and integration regressions; synchronized queue state with implementation report
   - task: `.agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md`
@@ -83,4 +83,13 @@ Do not implement inside DLK-M3-031:
   - outcome: optional full-image normalized outer contour geometry for reliable detected deposits, with bounded size, strict vertex distinctness, and explicit omission warnings
   - deferred: frontend overlays, templates/alignment, partial evidence, database changes
 
-Gemini should submit DLK-M3-034 for review before dependent overlay work. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
+## Active task
+
+- `DLK-M3-035` — Preserve every affected region ID in deduplicated image observations — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-035-affected-region-provenance.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-034` at `7a55e65f4f3ad3a733289393f6f5a832ba47db52`
+  - outcome: one observation per defect type/value with ordered unique affected ROI IDs in metadata; same scoring contribution and durable case round-trip
+  - deferred: frontend display, Member 2 scoring/interpretation changes, partial evidence, templates/alignment
+
+Gemini should execute only the active DLK-M3-035 task and return for review. Include the planner-authored accepted DLK-M3-034 review and queue update in its local commit. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

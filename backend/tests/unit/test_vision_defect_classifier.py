@@ -702,3 +702,535 @@ def test_empty_reference_measurements_with_populated_unassessed_ids() -> None:
     assert obs_none == []
     assert any("Reference ROI 'ref_roi_1' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_none)
     assert any("Reference ROI 'ref_roi_2' is unassessed (missing measurement data); downgrading analysis." in w for w in warnings_none)
+
+
+def test_two_rois_same_defect_preserves_every_affected_roi_id_in_metadata() -> None:
+    """Two ROIs with the same defect emit one observation with both ROI IDs in affected_roi_ids."""
+    from app.schemas.image import AggregateMeasurements, RoiInspectionStatus, RoiMeasurement
+
+    m1 = RoiMeasurement(
+        roi_id="site_1",
+        deposit_area_px=100.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.05,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=11.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m2 = RoiMeasurement(
+        roi_id="site_2",
+        deposit_area_px=120.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.06,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=12.3,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.055,
+        size_cv=0.10,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(min_coverage_ratio=0.10)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m1, m2],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 1
+    assert obs[0].observation_type == "deposit_size"
+    assert obs[0].value == "undersized"
+    assert "affected_roi_ids" in obs[0].metadata
+    assert obs[0].metadata["affected_roi_ids"] == ["site_1", "site_2"]
+    assert obs[0].metadata["roi_id"] == "site_1"
+
+
+def test_different_defect_values_have_independent_affected_roi_ids() -> None:
+    """Distinct defect values (undersized vs oversized) retain independent affected_roi_ids."""
+    m_under = RoiMeasurement(
+        roi_id="site_under",
+        deposit_area_px=50.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.05,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=8.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m_over = RoiMeasurement(
+        roi_id="site_over",
+        deposit_area_px=600.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.60,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=27.6,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.325,
+        size_cv=0.0,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(min_coverage_ratio=0.10, max_coverage_ratio=0.50)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m_under, m_over],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 2
+    obs_by_val = {o.value: o for o in obs}
+    assert "undersized" in obs_by_val
+    assert "oversized" in obs_by_val
+    assert obs_by_val["undersized"].metadata["affected_roi_ids"] == ["site_under"]
+    assert obs_by_val["oversized"].metadata["affected_roi_ids"] == ["site_over"]
+
+
+def test_single_roi_violating_multiple_independent_dimensions() -> None:
+    """One ROI violating multiple dimensions appears once in each distinct observation list."""
+    m_multi = RoiMeasurement(
+        roi_id="site_1",
+        deposit_area_px=50.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.05,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=8.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=2.5,  # Tailing violation
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.05,
+        size_cv=None,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(min_coverage_ratio=0.10, max_aspect_ratio=1.30)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m_multi],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 2
+    types = {o.observation_type: o for o in obs}
+    assert "deposit_size" in types
+    assert "deposit_shape" in types
+    assert types["deposit_size"].metadata["affected_roi_ids"] == ["site_1"]
+    assert types["deposit_shape"].metadata["affected_roi_ids"] == ["site_1"]
+
+
+def test_per_rule_limit_gating_excludes_nonviolating_sites() -> None:
+    """Nonviolating ROIs are strictly excluded from affected_roi_ids."""
+    m1_violating = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=40.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.04,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=7.1,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m2_ok = RoiMeasurement(
+        roi_id="r2",
+        deposit_area_px=200.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.20,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=16.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m3_violating = RoiMeasurement(
+        roi_id="r3",
+        deposit_area_px=50.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.05,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=8.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.096,
+        size_cv=0.1,
+        missing_roi_ids=[],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(min_coverage_ratio=0.10)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m1_violating, m2_ok, m3_violating],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 1
+    assert obs[0].metadata["affected_roi_ids"] == ["r1", "r3"]
+    assert "r2" not in obs[0].metadata["affected_roi_ids"]
+
+
+def test_missing_deposit_skips_further_checks_and_isolates_affected_id() -> None:
+    """Missing deposit is isolated to deposit_presence=missing and skipped from size checks."""
+    m_missing = RoiMeasurement(
+        roi_id="r_miss",
+        deposit_area_px=0.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.005,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0,
+        circularity=0.0,
+        solidity=0.0,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=True,
+        inspection_status=RoiInspectionStatus.MISSING,
+    )
+    m_under = RoiMeasurement(
+        roi_id="r_under",
+        deposit_area_px=50.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.05,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=8.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.05,
+        size_cv=None,
+        missing_roi_ids=["r_miss"],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(min_presence_ratio=0.01, min_coverage_ratio=0.10)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m_missing, m_under],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 2
+    types = {o.observation_type: o for o in obs}
+    assert types["deposit_presence"].value == "missing"
+    assert types["deposit_presence"].metadata["affected_roi_ids"] == ["r_miss"]
+    assert types["deposit_size"].value == "undersized"
+    assert types["deposit_size"].metadata["affected_roi_ids"] == ["r_under"]
+
+
+def test_d03_inconsistent_size_metadata_records_comparison_participants() -> None:
+    """D03 inconsistent size lists eligible detected positive-area comparison participants in affected_roi_ids."""
+    m1 = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=100.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.10,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=11.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m2 = RoiMeasurement(
+        roi_id="r2",
+        deposit_area_px=400.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.40,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=22.5,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    m_missing = RoiMeasurement(
+        roi_id="r_miss",
+        deposit_area_px=0.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.0,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=0.0,
+        circularity=0.0,
+        solidity=0.0,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=True,
+        inspection_status=RoiInspectionStatus.MISSING,
+    )
+    agg = AggregateMeasurements(
+        mean_coverage=0.25,
+        size_cv=0.85,
+        missing_roi_ids=["r_miss"],
+        unassessed_roi_ids=[],
+    )
+    limits = ProcessLimits(max_size_cv=0.20)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        roi_measurements=[m1, m2, m_missing],
+        aggregate=agg,
+        process_limits=limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    d03_obs = next((o for o in obs if o.value == "inconsistent"), None)
+    assert d03_obs is not None
+    assert d03_obs.metadata["affected_roi_ids"] == ["r1", "r2"]
+    assert d03_obs.metadata["size_cv"] == 0.85
+    assert d03_obs.metadata["max_size_cv"] == 0.20
+
+
+def test_reference_image_mode_multiple_affected_sites_and_unmatched_exclusion() -> None:
+    """REFERENCE_IMAGE mode preserves affected_roi_ids for violating sites and excludes unmatched or near-zero sites."""
+    curr1 = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=200.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.20,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=16.0,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr2 = RoiMeasurement(
+        roi_id="r2",
+        deposit_area_px=250.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.25,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=17.8,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr3_ok = RoiMeasurement(
+        roi_id="r3",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr4_unmatched = RoiMeasurement(
+        roi_id="r4",
+        deposit_area_px=100.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.10,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=11.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+
+    # Reference has r1, r2, r3 (coverage 0.50 each), no r4
+    ref1 = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    ref2 = RoiMeasurement(
+        roi_id="r2",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    ref3 = RoiMeasurement(
+        roi_id="r3",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.9,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+
+    curr_agg = AggregateMeasurements(mean_coverage=0.26, size_cv=0.1, missing_roi_ids=[], unassessed_roi_ids=[])
+    ref_agg = AggregateMeasurements(mean_coverage=0.50, size_cv=0.0, missing_roi_ids=[], unassessed_roi_ids=[])
+    ref_limits = ReferenceLimits(min_reference_ratio=0.80)  # r1=0.40, r2=0.50 (both < 0.80), r3=1.0 (ok)
+
+    status, obs, warnings = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr1, curr2, curr3_ok, curr4_unmatched],
+        aggregate=curr_agg,
+        reference_measurements=[ref1, ref2, ref3],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 1
+    assert obs[0].value == "undersized"
+    assert obs[0].metadata["affected_roi_ids"] == ["r1", "r2"]
+    assert "r3" not in obs[0].metadata["affected_roi_ids"]
+    assert "r4" not in obs[0].metadata["affected_roi_ids"]
+    assert any("No matching reference measurement for ROI 'r4'" in w for w in warnings)
+
+
+def test_reference_image_mode_multiple_shape_rules_deduplicate_same_roi() -> None:
+    """REFERENCE_IMAGE does not duplicate the same ROI ID if it violates both circularity and solidity."""
+    curr1 = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.50,  # Circularity ratio = 0.50/0.90 = 0.55 < 0.80
+        solidity=0.60,     # Solidity ratio = 0.60/0.95 = 0.63 < 0.80
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    ref1 = RoiMeasurement(
+        roi_id="r1",
+        deposit_area_px=500.0,
+        target_area_px=1000.0,
+        coverage_ratio=0.50,
+        overflow_ratio=0.0,
+        equivalent_diameter_px=25.2,
+        circularity=0.90,
+        solidity=0.95,
+        aspect_ratio=1.0,
+        hole_void_ratio=0.0,
+        segmentation_quality=1.0,
+        is_missing=False,
+        inspection_status=RoiInspectionStatus.DETECTED,
+    )
+    curr_agg = AggregateMeasurements(mean_coverage=0.50, size_cv=None, missing_roi_ids=[], unassessed_roi_ids=[])
+    ref_agg = AggregateMeasurements(mean_coverage=0.50, size_cv=None, missing_roi_ids=[], unassessed_roi_ids=[])
+    ref_limits = ReferenceLimits(min_circularity_ratio=0.80, min_solidity_ratio=0.80)
+
+    status, obs, _ = classify_defects_from_measurements(
+        mode=ImageAnalysisMode.REFERENCE_IMAGE,
+        roi_measurements=[curr1],
+        aggregate=curr_agg,
+        reference_measurements=[ref1],
+        reference_aggregate=ref_agg,
+        reference_limits=ref_limits,
+    )
+
+    assert status == AnalysisStatus.CALIBRATED
+    assert len(obs) == 1
+    assert obs[0].value == "abnormal"
+    assert obs[0].metadata["affected_roi_ids"] == ["r1"]

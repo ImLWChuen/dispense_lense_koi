@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-034
-reviewed_commit: 6782ca0db0fb3c889686658fa248dcea8d6019f7
-decision: changes_requested
+reviewed_commit: 7a55e65f4f3ad3a733289393f6f5a832ba47db52
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,15 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested. The core outline path is in place, but the final polygon validity check does not enforce the task's requirement that all published points be distinct. One bounded correction is needed before dependent overlay work.
+Accepted at `7a55e65f4f3ad3a733289393f6f5a832ba47db52`. The repeated-point defect is corrected and the task's bounded outline contract is met. The original finding below is retained for traceability.
+
+## Final correction review of 7a55e65
+
+- The helper now checks that the count of normalized distinct point keys equals the number of published points. Nonconsecutive repeats return a null outline and a specific warning. Consecutive repeats and a closing repeat are removed before the check.
+- Unit regressions exercise the actual helper for nonconsecutive repeats, consecutive repeats, and closing repeats. An API regression checks that an omitted outline warning reaches both region and top-level results while DETECTED/CALIBRATED remain intact; it mocks the helper, so it is a warning-propagation test rather than a second geometry test.
+- Changes stay within allowed paths, preserve diagnostic classification and numeric measurements, and synchronize the queue with the task report. The committed diff has no whitespace errors.
+- Gemini reports 52 focused tests and 543 backend tests passed, plus task validator VALID. The reviewer inspected the implementation and test code but did not independently rerun tests under the PROJECT.md role split.
+- Documentation follow-up: the task report says contours with self-intersections are safely omitted. The code detects repeated vertices, not every geometrically self-intersecting polygon. Correct that sentence during the next task report/documentation touch; this overstatement does not block the distinct-vertex contract delivered here.
 
 ## Finding R1 — P2: Nonconsecutive duplicate vertices are published
 
@@ -30,4 +38,4 @@ Reject an outline containing any nonconsecutive duplicate vertex after normaliza
 
 ## Follow-up
 
-Correct R1 in this task's scope, update the implementation report and queue, run the focused and full checks, and commit locally. No new feature task was generated. No push, merge, PR, or change to main is authorized by this review request.
+R1 is resolved. No further DLK-M3-034 correction is required. Carry the limited documentation clarification above into the next task, alongside the deferred frontend overlay work. No new feature task was generated. No push, merge, PR, or change to main is authorized by this review request.

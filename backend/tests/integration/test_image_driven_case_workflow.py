@@ -76,6 +76,7 @@ def test_image_driven_case_end_to_end_lifecycle(client: TestClient, cleanup_case
     stmt_type = getattr(image_obs.statement_type, "value", str(image_obs.statement_type))
     assert obs_src == "IMAGE"
     assert "coverage_ratio" in image_obs.metadata
+    assert image_obs.metadata.get("affected_roi_ids") == ["r1"]
 
     # 2. Create durable case with the image observation
     case_payload = {
@@ -106,6 +107,7 @@ def test_image_driven_case_end_to_end_lifecycle(client: TestClient, cleanup_case
     assert obs_resp["statement_type"] == "AI_INFERENCE"
     assert "coverage_ratio" in obs_resp["metadata"]
     assert obs_resp["metadata"]["coverage_ratio"] == image_obs.metadata["coverage_ratio"]
+    assert obs_resp["metadata"]["affected_roi_ids"] == ["r1"]
     assert case_data["diagnosis"]["analysis_revision"]["revision_number"] == 1
 
     # 3. Retrieve case via GET /cases/{id} and verify database round-trip
@@ -117,6 +119,7 @@ def test_image_driven_case_end_to_end_lifecycle(client: TestClient, cleanup_case
     assert retrieved_obs["source"] == "IMAGE"
     assert retrieved_obs["metadata"]["coverage_ratio"] == image_obs.metadata["coverage_ratio"]
     assert retrieved_obs["metadata"]["equivalent_diameter_px"] == image_obs.metadata["equivalent_diameter_px"]
+    assert retrieved_obs["metadata"]["affected_roi_ids"] == ["r1"]
 
     # 4. Submit check execution -> advances to Revision 2, preserves image metadata
     check_payload = {
@@ -140,6 +143,7 @@ def test_image_driven_case_end_to_end_lifecycle(client: TestClient, cleanup_case
     assert len(case_rev2["observations"]) >= 2
     img_obs_rev2 = next(o for o in case_rev2["observations"] if o["source"] == "IMAGE")
     assert img_obs_rev2["metadata"]["coverage_ratio"] == image_obs.metadata["coverage_ratio"]
+    assert img_obs_rev2["metadata"]["affected_roi_ids"] == ["r1"]
 
     # 5. Verify case report output includes the image observation provenance
     report_resp = client.get(f"/api/v1/cases/{case_id}/report")
@@ -149,6 +153,63 @@ def test_image_driven_case_end_to_end_lifecycle(client: TestClient, cleanup_case
     top_cause = report_data["current_diagnosis"]["ranked_causes"][0]
     all_ev = top_cause["supporting_evidence"] + top_cause["neutral_evidence"] + top_cause["contradicting_evidence"]
     assert any(e["source"] == "IMAGE" for e in all_ev)
+
+
+def test_multi_site_image_observation_persists_affected_roi_ids_in_durable_case(
+    client: TestClient,
+    cleanup_cases: list[str],
+):
+    """Multi-site image observation with affected_roi_ids losslessly persists and round-trips through PostgreSQL."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 10)],
+    )
+    profile = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[
+            NormalizedROI(roi_id="dot_1", x=0.0, y=0.0, width=0.5, height=1.0),
+            NormalizedROI(roi_id="dot_2", x=0.5, y=0.0, width=0.5, height=1.0),
+        ],
+        process_limits=ProcessLimits(min_coverage_ratio=0.05),
+    )
+    analysis_res = _sync_analyze_image(file_bytes=img_bytes, profile=profile)
+    assert len(analysis_res.observations) == 1
+    image_obs = analysis_res.observations[0]
+    assert image_obs.metadata["affected_roi_ids"] == ["dot_1", "dot_2"]
+
+    case_payload = {
+        "description": "Multi-site undersized dispense deposits",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": image_obs.value,
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "metadata": image_obs.metadata,
+            }
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=case_payload)
+    assert create_resp.status_code == 201
+    case_data = create_resp.json()
+    case_id = case_data["case_id"]
+    cleanup_cases.append(case_id)
+
+    obs_created = case_data["observations"][0]
+    assert obs_created["metadata"]["affected_roi_ids"] == ["dot_1", "dot_2"]
+
+    # Load via GET /cases/{id}
+    get_resp = client.get(f"/api/v1/cases/{case_id}")
+    assert get_resp.status_code == 200
+    retrieved_case = get_resp.json()
+    obs_retrieved = retrieved_case["observations"][0]
+    assert obs_retrieved["metadata"]["affected_roi_ids"] == ["dot_1", "dot_2"]
+    assert obs_retrieved["metadata"]["roi_id"] == "dot_1"
 
 
 def test_legacy_observation_metadata_compatibility(client: TestClient, cleanup_cases: list[str]):

@@ -7,6 +7,8 @@ diagnostic evidence observations (D01-D06).
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.schemas.diagnosis import EvidenceSource, Observation, ObservationType, StatementType
 from app.schemas.image import (
     AggregateMeasurements,
@@ -17,6 +19,38 @@ from app.schemas.image import (
     RoiInspectionStatus,
     RoiMeasurement,
 )
+
+
+def _record_observation(
+    obs_by_key: dict[tuple[str, str], Observation],
+    obs_type: ObservationType,
+    value: str,
+    roi_id: str,
+    base_metadata: dict[str, Any],
+) -> None:
+    """Record or update a deduplicated observation preserving all affected ROI IDs.
+
+    - First occurrence creates the observation with base metadata and affected_roi_ids = [roi_id].
+    - Subsequent occurrences append roi_id to affected_roi_ids (if not already present)
+      without mutating primary first-site metrics or creating duplicate observations.
+    """
+    key = (obs_type.value, value)
+    if key not in obs_by_key:
+        meta = dict(base_metadata)
+        meta["affected_roi_ids"] = [roi_id]
+        obs_by_key[key] = Observation(
+            observation_type=obs_type,
+            value=value,
+            source=EvidenceSource.IMAGE,
+            statement_type=StatementType.AI_INFERENCE,
+            metadata=meta,
+        )
+    else:
+        existing = obs_by_key[key]
+        if existing.metadata is not None:
+            affected = existing.metadata.setdefault("affected_roi_ids", [])
+            if roi_id not in affected:
+                affected.append(roi_id)
 
 
 def classify_defects_from_measurements(
@@ -113,7 +147,7 @@ def classify_defects_from_measurements(
             return AnalysisStatus.UNCALIBRATED, [], warnings
 
         status = AnalysisStatus.CALIBRATED
-        seen_obs_keys: set[tuple[str, str]] = set()
+        obs_by_key: dict[tuple[str, str], Observation] = {}
 
         for m in roi_measurements:
             roi_meta = {
@@ -142,58 +176,44 @@ def classify_defects_from_measurements(
                     m.coverage_ratio < process_limits.min_presence_ratio
                 )
                 if is_missing:
-                    key = ("deposit_presence", "missing")
-                    if key not in seen_obs_keys:
-                        seen_obs_keys.add(key)
-                        observations.append(Observation(
-                            observation_type=ObservationType.DEPOSIT_PRESENCE,
-                            value="missing",
-                            source=EvidenceSource.IMAGE,
-                            statement_type=StatementType.AI_INFERENCE,
-                            metadata=roi_meta,
-                        ))
+                    _record_observation(
+                        obs_by_key,
+                        ObservationType.DEPOSIT_PRESENCE,
+                        "missing",
+                        m.roi_id,
+                        roi_meta,
+                    )
                     continue  # Skip further size/overflow/shape checks for deposits classified as missing
-
-
 
             # Check D01: Undersized
             if process_limits.min_coverage_ratio is not None and m.coverage_ratio < process_limits.min_coverage_ratio:
-                key = ("deposit_size", "undersized")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SIZE,
-                        value="undersized",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SIZE,
+                    "undersized",
+                    m.roi_id,
+                    roi_meta,
+                )
 
             # Check D02: Oversized
             if process_limits.max_coverage_ratio is not None and m.coverage_ratio > process_limits.max_coverage_ratio:
-                key = ("deposit_size", "oversized")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SIZE,
-                        value="oversized",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SIZE,
+                    "oversized",
+                    m.roi_id,
+                    roi_meta,
+                )
 
             # Check D05: Overflow / Excessive spreading
             if process_limits.max_overflow_ratio is not None and m.overflow_ratio > process_limits.max_overflow_ratio:
-                key = ("spreading_behaviour", "excessive_spread")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.SPREADING_BEHAVIOUR,
-                        value="excessive_spread",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.SPREADING_BEHAVIOUR,
+                    "excessive_spread",
+                    m.roi_id,
+                    roi_meta,
+                )
 
             # Check D06: Tailing / Elongated shape
             is_tailing_limit_violated = False
@@ -204,16 +224,13 @@ def classify_defects_from_measurements(
                 is_tailing_limit_violated = True
 
             if is_tailing_limit_violated:
-                key = ("deposit_shape", "tailing")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SHAPE,
-                        value="tailing",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SHAPE,
+                    "tailing",
+                    m.roi_id,
+                    roi_meta,
+                )
 
             # Check D06: Abnormal shape (circularity, solidity, convexity)
             is_shape_abnormal = False
@@ -225,16 +242,13 @@ def classify_defects_from_measurements(
                 is_shape_abnormal = True
 
             if is_shape_abnormal:
-                key = ("deposit_shape", "abnormal")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SHAPE,
-                        value="abnormal",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SHAPE,
+                    "abnormal",
+                    m.roi_id,
+                    roi_meta,
+                )
 
             # Check D06: Bubbles / Voids
             has_bubble_violation = False
@@ -244,16 +258,13 @@ def classify_defects_from_measurements(
                 has_bubble_violation = True
 
             if has_bubble_violation:
-                key = ("bubble_presence", "visible_bubbles")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.BUBBLE_PRESENCE,
-                        value="visible_bubbles",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.BUBBLE_PRESENCE,
+                    "visible_bubbles",
+                    m.roi_id,
+                    roi_meta,
+                )
 
         # Check D03: Inconsistent size across multiple ROIs
         if (
@@ -261,23 +272,28 @@ def classify_defects_from_measurements(
             and aggregate.size_cv is not None
             and aggregate.size_cv > process_limits.max_size_cv
         ):
-            key = ("deposit_size", "inconsistent")
-            if key not in seen_obs_keys:
-                seen_obs_keys.add(key)
-                observations.append(Observation(
+            d03_participant_ids = [
+                m.roi_id
+                for m in roi_measurements
+                if m.inspection_status == RoiInspectionStatus.DETECTED and m.deposit_area_px > 0
+            ]
+            key = (ObservationType.DEPOSIT_SIZE.value, "inconsistent")
+            if key not in obs_by_key:
+                obs_by_key[key] = Observation(
                     observation_type=ObservationType.DEPOSIT_SIZE,
                     value="inconsistent",
                     source=EvidenceSource.IMAGE,
                     statement_type=StatementType.AI_INFERENCE,
                     metadata={
+                        "affected_roi_ids": d03_participant_ids,
                         "size_cv": aggregate.size_cv,
                         "max_size_cv": process_limits.max_size_cv,
                         "mode": mode.value,
                         "status": status.value,
                     },
-                ))
+                )
 
-        return status, observations, warnings
+        return status, list(obs_by_key.values()), warnings
 
     # 6. Mode: REFERENCE_IMAGE
     if mode == ImageAnalysisMode.REFERENCE_IMAGE:
@@ -285,9 +301,8 @@ def classify_defects_from_measurements(
             return AnalysisStatus.UNRELIABLE, [], warnings
 
         status = AnalysisStatus.CALIBRATED
-        seen_obs_keys = set()
+        obs_by_key: dict[tuple[str, str], Observation] = {}
         ref_by_id = {r.roi_id: r for r in reference_measurements}
-
 
         for curr_m in roi_measurements:
             ref_m = ref_by_id.get(curr_m.roi_id)
@@ -318,57 +333,45 @@ def classify_defects_from_measurements(
             }
 
             if reference_limits.min_reference_ratio is not None and ratio < reference_limits.min_reference_ratio:
-                key = ("deposit_size", "undersized")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SIZE,
-                        value="undersized",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SIZE,
+                    "undersized",
+                    curr_m.roi_id,
+                    roi_meta,
+                )
 
             if reference_limits.max_reference_ratio is not None and ratio > reference_limits.max_reference_ratio:
-                key = ("deposit_size", "oversized")
-                if key not in seen_obs_keys:
-                    seen_obs_keys.add(key)
-                    observations.append(Observation(
-                        observation_type=ObservationType.DEPOSIT_SIZE,
-                        value="oversized",
-                        source=EvidenceSource.IMAGE,
-                        statement_type=StatementType.AI_INFERENCE,
-                        metadata=roi_meta,
-                    ))
+                _record_observation(
+                    obs_by_key,
+                    ObservationType.DEPOSIT_SIZE,
+                    "oversized",
+                    curr_m.roi_id,
+                    roi_meta,
+                )
 
             if reference_limits.min_circularity_ratio is not None and ref_m.circularity > 1e-6:
                 circ_ratio = curr_m.circularity / ref_m.circularity
                 if circ_ratio < reference_limits.min_circularity_ratio:
-                    key = ("deposit_shape", "abnormal")
-                    if key not in seen_obs_keys:
-                        seen_obs_keys.add(key)
-                        observations.append(Observation(
-                            observation_type=ObservationType.DEPOSIT_SHAPE,
-                            value="abnormal",
-                            source=EvidenceSource.IMAGE,
-                            statement_type=StatementType.AI_INFERENCE,
-                            metadata=roi_meta,
-                        ))
+                    _record_observation(
+                        obs_by_key,
+                        ObservationType.DEPOSIT_SHAPE,
+                        "abnormal",
+                        curr_m.roi_id,
+                        roi_meta,
+                    )
 
             if reference_limits.min_solidity_ratio is not None and ref_m.solidity > 1e-6:
                 sol_ratio = curr_m.solidity / ref_m.solidity
                 if sol_ratio < reference_limits.min_solidity_ratio:
-                    key = ("deposit_shape", "abnormal")
-                    if key not in seen_obs_keys:
-                        seen_obs_keys.add(key)
-                        observations.append(Observation(
-                            observation_type=ObservationType.DEPOSIT_SHAPE,
-                            value="abnormal",
-                            source=EvidenceSource.IMAGE,
-                            statement_type=StatementType.AI_INFERENCE,
-                            metadata=roi_meta,
-                        ))
+                    _record_observation(
+                        obs_by_key,
+                        ObservationType.DEPOSIT_SHAPE,
+                        "abnormal",
+                        curr_m.roi_id,
+                        roi_meta,
+                    )
 
-        return status, observations, warnings
+        return status, list(obs_by_key.values()), warnings
 
     return AnalysisStatus.UNCALIBRATED, [], warnings

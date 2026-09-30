@@ -2803,6 +2803,7 @@ Extracts resolution-independent geometric features from dispensing deposit image
       "source": "IMAGE",
       "metadata": {
         "roi_id": "dot_1",
+        "affected_roi_ids": ["dot_1"],
         "coverage_ratio": 0.082,
         "overflow_ratio": 0.000,
         "mode": "PROCESS_LIMITS",
@@ -2850,6 +2851,19 @@ Extracts resolution-independent geometric features from dispensing deposit image
 - **Omission & Unavailability Handling:**
   - Regions marked `MISSING` or `UNASSESSED` strictly emit `deposit_outline_normalized = null`.
   - If a `DETECTED` region has unavailable outline geometry (e.g. missing contour, degenerate points, nonconsecutive duplicate vertices, out-of-bounds vertices, or inability to simplify within 128 points), `deposit_outline_normalized` is `null`. The region remains `DETECTED`, calibrated analysis status and observations remain intact, and an explicit explanatory warning is surfaced in `RoiMeasurement.inspection_warnings` and top-level response `warnings`.
+
+##### Affected Region Provenance in Deduplicated Observations (`metadata.affected_roi_ids`)
+- **Provenance Without Score Duplication:**
+  - Multiple inspected sites with the same defect type and value are deduplicated to exactly one canonical diagnostic `Observation`. This prevents artificial score inflation and duplicate-evidence penalties in downstream causal reasoning.
+  - The ordered, unique list of all ROI IDs triggering that exact defect is preserved in `Observation.metadata["affected_roi_ids"]`.
+  - For backward compatibility, `metadata["roi_id"]` and initial measurement metrics from the first triggering site are preserved.
+- **Rule Dimension & Value Isolation:**
+  - Different defect values (e.g. `undersized` vs `oversized`) produce separate observations with disjoint affected lists.
+  - If a single region violates multiple independent defect dimensions (e.g. `undersized` and `tailing`), its ROI ID appears once in each relevant observation's `affected_roi_ids`.
+- **D03 Inconsistent Size Comparison Participants:**
+  - For `deposit_size=inconsistent`, `affected_roi_ids` identifies all eligible `DETECTED`, positive-area ROIs that contributed to the sample coefficient of variation calculation. It identifies comparison participants rather than asserting individual limit breaches.
+- **Persistence Compatibility:**
+  - `metadata.affected_roi_ids` is stored as a primitive JSON list of strings, persisting losslessly through the durable case workflow across diagnostic revisions.
 
 
 #### Status and Error Codes

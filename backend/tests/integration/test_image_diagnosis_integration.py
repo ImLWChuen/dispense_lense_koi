@@ -289,3 +289,54 @@ def test_calibrated_bubbles_identifies_d06():
     assert len(image_ev) >= 1
     assert image_ev[0].score_contribution > 0
 
+
+def test_multiple_sites_same_defect_produces_identical_diagnosis_score():
+    """Two sites with same defect emit one deduplicated observation with identical engine diagnosis scores."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    engine = DiagnosticEngine()
+
+    # 1. Single-site undersized dot
+    img_single = create_centered_dot_image(size=200, dot_radius=10)
+    profile_single = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[NormalizedROI(roi_id="r1", x=0.25, y=0.25, width=0.5, height=0.5)],
+        process_limits=ProcessLimits(min_coverage_ratio=0.15),
+    )
+    res_single = _run_vision_pipeline(img_single, profile_single)
+    assert len(res_single.observations) == 1
+    obs_single = res_single.observations[0]
+    assert obs_single.metadata["affected_roi_ids"] == ["r1"]
+
+    # 2. Multi-site (2 sites) both undersized
+    img_multi = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 10)],
+    )
+    profile_multi = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[
+            NormalizedROI(roi_id="r1", x=0.0, y=0.0, width=0.5, height=1.0),
+            NormalizedROI(roi_id="r2", x=0.5, y=0.0, width=0.5, height=1.0),
+        ],
+        process_limits=ProcessLimits(min_coverage_ratio=0.05),
+    )
+    res_multi = _run_vision_pipeline(img_multi, profile_multi)
+    assert len(res_multi.observations) == 1
+    obs_multi = res_multi.observations[0]
+    assert obs_multi.metadata["affected_roi_ids"] == ["r1", "r2"]
+
+    # 3. Diagnose both cases
+    diag_single = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[obs_single]))
+    diag_multi = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[obs_multi]))
+
+    # Must produce exact identical scores and rankings
+    assert diag_single.defect == diag_multi.defect
+    assert len(diag_single.ranked_causes) == len(diag_multi.ranked_causes)
+    for c_s, c_m in zip(diag_single.ranked_causes, diag_multi.ranked_causes):
+        assert c_s.cause_id == c_m.cause_id
+        assert c_s.score == c_m.score
+        assert c_s.conclusion == c_m.conclusion
+        assert len(c_s.supporting_evidence) == len(c_m.supporting_evidence)
+
