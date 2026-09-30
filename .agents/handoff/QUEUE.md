@@ -123,6 +123,9 @@ Do not implement inside DLK-M3-031:
 
 - `DLK-M3-038` — Establish a repeatable synthetic region-inspection baseline — **implemented**
   - task: `.agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md`
+  - reviewed commit: `79debd00465794aa2e2df70dbd54145ac47960f0`
+  - review: `.agents/handoff/reviews/DLK-M3-038-review.md`
+  - resolved corrections: added per-case elapsed_seconds measuring _sync_analyze_image execution time; added unit regression and smoke test assertions that every case reports non-negative numeric elapsed time; corrected evaluation report Python version to observed 3.14.0; fixed repository-root reproduction command to direct script path backend/tests/vision_inspection_baseline.py and verified both commands; updated documented JSON output from actual execution
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-037` at `a124dbcd5a6cd58c54f0435c548bdf95348e9442`
   - authorized outcome: deterministic labeled synthetic fixture manifest, offline region-inspection benchmark, measured baseline report

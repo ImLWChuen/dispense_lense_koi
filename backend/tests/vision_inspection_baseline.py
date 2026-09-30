@@ -346,7 +346,14 @@ def get_synthetic_fixture_manifest() -> list[SyntheticFixtureCase]:
 def run_vision_inspection_baseline(
     manifest: list[SyntheticFixtureCase] | None = None,
 ) -> dict[str, Any]:
-    """Execute the offline evaluation pipeline against the synthetic fixture manifest."""
+    """Execute the offline evaluation pipeline against the synthetic fixture manifest.
+
+    Timing note:
+    Each case in ``cases`` reports descriptive ``elapsed_seconds`` measuring the wall-clock
+    analysis execution time of ``_sync_analyze_image`` for that fixture. The top-level
+    ``elapsed_seconds`` measures total manifest execution. Both are descriptive metrics
+    and must not be interpreted as performance targets.
+    """
     if manifest is None:
         manifest = get_synthetic_fixture_manifest()
 
@@ -356,7 +363,9 @@ def run_vision_inspection_baseline(
     iou_records: list[dict[str, Any]] = []
 
     for case in manifest:
+        case_start = time.perf_counter()
         resp = _sync_analyze_image(case.image_bytes, case.profile)
+        case_elapsed = time.perf_counter() - case_start
         meas_by_id = {m.roi_id: m for m in resp.roi_measurements}
 
         case_sites: list[dict[str, Any]] = []
@@ -403,6 +412,7 @@ def run_vision_inspection_baseline(
         per_case_results.append({
             "case_id": case.case_id,
             "description": case.description,
+            "elapsed_seconds": round(case_elapsed, 4),
             "overall_status": resp.status.value,
             "inspection_coverage_status": (
                 resp.aggregate_measurements.inspection_coverage_status.value

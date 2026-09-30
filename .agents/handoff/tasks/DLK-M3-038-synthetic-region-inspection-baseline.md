@@ -92,7 +92,7 @@ The test-support-only synthetic baseline and evaluation documentation above are 
 
 Commit this task packet, completed implementation report, queue, pending accepted DLK-M3-037 review, scoped tests/fixture support, and evaluation document in one atomic local commit after checks pass. Do not stage unrelated files. Do not push, merge, rebase, create a PR, or change main.
 
-Proposed commit message: `test(vision): establish synthetic region inspection baseline`
+Proposed commit message: `test(vision): add per-case timing and correct baseline reproduction instructions`
 
 ## Implementation report
 
@@ -100,27 +100,32 @@ Proposed commit message: `test(vision): establish synthetic region inspection ba
 
 Established an offline, deterministic evaluation harness and baseline report for the DispenseLens region-inspection computer vision pipeline (`_sync_analyze_image`) using a fixed 6-case synthetic manifest (`synthetic_region_inspection_baseline_v1`) covering 9 expected dispensing sites. Built the offline CLI runner (`backend/tests/vision_inspection_baseline.py`) which computes status confusion matrices, accuracy, abstention rate, false-missing safety rate, outline availability, and mean polygon-mask IoU against construction-grounded circular masks without server, database, network, or image persistence dependencies. Added unit tests verifying evaluator calculations independently of the CV pipeline, and created `docs/evaluation/region-inspection-synthetic-baseline.md` documenting the baseline results, capture assumptions, reproduction commands, and the strict limits of synthetic evidence.
 
+Following review `DLK-M3-038-review.md`, corrected R1 by adding descriptive per-case `elapsed_seconds` measuring `_sync_analyze_image` wall-clock duration for each fixture along with unit regression assertions that every case reports non-negative numeric duration without speed targets. Corrected R2 by updating the documented environment to observed Python 3.14.0, fixing the repository-root reproduction command to the verified direct script path `backend/tests/vision_inspection_baseline.py`, and updating documented raw JSON from actual execution.
+
 ### Files changed
 
-- `backend/tests/vision_inspection_baseline.py` (new): Implemented the offline baseline runner, deterministic fixture manifest, polygon rasterization, IoU calculation, confusion matrix, metric aggregations with explicit numerators/denominators, and JSON CLI entry point.
-- `backend/tests/unit/test_vision_inspection_baseline.py` (new): Added unit tests for metric accounting, confusion matrix building, false-missing/abstention rates, outline availability/omissions, zero-denominator safety, polygon rasterization, and runner smoke test verifying schema and conservative gating.
+- `backend/tests/vision_inspection_baseline.py`: Implemented the offline baseline runner, deterministic fixture manifest, polygon rasterization, IoU calculation, confusion matrix, metric aggregations with explicit numerators/denominators, JSON CLI entry point, and per-case `elapsed_seconds` measuring `_sync_analyze_image` wall-clock duration.
+- `backend/tests/unit/test_vision_inspection_baseline.py`: Added unit tests for metric accounting, confusion matrix building, false-missing/abstention rates, outline availability/omissions, zero-denominator safety, polygon rasterization, runner smoke test verifying schema and conservative gating, and dedicated regression test `test_baseline_runner_reports_nonnegative_per_case_timing`.
 - `backend/tests/fixtures/synthetic_images.py`: Added deterministic fixture generators `create_mixed_detected_and_unassessed_image` and `create_mixed_detected_and_missing_image` for multi-site scenario evaluation.
-- `docs/evaluation/region-inspection-synthetic-baseline.md` (new): Created comprehensive evaluation report recording manifest details, capture assumptions, reproduction commands, exact observed JSON output, metric summaries, and synthetic evidence boundaries.
+- `docs/evaluation/region-inspection-synthetic-baseline.md`: Created comprehensive evaluation report recording manifest details, capture assumptions, reproduction commands for both `backend/` and repository root, verified runtime environment (Python 3.14.0), exact observed JSON output with per-case timing, metric summaries, and synthetic evidence boundaries.
 - `docs/architecture/region-inspection-improvement-plan.md`: Added progress notes for increment DLK-M3-038 under Phase 0 and Phase 5.
 - `.agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md`: Recorded implementation status, completed acceptance criteria, and filled implementation report.
-- `.agents/handoff/QUEUE.md`: Updated DLK-M3-038 status to `implemented`.
+- `.agents/handoff/QUEUE.md`: Updated DLK-M3-038 status to `implemented` with resolved corrections note.
 
 ### Decisions made
 
 - Kept ground-truth masks strictly limited to cases where geometry is known by construction (circular dot deposits); omitted masks for missing and uniform unassessed sites so IoU is evaluated only where valid outlines are expected.
 - Explicitly documented that synthetic evaluation results demonstrate software behavior and contract consistency, and do not represent industrial production accuracy or defect recall.
 - Preserved existing production CV code, classifier thresholds, and API behavior unchanged; this task is strictly evaluation and test support.
+- R1 correction: added per-case `elapsed_seconds` measuring wall-clock duration of `_sync_analyze_image` for each synthetic fixture case, keeping measurement isolated from evaluation rasterization and IoU computation. Timing remains strictly descriptive without asserting performance targets.
+- R2 correction: corrected runtime environment Python version to observed Python 3.14.0 (matching `backend/.venv/pyvenv.cfg`), fixed the root reproduction command to direct script invocation `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_baseline.py`, and verified both commands.
 
 ### Verification results
 
-- Focused pytest suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_inspection_baseline.py -q --basetemp=backend/.task038-focused -p no:cacheprovider` -> `6 passed in 0.56s`
-- Baseline CLI runner: `.\.venv\Scripts\python.exe -m tests.vision_inspection_baseline` (from `backend/`) -> Exit 0, 9/9 sites evaluated in 0.0168s, 100% status accuracy, 0.0% false-missing, 100% outline availability, 0.9970 mean IoU.
-- Full backend pytest suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task038-full -p no:cacheprovider` -> `577 passed, 42 warnings in 62.39s`
+- Focused pytest suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_inspection_baseline.py -q --basetemp=backend/.task038-focused -p no:cacheprovider` -> `7 passed in 0.57s`
+- Baseline CLI runner (from `backend/`): `.\.venv\Scripts\python.exe -m tests.vision_inspection_baseline` -> Exit 0, 9/9 sites evaluated in 0.0165s, all cases report `elapsed_seconds` (0.0005s - 0.0055s), 100% status accuracy, 0.0% false-missing, 100% outline availability, 0.9970 mean IoU.
+- Baseline CLI runner (from repo root): `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_baseline.py` -> Exit 0, identical structure and metrics.
+- Full backend pytest suite: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task038-full -p no:cacheprovider` -> `577 passed, 42 warnings in 62.39s` (run during initial implementation; unaffected by R1/R2 test-support corrections)
 - Task packet validation: `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md` -> `VALID`
 - Whitespace validation: `git diff --check` -> Clean (code 0)
 
@@ -132,4 +137,4 @@ Established an offline, deterministic evaluation harness and baseline report for
 
 ### Proposed commit message
 
-`test(vision): establish synthetic region inspection baseline`
+`test(vision): add per-case timing and correct baseline reproduction instructions`

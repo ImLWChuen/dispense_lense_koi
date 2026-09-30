@@ -181,6 +181,13 @@ def test_real_runner_smoke_test() -> None:
     assert "mean_outline_iou" in metrics
     assert metrics["status_accuracy"]["denominator"] == 9
 
+    # Verify per-case elapsed_seconds is present and non-negative
+    for case_res in report["cases"]:
+        assert "elapsed_seconds" in case_res
+        assert isinstance(case_res["elapsed_seconds"], (int, float))
+        assert not isinstance(case_res["elapsed_seconds"], bool)
+        assert case_res["elapsed_seconds"] >= 0.0
+
     # Verify conservative mixed-image gating is preserved in Case 4
     case4 = next(c for c in report["cases"] if c["case_id"] == "case_04_mixed_detected_unassessed")
     assert case4["overall_status"] == "UNRELIABLE"
@@ -189,3 +196,14 @@ def test_real_runner_smoke_test() -> None:
     # Verify JSON serializability
     dumped = json.dumps(report)
     assert len(dumped) > 100
+
+
+def test_baseline_runner_reports_nonnegative_per_case_timing() -> None:
+    """Verify each evaluated case reports a non-negative numeric elapsed_seconds measurement without asserting speed targets."""
+    report = run_vision_inspection_baseline()
+    assert len(report["cases"]) == 6
+    for case_res in report["cases"]:
+        assert "elapsed_seconds" in case_res
+        assert isinstance(case_res["elapsed_seconds"], (int, float))
+        assert not isinstance(case_res["elapsed_seconds"], bool)
+        assert case_res["elapsed_seconds"] >= 0.0

@@ -60,12 +60,12 @@ From repository `backend/` directory in PowerShell:
 
 Or from repository root:
 ```powershell
-& .\backend\.venv\Scripts\python.exe -m tests.vision_inspection_baseline
+& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_baseline.py
 ```
 
 ### Runtime Environment
 - **Operating System:** Windows 11
-- **Python Version:** Python 3.12 (via established virtual environment `backend/.venv`)
+- **Python Version:** Python 3.14.0 (via established virtual environment `backend/.venv`)
 - **OpenCV Version:** headless `opencv-python`
 - **Dependencies Required:** No database connection, no network requests, no running web server.
 
@@ -78,7 +78,7 @@ Or from repository root:
   "manifest_name": "synthetic_region_inspection_baseline_v1",
   "case_count": 6,
   "total_expected_sites": 9,
-  "elapsed_seconds": 0.0166,
+  "elapsed_seconds": 0.0161,
   "confusion_matrix": {
     "DETECTED": {
       "DETECTED": 5,
@@ -128,6 +128,7 @@ Or from repository root:
     {
       "case_id": "case_01_clean_detected_dot",
       "description": "Clean circular deposit centered in single ROI",
+      "elapsed_seconds": 0.0051,
       "overall_status": "CALIBRATED",
       "inspection_coverage_status": "COMPLETE",
       "expected_roi_count": 1,
@@ -150,6 +151,7 @@ Or from repository root:
     {
       "case_id": "case_02_confirmed_missing",
       "description": "Confirmed missing site with established background fiducial context",
+      "elapsed_seconds": 0.0007,
       "overall_status": "CALIBRATED",
       "inspection_coverage_status": "COMPLETE",
       "expected_roi_count": 1,
@@ -176,6 +178,7 @@ Or from repository root:
     {
       "case_id": "case_03_uniform_unassessed",
       "description": "Uniform low-contrast image without background basis; unassessed inspection",
+      "elapsed_seconds": 0.0005,
       "overall_status": "UNRELIABLE",
       "inspection_coverage_status": "NONE",
       "expected_roi_count": 1,
@@ -204,6 +207,7 @@ Or from repository root:
     {
       "case_id": "case_04_mixed_detected_unassessed",
       "description": "Two-site image with detected deposit at site 1 and flat unassessed site 2",
+      "elapsed_seconds": 0.0023,
       "overall_status": "UNRELIABLE",
       "inspection_coverage_status": "PARTIAL",
       "expected_roi_count": 2,
@@ -243,6 +247,7 @@ Or from repository root:
     {
       "case_id": "case_05_two_site_detected",
       "description": "Two-site image with both dispensing sites reliably detected",
+      "elapsed_seconds": 0.0039,
       "overall_status": "CALIBRATED",
       "inspection_coverage_status": "COMPLETE",
       "expected_roi_count": 2,
@@ -276,6 +281,7 @@ Or from repository root:
     {
       "case_id": "case_06_mixed_detected_missing",
       "description": "Two-site image with detected deposit at site 1 and confirmed missing deposit at site 2",
+      "elapsed_seconds": 0.0025,
       "overall_status": "CALIBRATED",
       "inspection_coverage_status": "COMPLETE",
       "expected_roi_count": 2,
