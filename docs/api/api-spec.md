@@ -2777,7 +2777,15 @@ Extracts resolution-independent geometric features from dispensing deposit image
       "segmentation_quality": 0.96,
       "is_missing": false,
       "inspection_status": "DETECTED",
-      "inspection_warnings": []
+      "inspection_warnings": [],
+      "deposit_outline_normalized": [
+        {"x": 0.280, "y": 0.260},
+        {"x": 0.320, "y": 0.260},
+        {"x": 0.340, "y": 0.300},
+        {"x": 0.320, "y": 0.340},
+        {"x": 0.280, "y": 0.340},
+        {"x": 0.260, "y": 0.300}
+      ]
     }
   ],
   "aggregate_measurements": {
@@ -2814,6 +2822,7 @@ Extracts resolution-independent geometric features from dispensing deposit image
 - **Additive Measurement & Aggregate Fields:**
   - `RoiMeasurement.inspection_status`: `RoiInspectionStatus` enum (`DETECTED`, `MISSING`, `UNASSESSED`, default: `UNASSESSED`).
   - `RoiMeasurement.inspection_warnings`: Detailed per-region failure or ambiguity explanations (default: `[]`).
+  - `RoiMeasurement.deposit_outline_normalized`: Optional ordered list of `NormalizedPoint` coordinates (`x`, `y` in $[0.0, 1.0]$) representing the outer deposit contour, or `null`.
   - `AggregateMeasurements.unassessed_roi_ids`: List of ROI IDs that are unassessed or missing measurement data (default: `[]`). Strictly disjoint from `missing_roi_ids`.
 - **Aggregate Boundary Handling:**
   - `mean_coverage` and `size_cv` are calculated strictly over eligible `DETECTED` deposits with `deposit_area_px > 0`. `MISSING` and `UNASSESSED` regions are excluded.
@@ -2825,7 +2834,22 @@ Extracts resolution-independent geometric features from dispensing deposit image
   - Explicit `UNASSESSED` status strictly overrides misleadingly high numeric quality scores.
   - `FEATURES_ONLY` mode remains neutral and `UNCALIBRATED`.
 - **Backward Compatibility:**
-  - Historical payloads missing new fields deserialize safely using defaults (`UNASSESSED`, `[]`, `[]`) without being promoted to reliable evidence.
+  - Historical payloads missing new fields deserialize safely using defaults (`UNASSESSED`, `[]`, `null`) without being promoted to reliable evidence.
+
+##### Bounded Deposit Outline Geometry (`deposit_outline_normalized`)
+- **Display Aid Only:**
+  - The normalized outline is an approximate visual drawing aid for future UI inspection workbenches. It does not establish deposit volume, internal voids/bubbles, or root-cause diagnosis.
+- **Outer Contour Representation:**
+  - Emits the selected outer contour of reliably detected material. Interior void/bubble boundaries and reference image contours are excluded.
+- **Coordinate System & Scaling:**
+  - Normalized coordinates use the complete current image frame ($[0.0, 1.0]$), with `(0, 0)` at top-left and `(1, 1)` at bottom-right.
+  - Analysis window local coordinates are translated using the expanded analysis window origin (`(window_roi.x + x_local) / width`), ensuring accurate alignment when images are resized or scaled.
+- **Point Cap & Deterministic Approximation:**
+  - Polygons contain 3 to 128 finite distinct points.
+  - Contours with $>128$ vertices are deterministically simplified using bounded Douglas-Peucker approximation (`cv2.approxPolyDP`). Arbitrary point slicing, bounding rectangles, or fabricated contours are strictly prohibited.
+- **Omission & Unavailability Handling:**
+  - Regions marked `MISSING` or `UNASSESSED` strictly emit `deposit_outline_normalized = null`.
+  - If a `DETECTED` region has unavailable outline geometry (e.g. missing contour, degenerate points, out-of-bounds vertices, or inability to simplify within 128 points), `deposit_outline_normalized` is `null`. The region remains `DETECTED`, calibrated analysis status and observations remain intact, and an explicit explanatory warning is surfaced in `RoiMeasurement.inspection_warnings` and top-level response `warnings`.
 
 
 #### Status and Error Codes

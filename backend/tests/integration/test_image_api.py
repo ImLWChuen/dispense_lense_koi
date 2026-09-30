@@ -555,3 +555,122 @@ def test_image_analyze_features_only_uniform_uninspectable_image_exposes_warning
     assert m["inspection_status"] == "UNASSESSED"
     # Top-level warnings must contain the ROI ID and the actual failure reason
     assert any("r1" in w and "unassessed" in w and "Target and surroundings are both uniform" in w for w in data["warnings"])
+
+
+def test_image_analyze_detected_deposit_returns_bounded_outline_normalized(client: TestClient) -> None:
+    """Real synthetic off-center deposit emits valid bounded outer outline in normalized coords."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image with an off-center circular deposit at (300, 100), radius 25
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (300, 100), 25, (30, 30, 30), -1)
+    img_bytes = encode_image(img)
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_offcenter", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("offcenter.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r_offcenter"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["is_missing"] is False
+
+    outline = m["deposit_outline_normalized"]
+    assert outline is not None
+    assert 3 <= len(outline) <= 128
+
+    # All points are in [0, 1]
+    for pt in outline:
+        assert 0.0 <= pt["x"] <= 1.0
+        assert 0.0 <= pt["y"] <= 1.0
+
+    # Centroid of the outline should closely match the normalized center of the deposit (300/400=0.75, 100/200=0.5)
+    mean_x = sum(p["x"] for p in outline) / len(outline)
+    mean_y = sum(p["y"] for p in outline) / len(outline)
+    assert mean_x == pytest.approx(0.75, abs=0.03)
+    assert mean_y == pytest.approx(0.50, abs=0.03)
+
+
+def test_image_analyze_missing_and_unassessed_regions_emit_null_outlines(client: TestClient) -> None:
+    """MISSING and UNASSESSED regions strictly emit null deposit outlines."""
+    # 1. Defensible empty target (MISSING)
+    empty_img = create_empty_image(200)
+    profile_missing = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_empty", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+    resp1 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("empty.png", empty_img, "image/png")},
+        data={"profile": json.dumps(profile_missing)},
+    )
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["roi_measurements"][0]["inspection_status"] == "MISSING"
+    assert data1["roi_measurements"][0]["deposit_outline_normalized"] is None
+
+    # 2. Flat uniform uninspectable target (UNASSESSED)
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile_unassessed = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r_gray", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+    }
+    resp2 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("gray.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile_unassessed)},
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["roi_measurements"][0]["inspection_status"] == "UNASSESSED"
+    assert data2["roi_measurements"][0]["deposit_outline_normalized"] is None
+
+
+def test_image_analyze_detected_region_with_unavailable_outline_exposes_warning_without_downgrade(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DETECTED region with unavailable outline remains DETECTED and CALIBRATED with top-level warning."""
+    import app.api.images as images_mod
+
+    # Monkeypatch extract_deposit_outline to simulate an outline failure on a DETECTED region
+    def mock_extract(*args, **kwargs):
+        return None, "ROI 'r1' deposit outline unavailable (simulated test omission)."
+
+    monkeypatch.setattr(images_mod, "extract_deposit_outline", mock_extract)
+
+    img_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("dot.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # Gating and status remain CALIBRATED; not downgraded to UNRELIABLE
+    assert data["status"] == "CALIBRATED"
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["deposit_outline_normalized"] is None
+    # Specific warning reaches top-level warnings
+    assert any("deposit outline unavailable (simulated test omission)" in w for w in data["warnings"])

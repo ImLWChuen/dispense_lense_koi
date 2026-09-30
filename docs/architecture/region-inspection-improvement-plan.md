@@ -62,6 +62,8 @@ Acceptance: one blurred region does not erase valid findings elsewhere or become
 
 Return bounded contour geometry or a bounded mask representation, with explicit coordinate mapping from analysis windows to the displayed image. Show expected sites, detected material, defects, and unassessed regions. Selecting a region displays its measurements, limits, and short reasons. Distinguish image quality from diagnostic Evidence Support /100.
 
+- **Increment DLK-M3-034 Status (Implemented):** Delivered backend geometry foundation: added typed `deposit_outline_normalized` (`list[NormalizedPoint] | null`) to `RoiMeasurement`. Bounded outer polygon (3–128 finite points) normalized to full image coordinates with window offset translation, deterministic simplification, out-of-bounds rejection, and top-level omission warnings on DETECTED regions. Frontend workbench rendering and reusable profiles remain scheduled for subsequent increments.
+
 Acceptance: overlays align under image resize and zoom; every configured site has a visible result; corrections invalidate stale outputs; a technician can trace each finding to the image and rule used.
 
 ### Phase 3: Reusable profiles and alignment

@@ -59,8 +59,8 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-033` — Preserve region inspection reliability — **implemented**
-  - reviewed commit: `028c85740175451940fd01837b7e87f479329e01`
+- `DLK-M3-033` — Preserve region inspection reliability — **accepted**
+  - reviewed commit: `3d1fb6f5adb6d50a975704527f21f23334549546`
   - review: `.agents/handoff/reviews/DLK-M3-033-review.md`
   - resolved correction R1: moved expected-but-omitted ROI warning collection outside nonempty measurement branches with empty/None list safety; collected all applicable current/reference region reliability reasons into top-level warnings before early returns; preserved FEATURES_ONLY as UNCALIBRATED with no observations; preserved calibrated whole-image UNRELIABLE gates; added regressions for real uniform FEATURES_ONLY upload, multiple unassessed reference regions, simultaneous current/reference failures, and empty current/reference measurement lists with populated unassessed IDs; verified focused suite (66 passed) and full backend suite (529 passed)
   - task: `.agents/handoff/tasks/DLK-M3-033-region-inspection-reliability.md`
@@ -71,4 +71,13 @@ Do not implement inside DLK-M3-031:
   - planning roadmap: `docs/architecture/region-inspection-improvement-plan.md`
   - inspection layout decision remains pending and does not block this foundation task
 
-The user authorized the first finalist image-improvement task. Execute only DLK-M3-033, then return for review. Earlier milestone completion statements describe the previous submission scope; they do not block this newly authorized task. Remote Git operations still require explicit user instruction.
+## Active task
+
+- `DLK-M3-034` — Expose bounded deposit outlines for trustworthy region overlays — **in_progress**
+  - task: `.agents/handoff/tasks/DLK-M3-034-bounded-deposit-outline.md`
+  - branch: `backend-database`
+  - depends on: accepted `DLK-M3-033` at `3d1fb6f5adb6d50a975704527f21f23334549546`
+  - outcome: optional full-image normalized outer contour geometry for reliable detected deposits, with bounded size and explicit omission warnings
+  - deferred: frontend overlays, templates/alignment, partial evidence, database changes
+
+Gemini should execute only the ready DLK-M3-034 task, then return for review. The accepted DLK-M3-033 review and queue update remain planner-authored and uncommitted for inclusion in the next atomic implementation commit. Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
