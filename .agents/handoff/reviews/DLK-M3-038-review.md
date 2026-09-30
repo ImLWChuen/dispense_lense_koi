@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-038
-reviewed_commit: 79debd00465794aa2e2df70dbd54145ac47960f0
+reviewed_commit: 0c65348b80e05cf9ddf88a9ed1ca04967e0fd7b3
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -9,7 +9,13 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested for a missing per-case timing field and inaccurate reproduction details. The synthetic fixture manifest, metric calculations, and conservative interpretation otherwise match the intended evaluation scope; no production CV change is needed.
+Changes still requested after reviewing the correction commit `0c65348`. R1 and R2 are resolved. The required full backend suite has not been rerun against the corrected benchmark and its new test, so the current commit lacks required verification. No production CV change is needed.
+
+## Correction review of 0c65348
+
+- R1 resolved: each case now reports nonnegative descriptive `elapsed_seconds` measured around `_sync_analyze_image`; focused coverage checks the field without a speed target. The documented JSON includes case timings.
+- R2 resolved: the report states Python 3.14.0, matching `backend/.venv/pyvenv.cfg`, and uses a direct-script repository-root command that the runner's path setup supports. Gemini reports verifying both CLI variants.
+- The correction commit changes benchmark code and adds a seventh focused test. Gemini reports `7 passed` for focused tests and successful CLI runs, but explicitly carries forward the old `577 passed` full-suite result from the initial commit rather than rerunning the full suite after these changes.
 
 ## Acceptance evidence
 
@@ -35,4 +41,10 @@ The document says the backend virtual environment uses Python 3.12, while `backe
 
 ## Follow-up
 
-Make only these bounded benchmark/report corrections, add focused regression coverage for R1, rerun the CLI and affected checks, update the report and queue, and commit locally. Do not tune segmentation, change fixture labels, or claim industrial accuracy. No new feature task or remote Git operation is authorized.
+### R3 — P2: Required full backend suite was not rerun after the correction
+
+Location: `.agents/handoff/tasks/DLK-M3-038-synthetic-region-inspection-baseline.md`, “Verification results.”
+
+The packet requires a full backend check, and the corrected code is part of that suite. The report says `577 passed` from before R1/R2 changes while a seventh focused test now exists, so that result cannot verify the current commit. Run the full backend suite against the current code using the existing safe disposable test database, record the actual count/outcome, and update the task report and queue. If it fails, fix only the relevant test-support issue and rerun affected checks. Do not change production CV behavior or fixture labels.
+
+No next feature task or remote Git operation is authorized.
