@@ -54,7 +54,7 @@ To protect host environments from arbitrary file access:
 2. **Directory Containment:** All image paths are resolved against `--dataset-root` (or the manifest's parent directory). Any attempt to escape the dataset root via traversal (`..`) is caught during preflight and triggers a fatal error (exit code 1).
 3. **Payload Limits:** Decoded images must exist, be regular files, and not exceed the existing `MAX_FILE_SIZE_BYTES` (10 MB).
 4. **Data Privacy & Path Sanitization:** Output reports record relative image paths only; host absolute paths, private directory identifiers, environment variables, and raw exception paths are suppressed and redacted (`<redacted_path>`).
-5. **Protected Inputs & Atomic Replacement:** The output report path can never target the manifest or any current/reference source image (directly or via filesystem links/aliases), regardless of `--overwrite`. Reports are serialized and written atomically to a temporary file before replacement.
+5. **Protected Inputs & Atomic No-Clobber Publication:** The output report path can never target the manifest or any current/reference source image (directly or via filesystem links/aliases), regardless of `--overwrite`. Reports are serialized and written atomically to a temporary file, with strict no-clobber protection enforced at final publication when `--overwrite` is omitted.
 
 ### 2.3 Output Report Schema v1
 
@@ -99,7 +99,7 @@ The runner outputs a single self-contained JSON report:
 
 #### Exit Codes
 - `0`: Evaluation completed successfully. The report was written to `--output` (including runs where individual cases experienced image decode/analysis errors).
-- `1`: Fatal error. Manifest syntax/validation error, path traversal escape in manifest, protected input collision (manifest or source images), or report file already exists without `--overwrite`. No report is written.
+- `1`: Fatal error. Manifest syntax/validation error, path traversal escape in manifest, protected input collision (manifest or source images), preflight filesystem access error, or report destination already exists without `--overwrite` (enforced at start and final publication). No report is written.
 
 ### 3.2 Synthetic Dataset Generator (`backend/tests/fixtures/generate_local_image_evaluation.py`)
 

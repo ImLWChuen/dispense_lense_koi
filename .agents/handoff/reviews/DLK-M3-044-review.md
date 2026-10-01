@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-044
-reviewed_commit: af41d40dee3a40d82d4eba1a8b3f318d2eba1221
+reviewed_commit: d1f66de2e1cb821614a306a3f159f840fe8d5af9
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -8,6 +8,22 @@ reviewed_by: ChatGPT planner/reviewer
 # Review: DLK-M3-044
 
 ## Decision
+
+Follow-up at d1f66de2e1cb821614a306a3f159f840fe8d5af9: R2 is resolved; R1 direct/alias input protection and generator default collisions are fixed; exit documentation and whitespace are corrected. Gemini reports 26 focused tests passing and repeated sample CLI runs. Reviewer inspected changes without rerunning tests. Two bounded corrections remain before acceptance.
+
+### R1 follow-up — P2: Enforce no-overwrite at final publication
+
+main checks output_path.exists() before evaluating the dataset, then always calls temp_path.replace(output_path), even without --overwrite. If another run/user creates the output during evaluation, this unconditionally replaces that file despite no overwrite authorization. Atomic replacement prevents partial writes but does not enforce no-clobber behavior. Use a final publication mechanism that fails atomically when the destination exists in the no-overwrite branch; keep replacement only for explicit --overwrite. Add a deterministic test that creates a sentinel destination during a mocked evaluation, then verifies nonzero exit and byte-identical sentinel. Preserve input alias checks and clean up temporary files.
+
+### R3 follow-up — P2: Replace raw error text with safe public messages
+
+sanitize_error_message still depends on incomplete path regexes: C:/private/model/file is untouched, UNC paths are untouched, C:\\Users\\Kee Chun Shang\\private.txt leaves its suffix after the first space, and /mnt/private/file is not covered. More importantly manifest JSON/schema handlers still write raw exc text without this sanitizer; Pydantic errors can echo the full supplied absolute path/input. Preflight resolve/OSError failures are not consistently caught. The claim that all errors are sanitized is therefore not supported.
+
+Use fixed public messages/categories for unexpected filesystem/execution errors, with case ID and safe field location where useful. For schema errors, format structured error locations/types without input values or raw exception strings. Catch resolution/preflight filesystem failures at the CLI boundary so they produce a sanitized exit-1 diagnostic, not a traceback. Do not try to solve arbitrary exception privacy by expanding a list of path prefixes. Add regression cases for slash/backslash Windows paths with spaces, UNC and /mnt paths, plus absolute-path schema rejection and preflight OSError; assert private fragments are absent from both report JSON and captured diagnostics. Keep useful known image/path error categories without leaking raw text.
+
+Continue this task, update report and queue to implemented only after corrections/checks, and commit locally including the review. No new task packet or production changes. R2 does not need reimplementation.
+
+## Historical initial findings
 
 Changes requested. The offline pipeline integration and denominator accounting are useful and in scope. Gemini reports 18 focused tests passing, unchanged synthetic baseline and labeled/unlabeled/corrupt CLI runs. Reviewer inspected source and reported results without rerunning tests. Untracked scratch output exists; preserve it and do not stage it. No push or merge.
 

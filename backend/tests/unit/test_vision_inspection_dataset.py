@@ -707,3 +707,185 @@ def test_fatal_path_traversal_manifest_preflight(tmp_path: Path, monkeypatch: py
     rc = main()
     assert rc == 1
     assert not rpath.exists(), "Fatal traversal preflight must prevent writing report."
+
+
+def test_final_publication_sentinel_collision_refuses_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that if a destination file appears during evaluation, publication fails atomically without clobbering."""
+    import tests.vision_inspection_dataset as vid
+    from tests.vision_inspection_dataset import main
+    from tests.fixtures.generate_local_image_evaluation import generate_synthetic_dataset
+
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    output_report = tmp_path / "sentinel_report.json"
+    sentinel_bytes = b"ORIGINAL_SENTINEL_CONTENT_DO_NOT_CLOBBER_12345"
+
+    # Define mock evaluation that creates the sentinel file at destination during evaluation
+    real_evaluate = vid.evaluate_dataset
+
+    def mocked_evaluate(manifest, dataset_root):
+        output_report.write_bytes(sentinel_bytes)
+        return real_evaluate(manifest, dataset_root)
+
+    monkeypatch.setattr(vid, "evaluate_dataset", mocked_evaluate)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(output_report)],
+    )
+
+    rc = main()
+    assert rc == 1, "Must exit with nonzero exit code when destination exists without --overwrite"
+    # Verify sentinel remains byte-identical
+    assert output_report.read_bytes() == sentinel_bytes, "Sentinel file must remain unmodified"
+    # Verify no temporary files remain in directory
+    temp_files = list(tmp_path.glob(".tmp_*"))
+    assert temp_files == [], f"Temporary files must be cleaned up: {temp_files}"
+    captured = capsys.readouterr()
+    assert "already exists. Use --overwrite to replace it." in captured.err
+
+
+def test_error_sanitizer_slash_backslash_spaces_unc_and_mnt(tmp_path: Path) -> None:
+    """Verifies that sanitize_error_message redacts Windows paths with spaces/slashes, UNC paths, and /mnt paths."""
+    from tests.vision_inspection_dataset import sanitize_error_message
+
+    test_cases = [
+        ("Windows forward slash with spaces", "Failed at C:/Users/Kee Chun Shang/private/model.png: error", "Kee Chun Shang"),
+        ("Windows forward slash without spaces", "Failed at C:/private/model/file: error", "C:/private"),
+        ("Windows backslash with spaces", r"Failed at C:\Users\Kee Chun Shang\private.txt: error", "Kee Chun Shang"),
+        ("Windows backslash without spaces", r"Failed at D:\Confidential\Dataset\img.png: error", "Confidential"),
+        ("UNC double backslash", r"Network error: \\server\share\private.png: failed", "server"),
+        ("UNC double forward slash", "Network error: //server/share/file: failed", "server"),
+        ("POSIX /mnt path", "Mounted filesystem error: /mnt/private/file: unreadable", "/mnt/private"),
+        ("Unix standard /home path", "Filesystem error: /home/secret_engineer/data.bin: unreadable", "secret_engineer"),
+    ]
+
+    for label, raw_err, private_fragment in test_cases:
+        clean = sanitize_error_message(raw_err, tmp_path)
+        assert private_fragment not in clean, f"[{label}] Leaked private fragment '{private_fragment}' in '{clean}'"
+        assert "<redacted_path>" in clean, f"[{label}] Expected <redacted_path> in '{clean}'"
+
+
+@pytest.mark.parametrize(
+    "bad_path,private_fragment",
+    [
+        ("C:/private/model/file.png", "C:/private/model/file.png"),
+        ("C:/Users/Kee Chun Shang/private/model.png", "Kee Chun Shang"),
+        (r"C:\Users\Kee Chun Shang\private.txt", "Kee Chun Shang"),
+        (r"\\server\share\private.png", "server"),
+        ("//server/share/file.png", "server"),
+        ("/mnt/private/file.png", "/mnt/private/file.png"),
+    ],
+)
+def test_schema_rejection_suppresses_private_paths(
+    tmp_path: Path, bad_path: str, private_fragment: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that schema validation rejects absolute/UNC/mnt paths without leaking raw path inputs into stderr."""
+    from tests.vision_inspection_dataset import main
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.5, "height": 0.5}],
+    }
+    manifest_data = {
+        "manifest_version": "v1",
+        "dataset_id": "private_path_test",
+        "origin": "synthetic",
+        "cases": [
+            {
+                "case_id": "case_priv",
+                "current_image_path": bad_path,
+                "profile": profile,
+            }
+        ],
+    }
+    mpath = tmp_path / "private_manifest.json"
+    mpath.write_text(json.dumps(manifest_data), encoding="utf-8")
+    rpath = tmp_path / "report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(mpath), "-o", str(rpath)],
+    )
+    rc = main()
+    assert rc == 1
+    assert not rpath.exists()
+
+    captured = capsys.readouterr()
+    assert private_fragment not in captured.err, f"Private fragment '{private_fragment}' leaked in stderr:\n{captured.err}"
+    assert "Manifest schema validation failed" in captured.err
+    assert "current_image_path must be a relative path" in captured.err
+
+
+def test_preflight_oserror_suppresses_private_paths_and_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that CLI path preflight catching an OSError returns exit 1 without leaking host paths or traceback."""
+    from tests.vision_inspection_dataset import main
+
+    private_dir = r"C:\Users\Kee Chun Shang\TopSecret"
+
+    def mock_resolve(self):
+        raise OSError(13, f"Permission denied: '{private_dir}'")
+
+    monkeypatch.setattr(Path, "resolve", mock_resolve)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", "any_manifest.json", "-o", "any_report.json"],
+    )
+
+    rc = main()
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert private_dir not in captured.err
+    assert "Traceback" not in captured.err
+    assert "Fatal error: Filesystem access error occurred during CLI path preflight" in captured.err
+
+
+def test_per_case_oserror_suppresses_private_paths_in_report_and_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that per-case filesystem access errors suppress private host paths in report JSON and warnings."""
+    from tests.vision_inspection_dataset import main
+    from tests.fixtures.generate_local_image_evaluation import generate_synthetic_dataset
+
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    output_report = tmp_path / "error_report.json"
+    private_path = r"C:\Users\Kee Chun Shang\Confidential\image.png"
+
+    # Mock Path.read_bytes to raise PermissionError with private path on case 1
+    real_read_bytes = Path.read_bytes
+
+    def mock_read_bytes(self):
+        if "case_01" in str(self):
+            raise PermissionError(13, f"Access is denied: '{private_path}'")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", mock_read_bytes)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(output_report)],
+    )
+
+    rc = main()
+    assert rc == 0, "Evaluation should complete with per-case error recorded."
+    assert output_report.exists()
+
+    report_text = output_report.read_text(encoding="utf-8")
+    report = json.loads(report_text)
+
+    # Assert private path is absent from the entire serialized report JSON
+    assert private_path not in report_text
+    assert "Kee Chun Shang" not in report_text
+
+    # Check case 1 error details
+    c1 = next(c for c in report["cases"] if c["case_id"] == "case_01_clean_detected")
+    assert c1["status"] == "ERROR"
+    assert c1["error"]["category"] == "FILESYSTEM_ACCESS"
+    assert c1["error"]["type"] == "PermissionError"
+    assert "Filesystem access error" in c1["error"]["message"]
+    assert private_path not in c1["error"]["message"]
+
+    captured = capsys.readouterr()
+    assert private_path not in captured.out
+    assert private_path not in captured.err

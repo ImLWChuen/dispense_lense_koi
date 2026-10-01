@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -32,7 +33,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 import cv2
 import pydantic
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.api.images import MAX_FILE_SIZE_BYTES, _sync_analyze_image
 from app.schemas.image import (
@@ -76,7 +77,7 @@ class ManifestCase(BaseModel):
         if not s:
             raise ValueError("current_image_path cannot be empty.")
         if Path(s).is_absolute() or s.startswith("/") or s.startswith("\\") or (len(s) > 1 and s[1] == ":"):
-            raise ValueError(f"current_image_path must be a relative path: {v}")
+            raise ValueError("current_image_path must be a relative path without leading drive letter or slashes.")
         return s
 
     @field_validator("reference_image_path")
@@ -88,7 +89,7 @@ class ManifestCase(BaseModel):
         if not s:
             return None
         if Path(s).is_absolute() or s.startswith("/") or s.startswith("\\") or (len(s) > 1 and s[1] == ":"):
-            raise ValueError(f"reference_image_path must be a relative path: {v}")
+            raise ValueError("reference_image_path must be a relative path without leading drive letter or slashes.")
         return s
 
     @model_validator(mode="after")
@@ -152,8 +153,26 @@ class PathValidationError(ValueError):
     pass
 
 
+def format_safe_schema_error(exc: ValidationError) -> str:
+    """Format Pydantic ValidationError without leaking raw input values or private strings."""
+    lines: list[str] = []
+    for err in exc.errors():
+        loc_parts = [str(p) for p in err.get("loc", ())]
+        loc_str = " -> ".join(loc_parts) if loc_parts else "root"
+        err_type = err.get("type", "validation_error")
+        msg = err.get("msg", "Invalid value")
+        if msg.startswith("Value error, "):
+            msg = msg[len("Value error, "):]
+        lines.append(f"  - Field '{loc_str}': {msg} (type: {err_type})")
+    return "\n".join(lines)
+
+
 def sanitize_error_message(msg: str, dataset_root: Path | None = None) -> str:
-    """Sanitize error messages to prevent leaking host absolute paths and private paths."""
+    """Sanitize error messages to prevent leaking host absolute paths and private paths.
+
+    Handles Windows paths (forward slash or backslash, including spaces),
+    UNC network paths (\\\\server\\share or //server/share), and Unix/POSIX paths (including /mnt).
+    """
     if not msg:
         return msg
     clean = str(msg)
@@ -164,14 +183,21 @@ def sanitize_error_message(msg: str, dataset_root: Path | None = None) -> str:
         except Exception:
             pass
 
-    # Redact Windows absolute paths (e.g. C:\... or D:\...)
-    clean = re.sub(r"[a-zA-Z]:\\[^:\s\(\)\'\"\,\;]+", "<redacted_path>", clean)
-    # Redact Unix absolute paths (e.g. /Users/..., /home/..., /tmp/..., etc.)
-    clean = re.sub(r"/(?:Users|home|root|var|tmp|etc|opt|app|usr)/[^\s\(\)\'\"\,\;]+", "<redacted_path>", clean)
+    # Redact UNC network paths (e.g. \\server\share\... or //server/share/...)
+    clean = re.sub(r"(?:\\\\|//)[^:\(\)\'\"\,\;\r\n]+", "<redacted_path>", clean)
+    # Redact Windows absolute paths with forward or back slashes, supporting spaces in filenames/directories
+    clean = re.sub(r"[a-zA-Z]:[/\\][^:\(\)\'\"\,\;\r\n]+", "<redacted_path>", clean)
+    # Redact Unix absolute paths (e.g. /Users/..., /mnt/..., /home/..., /tmp/..., etc.)
+    clean = re.sub(r"/(?:Users|home|root|var|tmp|etc|opt|app|usr|mnt)/[^:\(\)\'\"\,\;\r\n]+", "<redacted_path>", clean)
     return clean
 
 
-def resolve_and_validate_path(rel_path: str, dataset_root: Path) -> Path:
+def resolve_and_validate_path(
+    rel_path: str,
+    dataset_root: Path,
+    case_id: str | None = None,
+    field_name: str = "image_path",
+) -> Path:
     """Resolve a relative path against dataset root and enforce strict containment and size checks.
 
     Prevents path traversal, absolute path escape, missing files, directory targets,
@@ -179,31 +205,38 @@ def resolve_and_validate_path(rel_path: str, dataset_root: Path) -> Path:
     """
     clean_rel = rel_path.strip()
     if not clean_rel:
-        raise PathValidationError("Path cannot be empty.")
+        raise PathValidationError(f"{field_name} cannot be empty.")
 
     p = Path(clean_rel)
     if p.is_absolute() or clean_rel.startswith("/") or clean_rel.startswith("\\") or (len(clean_rel) > 1 and clean_rel[1] == ":"):
-        raise PathValidationError(f"Path must be relative to dataset root: '{clean_rel}'")
+        raise PathValidationError(f"{field_name} must be a relative path.")
 
-    root_resolved = dataset_root.resolve()
-    target_resolved = (dataset_root / p).resolve()
+    try:
+        root_resolved = dataset_root.resolve()
+        target_resolved = (dataset_root / p).resolve()
+    except (OSError, RuntimeError):
+        raise PathValidationError(f"Filesystem error occurred while resolving {field_name}.")
 
     # Enforce path containment within dataset root
     try:
         target_resolved.relative_to(root_resolved)
     except ValueError:
-        raise PathValidationError(f"Path traversal escape detected: '{clean_rel}'")
+        raise PathValidationError(f"Path traversal escape detected in {field_name}.")
 
     if not target_resolved.exists():
-        raise PathValidationError(f"Image file does not exist: '{clean_rel}'")
+        raise PathValidationError(f"Image file does not exist for {field_name}.")
 
     if not target_resolved.is_file():
-        raise PathValidationError(f"Path is not a regular file: '{clean_rel}'")
+        raise PathValidationError(f"Path is not a regular file for {field_name}.")
 
-    file_size = target_resolved.stat().st_size
+    try:
+        file_size = target_resolved.stat().st_size
+    except (OSError, RuntimeError):
+        raise PathValidationError(f"Filesystem access error while checking {field_name} size.")
+
     if file_size > MAX_FILE_SIZE_BYTES:
         raise PathValidationError(
-            f"Image file '{clean_rel}' size ({file_size} bytes) exceeds maximum limit ({MAX_FILE_SIZE_BYTES} bytes)."
+            f"Image file size ({file_size} bytes) for {field_name} exceeds maximum limit ({MAX_FILE_SIZE_BYTES} bytes)."
         )
 
     return target_resolved
@@ -211,28 +244,36 @@ def resolve_and_validate_path(rel_path: str, dataset_root: Path) -> Path:
 
 def validate_manifest_paths_contained(manifest: DatasetManifest, dataset_root: Path) -> None:
     """Preflight check: ensure all image paths in manifest are relative and stay within dataset_root."""
-    root_resolved = dataset_root.resolve()
+    try:
+        root_resolved = dataset_root.resolve()
+    except (OSError, RuntimeError):
+        raise PathValidationError("Filesystem access error occurred while resolving dataset root directory.")
+
     for case in manifest.cases:
         # Check current image path
         curr = case.current_image_path.strip()
         curr_p = Path(curr)
         if curr_p.is_absolute() or curr.startswith("/") or curr.startswith("\\") or (len(curr) > 1 and curr[1] == ":"):
-            raise PathValidationError(f"Case '{case.case_id}': current_image_path must be relative: '{curr}'")
+            raise PathValidationError(f"Case '{case.case_id}': current_image_path must be a relative path.")
         try:
             (dataset_root / curr_p).resolve().relative_to(root_resolved)
         except ValueError:
-            raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in current_image_path: '{curr}'")
+            raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in current_image_path.")
+        except (OSError, RuntimeError):
+            raise PathValidationError(f"Case '{case.case_id}': filesystem error while resolving current_image_path.")
 
         # Check reference image path if present
         if case.reference_image_path:
             ref = case.reference_image_path.strip()
             ref_p = Path(ref)
             if ref_p.is_absolute() or ref.startswith("/") or ref.startswith("\\") or (len(ref) > 1 and ref[1] == ":"):
-                raise PathValidationError(f"Case '{case.case_id}': reference_image_path must be relative: '{ref}'")
+                raise PathValidationError(f"Case '{case.case_id}': reference_image_path must be a relative path.")
             try:
                 (dataset_root / ref_p).resolve().relative_to(root_resolved)
             except ValueError:
-                raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in reference_image_path: '{ref}'")
+                raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in reference_image_path.")
+            except (OSError, RuntimeError):
+                raise PathValidationError(f"Case '{case.case_id}': filesystem error while resolving reference_image_path.")
 
 
 def get_protected_input_paths(
@@ -242,20 +283,23 @@ def get_protected_input_paths(
 ) -> set[Path]:
     """Collect all resolved input file paths (manifest + all case images) that must never be overwritten."""
     protected: set[Path] = set()
-    protected.add(manifest_path.resolve())
+    try:
+        protected.add(manifest_path.resolve())
+    except (OSError, RuntimeError):
+        protected.add(manifest_path)
 
     for case in manifest.cases:
         try:
             curr = (dataset_root / case.current_image_path.strip()).resolve()
             protected.add(curr)
-        except Exception:
+        except (OSError, RuntimeError):
             pass
 
         if case.reference_image_path:
             try:
                 ref = (dataset_root / case.reference_image_path.strip()).resolve()
                 protected.add(ref)
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
     return protected
@@ -266,7 +310,10 @@ def verify_output_path_safe(
     protected_paths: set[Path],
 ) -> None:
     """Ensure output report path does not collide with manifest or source images (directly or via links)."""
-    output_resolved = output_path.resolve()
+    try:
+        output_resolved = output_path.resolve()
+    except (OSError, RuntimeError):
+        raise PathValidationError(f"Filesystem error occurred while resolving output path: '{output_path.name}'.")
 
     # 1. Direct path equality
     if output_resolved in protected_paths:
@@ -276,16 +323,18 @@ def verify_output_path_safe(
         )
 
     # 2. Hardlink / symlink alias check if output file already exists
-    if output_path.exists():
-        for prot in protected_paths:
-            if prot.exists():
+    try:
+        if output_path.exists():
+            for prot in protected_paths:
                 try:
-                    if os.path.samefile(output_path, prot):
+                    if prot.exists() and os.path.samefile(output_path, prot):
                         raise PathValidationError(
                             f"Output path resolves to protected evaluation input via filesystem alias: '{output_path.name}'"
                         )
                 except (FileNotFoundError, OSError):
                     pass
+    except (OSError, RuntimeError):
+        pass
 
 
 def get_git_commit() -> str | None:
@@ -505,12 +554,16 @@ def evaluate_dataset(
 
         try:
             # 1. Resolve and validate image paths
-            curr_path = resolve_and_validate_path(case.current_image_path, dataset_root)
+            curr_path = resolve_and_validate_path(
+                case.current_image_path, dataset_root, case_id=case.case_id, field_name="current_image_path"
+            )
             curr_bytes = curr_path.read_bytes()
 
             ref_bytes: bytes | None = None
             if case.reference_image_path:
-                ref_path = resolve_and_validate_path(case.reference_image_path, dataset_root)
+                ref_path = resolve_and_validate_path(
+                    case.reference_image_path, dataset_root, case_id=case.case_id, field_name="reference_image_path"
+                )
                 ref_bytes = ref_path.read_bytes()
 
             # 2. Execute synchronous vision inspection pipeline
@@ -650,20 +703,23 @@ def evaluate_dataset(
         except Exception as exc:
             case_elapsed = time.perf_counter() - case_start
 
-            # Determine safe error category and sanitized message
+            # Determine safe error category and sanitized public message
             exc_name = type(exc).__name__
             if isinstance(exc, PathValidationError):
                 category = "PATH_VALIDATION"
-                clean_msg = sanitize_error_message(str(exc), dataset_root)
-            elif "ImageValidationError" in exc_name:
+                clean_msg = f"Path validation error for case '{case.case_id}': image path must be a relative file within dataset root."
+            elif "ImageValidationError" in exc_name or "ImageDecodeError" in exc_name:
                 category = "IMAGE_VALIDATION"
-                clean_msg = sanitize_error_message(str(exc), dataset_root)
-            elif isinstance(exc, (OSError, PermissionError, FileNotFoundError)):
+                clean_msg = f"Image validation error for case '{case.case_id}': image format unsupported, damaged, or unreadable."
+            elif isinstance(exc, FileNotFoundError):
                 category = "FILESYSTEM_ACCESS"
-                clean_msg = f"{exc_name}: " + sanitize_error_message(str(exc), dataset_root)
+                clean_msg = f"Image file not found on disk for case '{case.case_id}'."
+            elif isinstance(exc, (OSError, PermissionError)):
+                category = "FILESYSTEM_ACCESS"
+                clean_msg = f"Filesystem access error encountered while loading image for case '{case.case_id}'."
             else:
                 category = "EXECUTION_ERROR"
-                clean_msg = f"{exc_name}: " + sanitize_error_message(str(exc), dataset_root)
+                clean_msg = f"Pipeline execution error encountered while inspecting case '{case.case_id}'."
 
             # Record failed case without crashing runner
             case_sites = []
@@ -793,36 +849,94 @@ Examples:
     return parser
 
 
+def publish_report_file(temp_path: Path, output_path: Path, overwrite: bool) -> None:
+    """Atomically publish report file from temp_path to output_path.
+
+    If overwrite is True:
+        Replaces output_path atomically (via temp_path.replace).
+    If overwrite is False:
+        Enforces strict no-clobber behavior. If output_path exists before or during
+        the move, raises FileExistsError without modifying output_path.
+    """
+    if overwrite:
+        temp_path.replace(output_path)
+        return
+
+    # No-overwrite branch: destination MUST NOT exist
+    if output_path.exists():
+        raise FileExistsError(
+            f"Output report '{output_path.name}' already exists. Use --overwrite to replace it."
+        )
+
+    # Move atomically with no-replace semantics
+    if sys.platform == "win32":
+        # On Windows, os.rename fails atomically with FileExistsError if destination exists.
+        os.rename(temp_path, output_path)
+    else:
+        # On POSIX: os.link creates a hardlink atomically and fails if destination exists.
+        try:
+            os.link(temp_path, output_path)
+            temp_path.unlink()
+        except (OSError, NotImplementedError):
+            # Fallback for filesystems that do not support hardlinks across devices
+            if output_path.exists():
+                raise FileExistsError(
+                    f"Output report '{output_path.name}' already exists. Use --overwrite to replace it."
+                )
+            shutil.move(str(temp_path), str(output_path))
+
+
 def main() -> int:
     """CLI entry point. Returns exit code 0 on success, 1 on fatal error."""
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    manifest_path: Path = args.manifest.resolve()
-    if not manifest_path.exists():
-        sys.stderr.write(f"Fatal error: Manifest file not found: {manifest_path.name}\n")
-        return 1
-    if not manifest_path.is_file():
-        sys.stderr.write(f"Fatal error: Manifest path is not a file: {manifest_path.name}\n")
-        return 1
+    # Preflight resolution of CLI arguments
+    try:
+        manifest_path: Path = args.manifest.resolve()
+        if not manifest_path.exists():
+            sys.stderr.write(f"Fatal error: Manifest file not found: '{manifest_path.name}'\n")
+            return 1
+        if not manifest_path.is_file():
+            sys.stderr.write(f"Fatal error: Manifest path is not a regular file: '{manifest_path.name}'\n")
+            return 1
 
-    dataset_root: Path = args.dataset_root.resolve() if args.dataset_root else manifest_path.parent.resolve()
-    if not dataset_root.exists() or not dataset_root.is_dir():
-        sys.stderr.write(f"Fatal error: Dataset root directory not found\n")
+        dataset_root: Path = (
+            args.dataset_root.resolve() if args.dataset_root else manifest_path.parent.resolve()
+        )
+        if not dataset_root.exists() or not dataset_root.is_dir():
+            sys.stderr.write("Fatal error: Dataset root directory not found or inaccessible\n")
+            return 1
+
+        output_path: Path = args.output.resolve()
+    except (OSError, RuntimeError):
+        sys.stderr.write("Fatal error: Filesystem access error occurred during CLI path preflight\n")
         return 1
 
     # 1. Load and parse manifest JSON
     try:
-        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        sys.stderr.write(f"Fatal error: Failed to parse manifest JSON: {exc}\n")
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        sys.stderr.write(f"Fatal error: Failed to read manifest file: '{manifest_path.name}'\n")
+        return 1
+
+    try:
+        raw_manifest = json.loads(manifest_text)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            f"Fatal error: Manifest syntax error: Invalid JSON at line {exc.lineno}, column {exc.colno}\n"
+        )
         return 1
 
     # 2. Validate manifest schema
     try:
         manifest = DatasetManifest.model_validate(raw_manifest)
+    except ValidationError as exc:
+        safe_schema_msg = format_safe_schema_error(exc)
+        sys.stderr.write(f"Fatal error: Manifest schema validation failed:\n{safe_schema_msg}\n")
+        return 1
     except Exception as exc:
-        sys.stderr.write(f"Fatal error: Manifest schema validation failed:\n{exc}\n")
+        sys.stderr.write(f"Fatal error: Manifest validation failed: {type(exc).__name__}\n")
         return 1
 
     # 3. Preflight security: check for path traversal escapes in manifest image paths
@@ -833,7 +947,6 @@ def main() -> int:
         return 1
 
     # 4. Input Protection: ensure output path does not collide with manifest or source images
-    output_path: Path = args.output.resolve()
     protected_paths = get_protected_input_paths(manifest, manifest_path, dataset_root)
     try:
         verify_output_path_safe(output_path, protected_paths)
@@ -852,32 +965,37 @@ def main() -> int:
     try:
         report = evaluate_dataset(manifest, dataset_root)
     except Exception as exc:
-        clean_err = sanitize_error_message(str(exc), dataset_root)
-        sys.stderr.write(f"Fatal error during dataset evaluation: {clean_err}\n")
+        exc_name = type(exc).__name__
+        sys.stderr.write(f"Fatal error during dataset evaluation: {exc_name} encountered.\n")
         return 1
 
     # 7. Serialize report strictly (forbidding NaN/Infinity)
     try:
         report_json = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False)
     except Exception as exc:
-        sys.stderr.write(f"Fatal error: Failed to serialize report to valid JSON: {exc}\n")
+        sys.stderr.write(f"Fatal error: Failed to serialize report to valid JSON: {type(exc).__name__}\n")
         return 1
 
-    # 8. Write report to destination atomically
+    # 8. Write report to destination atomically and enforce no-clobber publication
     temp_path = output_path.with_name(f".tmp_{output_path.name}_{uuid.uuid4().hex}")
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path.write_text(report_json + "\n", encoding="utf-8")
-        temp_path.replace(output_path)
-    except Exception as exc:
+        publish_report_file(temp_path, output_path, overwrite=args.overwrite)
+    except FileExistsError:
+        sys.stderr.write(
+            f"Fatal error: Output report '{output_path.name}' already exists. Use --overwrite to replace it.\n"
+        )
+        return 1
+    except (OSError, RuntimeError):
+        sys.stderr.write(f"Fatal error: Filesystem access error while writing report file '{output_path.name}'\n")
+        return 1
+    finally:
         if temp_path.exists():
             try:
                 temp_path.unlink()
             except Exception:
                 pass
-        clean_err = sanitize_error_message(str(exc), dataset_root)
-        sys.stderr.write(f"Fatal error: Failed to write report file '{output_path.name}': {clean_err}\n")
-        return 1
 
     # Informational summary to stdout
     summary = report["summary"]
