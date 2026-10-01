@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-042
-reviewed_commit: bc83079767925dc390e0e706cd4ab56077b9306c
-decision: changes_requested
+reviewed_commit: a9803d01db253437c564ddea2dac743995957a6a
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,13 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision and evidence
 
-Changes requested. The four new integration scenarios meaningfully exercise the public image API, durable case lifecycle and reports, and conservative quality gates. No production code changed. Gemini reports 4 focused tests and 605 full backend tests passing, plus the synthetic baseline. Reviewer inspected source and reported evidence; did not rerun tests or browser execution under the planner/reviewer policy.
+Accepted at a9803d01db253437c564ddea2dac743995957a6a. R1 and R2 are resolved for this scoped acceptance task. The correction changes documentation and handoff records only; no production code or tests changed. The four integration scenarios from the initial implementation exercise the public image API, durable case lifecycle and reports, and conservative quality gates. Gemini's previously reported 4 focused tests and 605 full backend tests remain the test evidence; they were not rerun for this documentation-only correction.
+
+The reviewer inspected the correction diff, fixture generation signature, measurement calculation, ROI reset control, and local run-two-site-rehearsal.mjs artifact. The rehearsal uses browser input events and real backend endpoints; it draws and selects both sites and reads persisted case/report evidence. The report records case e1d8db2d-fdce-4edf-974c-97ce671f0792 with distinct measurements for dot-1 and dot-2. The guide now includes reproducible sample generation, two ROI coordinates, explicit minimum coverage, and reanalysis after ROI changes. It distinguishes transient outlines from durable scalar evidence and identifies first-affected-site legacy display. PDF visual inspection remains unverified and is not part of this acceptance claim.
+
+Committed whitespace check passed. Reviewer did not rerun tests or browser execution, and browser outcomes remain Gemini-reported evidence. No further blocking findings in the correction. Acceptance is limited to the synthetic manual-ROI workflow; saved-case multi-site UI, partial score-bearing evidence, profiles/alignment and real-image accuracy evaluation remain deferred.
+
+## Historical findings from bc83079 (resolved)
 
 ## R1 — P2: Make the multi-site browser rehearsal reproducible and demonstrate it
 

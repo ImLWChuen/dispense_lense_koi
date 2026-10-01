@@ -164,7 +164,7 @@ Do not implement inside DLK-M3-031:
   - verification: focused suite 40 passed; full backend suite 601 passed; task validation VALID; whitespace checks passed
   - accepted DLK-M3-039 review included in the implementation commit
 
-## Active task
+## Accepted frontend workbench task
 
 - `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **accepted**
   - reviewed commit: `938e99de0825167b7dadc5a72bbce2d684e93448`
@@ -183,10 +183,10 @@ Do not implement inside DLK-M3-031:
   - deferred: templates/alignment, automatic site detection, partial evidence, saved-case page redesign, real-image evaluation
   - include pending review record `.agents/handoff/reviews/DLK-M3-041-review.md` in the local implementation commit
 
-## Active task
+## Accepted verification task
 
-- `DLK-M3-042` — Verify integrated region inspection workflow and record readiness — **implemented**
-  - reviewed commit: `bc83079767925dc390e0e706cd4ab56077b9306c`
+- `DLK-M3-042` — Verify integrated region inspection workflow and record readiness — **accepted**
+  - reviewed commit: `a9803d01db253437c564ddea2dac743995957a6a`
   - review: `.agents/handoff/reviews/DLK-M3-042-review.md`
   - resolved corrections R1–R2:
     - R1: documented reproducible synthetic image generation (`create_multi_roi_image(400, 200, [(100, 100, 10), (300, 100, 15)])`), two-ROI setup instructions, explicit limits (`min_coverage_ratio = 0.10`), and ROI invalidation behavior; executed real browser walkthrough with CDP verifying two distinct sites (`dot-1` coverage ~0.89%, diam ~19.96 px; `dot-2` coverage ~2.00%, diam ~29.96 px) both surviving case creation (`case_id: e1d8db2d-fdce-4edf-974c-97ce671f0792`), reload, JSON export, and PDF Section 8 report verified via `pypdf`; recorded screenshots, case ID, environment, and artifact paths;
@@ -198,5 +198,16 @@ Do not implement inside DLK-M3-031:
   - preserve: current production behavior, conservative gates and existing records
   - deferred: saved-case frontend enhancement, profiles/alignment, partial evidence and representative real-image evaluation
   - include pending accepted DLK-M3-041 review in the local implementation commit
+
+## Active task
+
+- `DLK-M3-043` — Display persisted multi-site image evidence on saved cases — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-043-saved-case-region-evidence.md`
+  - branch: `backend-database`
+  - depends on: accepted DLK-M3-042 at `a9803d01db253437c564ddea2dac743995957a6a`
+  - outcome: accessible saved-case display of all persisted affected sites, scalar snapshots and supplied limits, with truthful legacy/unknown handling
+  - preserve: existing API/storage, scoring, raw-image retention policy and upload workbench
+  - deferred: complete inspection-session history, profiles/alignment, partial evidence and real-image accuracy evaluation
+  - include pending accepted DLK-M3-042 review in local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

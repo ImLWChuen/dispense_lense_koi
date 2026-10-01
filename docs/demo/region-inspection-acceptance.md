@@ -128,14 +128,20 @@ Generate a reproducible synthetic test image containing two distinct deposits us
    - Note top candidate cause (`Nozzle Restriction`) with deterministic evidence support score (e.g. `62.0 / 100`).
    - Emphasize that scores are deterministic evidence-support metrics, not statistical probabilities or guaranteed fixed rankings across different input combinations.
 
-### Step 5: Inspect Saved Evidence & Note Known Presentation Limitations
+### Step 5: Inspect Saved Evidence on Saved Case Analysis Page
 
 1. Navigate to the **Analysis Detail** subpage: Click `Analysis Detail` in the workflow stepper or visit `/diagnosis/{case_id}/analysis`.
 2. Locate the **Image Analysis Evidence** card:
    - Confirm the card displays `Persisted calibrated visual defect observations`.
-   - Verify stored measurements: `Status: CALIBRATED`, `Mode: PROCESS_LIMITS`, `Coverage Ratio`, `Equiv Diameter`, `Physical Diameter`.
-3. **Known Saved-Case Presentation Limitation:**
-   Observe that `frontend/components/diagnosis/ImageAnalysis.tsx` currently renders the legacy top-level fields (representing the **first triggering/affected site's metadata**, in this case `dot-1`) rather than iterating through the full `region_evidence` array. This is a known, documented presentation limitation of the saved-case page; the underlying PostgreSQL database and case reports preserve all affected sites losslessly.
+   - **Observation Header:** Confirms observation type (`deposit presence`), value badge (`missing`), scope badge (`Individual Regions`), and revision badge (`Rev 1`).
+   - **Scope Explanation:** Explicitly explains whether defect criteria triggered per-region (`individual_regions`) or as a comparison group (`comparison_group`).
+   - **Summary Cards:** Displays recorded affected site IDs (`dot-1`, `dot-2`) and allowlisted applied limits configuration snapshot (`min_coverage_ratio`, etc.).
+   - **Persisted Per-Region Measurements:** Selectable site tabs (`dot-1 DETECTED`, `dot-2 DETECTED`) allow technician review of each site's 15-parameter scalar evidence snapshot:
+     - 4-metric primary grid: Coverage ratio (`0.9%` vs `2.0%`), Overflow ratio (`0.0%`), Equivalent diameter (`20.0 px` vs `30.0 px`), Physical diameter (`0.399 mm` vs `0.599 mm`).
+     - Geometric morphology: Deposit area (`313 px²` vs `705 px²`), Circularity, Aspect ratio, Solidity, Voids/bubbles, Segmentation quality.
+     - Reference measurements: Separately displays reference snapshot (or explicitly notes "Not recorded" when single-image or omitted).
+3. **Data Retention Clarification:**
+   As stated in the footer note, raw image uploads and full polygon outlines are discarded after analysis and are not retained in durable storage. Durable PostgreSQL case records preserve quantitative scalar measurements, affected target ROI identifiers, and threshold limit snapshots.
 
 ### Step 6: Verify Case Records and Download PDF Case Report
 
@@ -168,7 +174,7 @@ This matrix separates demonstrated capabilities from deferred roadmap features a
 | **Per-Region Evidence Snapshots** | Implemented (DLK-M3-039) | Lifecycle round-trip tests | Ready for synthetic demos | 15 scalar metrics captured per site. |
 | **Case Report (JSON & PDF) Integration** | Implemented (DLK-M3-040) | pypdf parsing, revision tracking | Ready for synthetic demos | Extracted text and tables verified; visual aesthetic layout unverified by CI. |
 | **Frontend Upload Workbench** | Implemented (DLK-M3-041) | CDP browser rehearsal (two-site verified) | Ready for interactive demos | Responsive SVG overlay locked to image content with measured bounds across zoom and aspect ratios. |
-| **Saved-Case Multi-Site Display** | **Deferred** (Phase 4 gap) | None (legacy single-site fallback) | Limited display on saved case | `ImageAnalysis.tsx` displays legacy first-site metadata; full multi-site card deferred. |
+| **Saved-Case Multi-Site Display** | **Implemented** (DLK-M3-043) | Unit tests (7/7 passed), browser CDP rehearsal (`04-saved-case-multi-site-evidence.png`) | Ready for interactive and saved-case inspection demos | None for saved-case scalar presentation; raw images/polygons intentionally not retained. |
 | **Partial Score-Bearing Evidence** | **Deferred** (Phase 1 gap) | Negative tests (zero obs on partial) | Conservative fail-safe | Partially unassessed calibrated images emit 0 score-bearing observations. |
 | **Reusable Profiles & Auto-Alignment** | **Deferred** (Phase 3) | None | Not implemented | Manual ROI configuration required per upload; no layout library. |
 | **Industrial Dispensing Accuracy** | **Unmeasured** (Phase 5 gap) | Synthetic benchmark only | **Not ready for production** | No held-out factory dataset, lighting variation tests, or agreed acceptance metrics. |
@@ -177,8 +183,8 @@ This matrix separates demonstrated capabilities from deferred roadmap features a
 
 ## 5. Documented Limitations and Operational Notes
 
-1. **Saved-Case Frontend Display Limitation:**
-   The upload and studio workbench (`ImageUpload.tsx`) provides full multi-site interactive inspection with selectable tabs and outline overlays. However, the saved case page (`/diagnosis/[id]/analysis` via `ImageAnalysis.tsx`) currently renders the legacy top-level metadata fields, representing the **first triggering/affected site's metadata**. Full multi-site card presentation on the saved-case page is deferred to Phase 4.
+1. **Saved-Case Multi-Site Presentation Delivered:**
+   The saved case page (`/diagnosis/[id]/analysis` via `ImageAnalysis.tsx` and `SavedRegionEvidence.tsx`) now fully presents multi-site evidence with selectable site tabs, 15-parameter scalar measurements, applied limits snapshots, and scope indicators. Legacy cases without `region_evidence` safely fall back to the single-site summary card without crashing or fabricating absent data.
 2. **Conservative Quality Gating (No Partial Evidence):**
    If any expected ROI is UNASSESSED in a calibrated image, the system marks the analysis `UNRELIABLE` and emits exactly **zero** score-bearing observations. While per-region measurements are shown in the workbench for technician visibility, the diagnostic engine conservatively refuses to score incomplete evidence.
 3. **No Original Image Retention & Transient Outlines:**
