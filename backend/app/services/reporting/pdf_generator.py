@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import html
 import io
+import math
 from datetime import datetime
 from typing import Any
 
@@ -111,14 +112,53 @@ def _truncate_str(val: Any, max_len: int = 200) -> str:
 
 
 def _fmt_num(val: Any) -> str:
-    """Format numeric values cleanly or return escaped string if None or non-number."""
+    """Format numeric values cleanly, '-' if None, or 'unavailable' if invalid scalar."""
     if val is None:
         return "-"
-    if isinstance(val, (int, float)):
-        if isinstance(val, float):
-            return f"{val:.4f}".rstrip("0").rstrip(".") if abs(val) < 10 else f"{val:.2f}"
-        return str(val)
-    return html.escape(str(val))
+    if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+        return "unavailable"
+    if isinstance(val, float):
+        return f"{val:.4f}".rstrip("0").rstrip(".") if abs(val) < 10 else f"{val:.2f}"
+    return str(val)
+
+
+def _fmt_bool(val: Any) -> str:
+    """Format boolean value cleanly, '-' if None, or 'unavailable' if invalid scalar."""
+    if val is None:
+        return "-"
+    if isinstance(val, bool):
+        return "True" if val else "False"
+    return "unavailable"
+
+
+KNOWN_LIMIT_KEYS = frozenset({
+    # Process limits
+    "min_coverage_ratio",
+    "max_coverage_ratio",
+    "max_overflow_ratio",
+    "max_size_cv",
+    "min_presence_ratio",
+    "min_circularity",
+    "min_solidity",
+    "min_convexity",
+    "max_aspect_ratio",
+    "min_aspect_ratio",
+    "max_bubble_count",
+    "max_void_ratio",
+    # Reference limits
+    "min_reference_ratio",
+    "max_reference_ratio",
+    "tolerance_ratio",
+    "min_circularity_ratio",
+    "min_solidity_ratio",
+    # Profile/calibration limits
+    "target_area_px",
+    "tolerance_pct",
+    "target_diameter_mm",
+    "tolerance_pct_diameter",
+})
+
+ALLOWED_INSPECTION_STATUSES = frozenset({"DETECTED", "MISSING", "UNASSESSED"})
 
 
 def render_case_report_pdf(report: CaseReportResponse) -> bytes:
@@ -900,33 +940,87 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
 
         for obs_idx, obs in enumerate(displayed_obs, start=1):
             obs_meta = obs.metadata if isinstance(obs.metadata, dict) else {}
-            scope = obs_meta.get("region_evidence_scope", "individual_regions")
-            is_group = (scope == "comparison_group")
-
-            scope_desc = (
-                "comparison_group (Group comparison finding: listed regions are eligible comparison participants evaluated for variation, not individually confirmed failures.)"
-                if is_group
-                else "individual_regions (Individual region defect findings)"
-            )
-
-            affected_ids = obs_meta.get("affected_roi_ids")
-            if isinstance(affected_ids, list) and affected_ids:
-                affected_str = ", ".join(_truncate_str(rid, max_len=200) for rid in affected_ids)
-            elif obs_meta.get("roi_id"):
-                affected_str = _truncate_str(obs_meta.get("roi_id"), max_len=200)
+            raw_scope = obs_meta.get("region_evidence_scope")
+            if raw_scope == "comparison_group":
+                scope_desc = (
+                    "comparison_group (Group comparison finding: listed regions are eligible "
+                    "comparison participants evaluated for variation, not individually confirmed failures.)"
+                )
+            elif raw_scope == "individual_regions":
+                scope_desc = "individual_regions (Individual region defect findings)"
             else:
-                affected_str = "None recorded"
+                scope_desc = "Not recorded or unknown"
 
-            applied_limits = obs_meta.get("applied_limits")
-            if isinstance(applied_limits, dict) and applied_limits:
-                limits_str = ", ".join(f"{_escape(k)}: {_escape(v)}" for k, v in applied_limits.items())
+            # Affected sites: bound to 20, chunk across split-safe rows, report omitted count
+            max_affected = 20
+            raw_affected = obs_meta.get("affected_roi_ids")
+            affected_list: list[str] = []
+            if isinstance(raw_affected, list):
+                for item in raw_affected:
+                    if isinstance(item, (str, int, float)):
+                        affected_list.append(_truncate_str(str(item), max_len=200))
+                    else:
+                        affected_list.append("unavailable")
+            elif obs_meta.get("roi_id") is not None:
+                single_rid = obs_meta.get("roi_id")
+                if isinstance(single_rid, (str, int, float)):
+                    affected_list.append(_truncate_str(str(single_rid), max_len=200))
+                else:
+                    affected_list.append("unavailable")
+
+            total_affected = len(affected_list)
+            displayed_affected = affected_list[:max_affected]
+            omitted_affected = total_affected - len(displayed_affected)
+            affected_chunks = [
+                displayed_affected[i : i + 4]
+                for i in range(0, len(displayed_affected), 4)
+            ]
+
+            # Applied limits: allowlist known names, validate finite scalar values, chunk
+            raw_limits = obs_meta.get("applied_limits")
+            limit_items: list[str] = []
+            if isinstance(raw_limits, dict) and raw_limits:
+                for k, v in raw_limits.items():
+                    if not isinstance(k, str) or k not in KNOWN_LIMIT_KEYS:
+                        continue
+                    if v is None:
+                        v_str = "-"
+                    elif isinstance(v, bool):
+                        v_str = "True" if v else "False"
+                    elif isinstance(v, (int, float)):
+                        if math.isfinite(v):
+                            v_str = _fmt_num(v)
+                        else:
+                            v_str = "unavailable"
+                    else:
+                        v_str = "unavailable"
+                    limit_items.append(f"{_escape(k)}: {v_str}")
+
+            if not limit_items:
+                limits_rows = [
+                    Paragraph(
+                        "<b>Applied Limits (configuration snapshot; not an assertion of failure for all limits):</b> None recorded or not specified",
+                        cell_small_normal,
+                    )
+                ]
             else:
-                limits_str = "None recorded or not specified"
+                limits_chunks = [
+                    limit_items[i : i + 3]
+                    for i in range(0, len(limit_items), 3)
+                ]
+                limits_rows = []
+                for l_idx, lchunk in enumerate(limits_chunks):
+                    prefix = (
+                        "<b>Applied Limits (configuration snapshot; not an assertion of failure for all limits):</b> "
+                        if l_idx == 0
+                        else ""
+                    )
+                    limits_rows.append(Paragraph(prefix + ", ".join(lchunk), cell_small_normal))
 
-            # Summary table for the observation
-            obs_val_desc = f"{_truncate_str(obs.observation_type)} = {_truncate_str(obs.value)}"
+            # Split-safe summary table for the observation
+            obs_val_desc = f"{_truncate_str(obs.observation_type, max_len=200)} = {_truncate_str(obs.value, max_len=200)}"
             if obs.original_text and obs.original_text != obs.value:
-                obs_val_desc += f" ({_truncate_str(obs.original_text)})"
+                obs_val_desc += f" ({_truncate_str(obs.original_text, max_len=200)})"
 
             obs_summary_rows = [
                 [
@@ -935,28 +1029,60 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                         cell_bold,
                     ),
                     Paragraph(
-                        f"<b>Source:</b> {_truncate_str(obs.source)} | <b>Statement:</b> {_truncate_str(obs.statement_type)} | <b>First-Seen Rev:</b> {_truncate_str(obs.first_seen_revision)}",
+                        f"<b>Source:</b> {_truncate_str(obs.source, max_len=200)} | <b>Statement:</b> {_truncate_str(obs.statement_type, max_len=200)} | <b>First-Seen Rev:</b> {_truncate_str(obs.first_seen_revision, max_len=200)}",
                         cell_small_normal,
                     ),
                 ],
                 [
                     Paragraph(f"<b>Scope:</b> {html.escape(scope_desc)}", cell_small_normal),
-                    Paragraph(f"<b>Affected Sites:</b> {affected_str}", cell_small_normal),
-                ],
-                [
-                    Paragraph(
-                        f"<b>Applied Limits (configuration snapshot; not an assertion of failure for all limits):</b> {limits_str}",
-                        cell_small_normal,
-                    ),
                     Paragraph("", cell_small_normal),
                 ],
             ]
+            span_commands: list[tuple[Any, ...]] = [
+                ("SPAN", (0, 1), (1, 1)),
+            ]
+            r_idx = 2
 
-            obs_summary_table = Table(obs_summary_rows, colWidths=[310, 230])
+            if total_affected == 0:
+                obs_summary_rows.append([
+                    Paragraph("<b>Affected Sites:</b> None recorded", cell_small_normal),
+                    Paragraph("", cell_small_normal),
+                ])
+                span_commands.append(("SPAN", (0, r_idx), (1, r_idx)))
+                r_idx += 1
+            else:
+                for a_idx, achunk in enumerate(affected_chunks):
+                    prefix = "<b>Affected Sites:</b> " if a_idx == 0 else ""
+                    obs_summary_rows.append([
+                        Paragraph(prefix + ", ".join(achunk), cell_small_normal),
+                        Paragraph("", cell_small_normal),
+                    ])
+                    span_commands.append(("SPAN", (0, r_idx), (1, r_idx)))
+                    r_idx += 1
+                if omitted_affected > 0:
+                    obs_summary_rows.append([
+                        Paragraph(
+                            f"<i>Display Notice: Showing first {len(displayed_affected)} of {total_affected} affected sites "
+                            f"({omitted_affected} omitted. Omission does not imply unlisted sites passed.)</i>",
+                            empty_notice_style,
+                        ),
+                        Paragraph("", cell_small_normal),
+                    ])
+                    span_commands.append(("SPAN", (0, r_idx), (1, r_idx)))
+                    r_idx += 1
+
+            for lrow in limits_rows:
+                obs_summary_rows.append([
+                    lrow,
+                    Paragraph("", cell_small_normal),
+                ])
+                span_commands.append(("SPAN", (0, r_idx), (1, r_idx)))
+                r_idx += 1
+
+            obs_summary_table = Table(obs_summary_rows, colWidths=[270, 270])
             obs_summary_table.setStyle(
                 TableStyle(
                     [
-                        ("SPAN", (0, 2), (1, 2)),
                         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
                         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -965,6 +1091,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                         ("LEFTPADDING", (0, 0), (-1, -1), 4),
                         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                     ]
+                    + span_commands
                 )
             )
             story.append(obs_summary_table)
@@ -1007,30 +1134,55 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                 if not isinstance(entry, dict):
                     reg_rows.append([
                         Paragraph("Malformed", cell_small_bold),
-                        Paragraph("ERROR", cell_small_normal),
+                        Paragraph("UNKNOWN", cell_small_normal),
                         Paragraph("Malformed region entry (expected dictionary record).", cell_small_normal),
                         Paragraph("-", cell_small_normal),
                     ])
                     continue
 
-                site_id_str = _truncate_str(entry.get("site_id") or entry.get("roi_id"))
+                # Read canonical roi_id (do NOT fallback to noncontract site_id alias)
+                raw_roi_id = entry.get("roi_id")
+                if raw_roi_id is None or not isinstance(raw_roi_id, (str, int, float)):
+                    site_id_str = "UNKNOWN"
+                else:
+                    site_id_str = _truncate_str(str(raw_roi_id), max_len=200)
+
                 curr_m = entry.get("current_measurements")
                 ref_m = entry.get("reference_measurements")
 
                 if not isinstance(curr_m, dict):
                     curr_text = "Malformed current measurement data."
-                    curr_status = _truncate_str(entry.get("inspection_status") or "UNKNOWN")
+                    curr_status = "UNKNOWN"
                 else:
-                    curr_status = _truncate_str(entry.get("inspection_status") or curr_m.get("inspection_status") or "UNKNOWN")
+                    # Read nested inspection_status strictly from curr_m and validate against enum
+                    raw_status = curr_m.get("inspection_status")
+                    if raw_status in ALLOWED_INSPECTION_STATUSES:
+                        curr_status = raw_status
+                    else:
+                        curr_status = "UNKNOWN"
+
                     cal_d = curr_m.get("calibrated_diameter_mm")
-                    cal_d_str = f"{cal_d:.3f} mm" if isinstance(cal_d, (int, float)) else "Not recorded"
+                    if cal_d is None:
+                        cal_d_str = "Not recorded"
+                    elif not isinstance(cal_d, bool) and isinstance(cal_d, (int, float)) and math.isfinite(cal_d):
+                        cal_d_str = f"{cal_d:.3f} mm"
+                    else:
+                        cal_d_str = "unavailable"
+
+                    dep_area_str = _fmt_num(curr_m.get("deposit_area_px"))
+                    tgt_area_str = _fmt_num(curr_m.get("target_area_px"))
+                    area_dep = f"{dep_area_str} px&sup2;" if dep_area_str not in ("-", "unavailable") else dep_area_str
+                    area_tgt = f"{tgt_area_str} px&sup2;" if tgt_area_str not in ("-", "unavailable") else tgt_area_str
+
+                    diam_px_str = _fmt_num(curr_m.get("equivalent_diameter_px"))
+                    diam_px = f"{diam_px_str} px" if diam_px_str not in ("-", "unavailable") else diam_px_str
 
                     curr_parts = [
                         f"<b>Coverage:</b> {_fmt_num(curr_m.get('coverage_ratio'))} | <b>Overflow:</b> {_fmt_num(curr_m.get('overflow_ratio'))}",
-                        f"<b>Area:</b> {_fmt_num(curr_m.get('deposit_area_px'))} px&sup2; (tgt: {_fmt_num(curr_m.get('target_area_px'))} px&sup2;)",
-                        f"<b>Diam:</b> {_fmt_num(curr_m.get('equivalent_diameter_px'))} px | <b>Phys:</b> {cal_d_str}",
+                        f"<b>Area:</b> {area_dep} (tgt: {area_tgt})",
+                        f"<b>Diam:</b> {diam_px} | <b>Phys:</b> {cal_d_str}",
                         f"<b>Shape:</b> circ={_fmt_num(curr_m.get('circularity'))}, sol={_fmt_num(curr_m.get('solidity'))}, conv={_fmt_num(curr_m.get('convexity'))}, asp={_fmt_num(curr_m.get('aspect_ratio'))}",
-                        f"<b>Voids/Bubbles:</b> void={_fmt_num(curr_m.get('hole_void_ratio'))}, bubbles={_truncate_str(curr_m.get('bubble_count'))} (has={_truncate_str(curr_m.get('has_bubbles'))})",
+                        f"<b>Voids/Bubbles:</b> void={_fmt_num(curr_m.get('hole_void_ratio'))}, bubbles={_fmt_num(curr_m.get('bubble_count'))} (has={_fmt_bool(curr_m.get('has_bubbles'))})",
                         f"<b>Seg Quality:</b> {_fmt_num(curr_m.get('segmentation_quality'))}",
                     ]
                     curr_text = "<br/>".join(curr_parts)
@@ -1040,15 +1192,35 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                 elif not isinstance(ref_m, dict):
                     ref_text = "Malformed reference measurement data."
                 else:
+                    ref_raw_status = ref_m.get("inspection_status")
+                    if ref_raw_status in ALLOWED_INSPECTION_STATUSES:
+                        ref_status_str = ref_raw_status
+                    else:
+                        ref_status_str = "UNKNOWN"
+
                     ref_cal_d = ref_m.get("calibrated_diameter_mm")
-                    ref_cal_str = f"{ref_cal_d:.3f} mm" if isinstance(ref_cal_d, (int, float)) else "Not recorded"
+                    if ref_cal_d is None:
+                        ref_cal_str = "Not recorded"
+                    elif not isinstance(ref_cal_d, bool) and isinstance(ref_cal_d, (int, float)) and math.isfinite(ref_cal_d):
+                        ref_cal_str = f"{ref_cal_d:.3f} mm"
+                    else:
+                        ref_cal_str = "unavailable"
+
+                    ref_dep_area_str = _fmt_num(ref_m.get("deposit_area_px"))
+                    ref_tgt_area_str = _fmt_num(ref_m.get("target_area_px"))
+                    ref_area_dep = f"{ref_dep_area_str} px&sup2;" if ref_dep_area_str not in ("-", "unavailable") else ref_dep_area_str
+                    ref_area_tgt = f"{ref_tgt_area_str} px&sup2;" if ref_tgt_area_str not in ("-", "unavailable") else ref_tgt_area_str
+
+                    ref_diam_px_str = _fmt_num(ref_m.get("equivalent_diameter_px"))
+                    ref_diam_px = f"{ref_diam_px_str} px" if ref_diam_px_str not in ("-", "unavailable") else ref_diam_px_str
+
                     ref_parts = [
-                        f"<b>Status:</b> {_truncate_str(ref_m.get('inspection_status'))}",
+                        f"<b>Status:</b> {ref_status_str}",
                         f"<b>Coverage:</b> {_fmt_num(ref_m.get('coverage_ratio'))} | <b>Overflow:</b> {_fmt_num(ref_m.get('overflow_ratio'))}",
-                        f"<b>Area:</b> {_fmt_num(ref_m.get('deposit_area_px'))} px&sup2; (tgt: {_fmt_num(ref_m.get('target_area_px'))} px&sup2;)",
-                        f"<b>Diam:</b> {_fmt_num(ref_m.get('equivalent_diameter_px'))} px | <b>Phys:</b> {ref_cal_str}",
+                        f"<b>Area:</b> {ref_area_dep} (tgt: {ref_area_tgt})",
+                        f"<b>Diam:</b> {ref_diam_px} | <b>Phys:</b> {ref_cal_str}",
                         f"<b>Shape:</b> circ={_fmt_num(ref_m.get('circularity'))}, sol={_fmt_num(ref_m.get('solidity'))}, conv={_fmt_num(ref_m.get('convexity'))}, asp={_fmt_num(ref_m.get('aspect_ratio'))}",
-                        f"<b>Voids/Bubbles:</b> void={_fmt_num(ref_m.get('hole_void_ratio'))}, bubbles={_truncate_str(ref_m.get('bubble_count'))}",
+                        f"<b>Voids/Bubbles:</b> void={_fmt_num(ref_m.get('hole_void_ratio'))}, bubbles={_fmt_num(ref_m.get('bubble_count'))} (has={_fmt_bool(ref_m.get('has_bubbles'))})",
                         f"<b>Seg Quality:</b> {_fmt_num(ref_m.get('segmentation_quality'))}",
                     ]
                     ref_text = "<br/>".join(ref_parts)

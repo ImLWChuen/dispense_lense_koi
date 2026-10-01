@@ -149,13 +149,18 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-040` — Include persisted region evidence in case reports — **implemented**
+  - reviewed commit: `9a8e2a53270e61d7060a6342d0ee6f25a7abdf1a`
+  - review: `.agents/handoff/reviews/DLK-M3-040-review.md`
+  - resolved corrections:
+    - R1: bounded all PDF metadata presentation paths (20 affected IDs chunked 4/row with explicit omission counts; strictly allowlisted 21 limit keys with finite scalar validation chunked 3/row; strict `_fmt_num` and `_fmt_bool` treating non-finite/invalid scalars as `unavailable`; user strings bounded at 200 chars);
+    - R2: preserved missing/unknown scope as `Not recorded or unknown`; read canonical `roi_id` and nested `current_measurements.inspection_status` validated against enum `DETECTED`/`MISSING`/`UNASSESSED` (rendering non-enum statuses as `UNKNOWN`); included reference `has_bubbles` display; updated positive test fixtures to canonical contract; added regressions for missing scope, conflicting aliases, non-enum status, and malformed scalar fields; added stress test combining 50 long canonical ROI IDs, 60 affected IDs, nested limits, and invalid numeric fields; added real `_sync_analyze_image`-to-case-to-JSON/PDF scenario (`test_real_image_analysis_to_case_to_report_and_pdf`)
   - task: `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`
   - branch: `backend-database`
   - depends on: accepted `DLK-M3-039` at `641328c0210cd31b56a50717792958fd39886bd3`
   - outcome: revision-scoped image observations in JSON reports and bounded readable region evidence in standard PDF reports
   - preserve: read-only report assembly, pinned revision, diagnostic/lifecycle meaning, existing routes and legacy compatibility
   - deferred: frontend workbench, partial evidence, reusable profiles/alignment, real-image evaluation, and 8D report changes
-  - verification: focused suite 37 passed; full backend suite 598 passed; task validation VALID; whitespace checks passed
+  - verification: focused suite 38 passed; full backend suite 599 passed; task validation VALID; whitespace checks passed
   - accepted DLK-M3-039 review included in the implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

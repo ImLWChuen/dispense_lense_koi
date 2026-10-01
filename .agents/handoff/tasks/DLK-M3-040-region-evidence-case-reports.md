@@ -109,46 +109,56 @@ Proposed commit message: `feat(reports): include persisted region inspection evi
 
 Exposed persisted `IMAGE` observations and their per-region inspection evidence in `CaseReportResponse.image_observations` and added Section 8 ("8. Image Inspection Evidence") to standard downloadable case report PDFs (`render_case_report_pdf`).
 
+Following review `DLK-M3-040-review.md`, corrected review findings R1 and R2:
+- **R1 resolved:** Bounded all metadata display paths and ensured all table rows are split-safe across page breaks.
+  - Affected IDs in `affected_roi_ids` are bounded to 20 displayed IDs and chunked across small, split-safe table rows (4 IDs per row); if more than 20 IDs exist, an explicit omission notice is appended (`({N} omitted. Omission does not imply unlisted sites passed.)`). No single row holds an unbounded list.
+  - Applied limits are strictly allowlisted against `KNOWN_LIMIT_KEYS` (the 21 canonical process, reference, and profile limits); limit values are validated as finite scalars and chunked (3 per row); invalid, nested (dict/list), or non-finite values are rendered as `unavailable`; unknown limits are excluded from the allowlisted display.
+  - `_fmt_num` validates finite `int`/`float` values (`math.isfinite(val)` and `not isinstance(val, bool)`), returning `"-"` for `None` and `"unavailable"` for any invalid scalar, dictionary, list, string, or NaN/Inf value rather than rendering raw string representations.
+  - Added `_fmt_bool` returning `"True"`, `"False"`, `"-"`, or `"unavailable"`.
+  - User strings are bounded at 200 characters with visible `[truncated (exceeds 200 chars)]` markers.
+- **R2 resolved:** Enforced canonical inspection semantics, unknown scope preservation, and producer contracts.
+  - Missing or unrecognized `region_evidence_scope` is rendered truthfully as `"Not recorded or unknown"`; it never defaults to `"individual_regions"` or infers defect findings.
+  - Region snapshots read canonical `entry.get("roi_id")`; noncontract entry-level `site_id` aliases are ignored.
+  - Inspection status is read strictly from nested `curr_m.get("inspection_status")` and validated against `ALLOWED_INSPECTION_STATUSES` (`DETECTED`, `MISSING`, `UNASSESSED`); noncontract entry-level `inspection_status` and non-enum statuses (e.g. `DEFECTIVE`, `ACCEPTABLE`) are never accepted as valid inspection statuses and render as `"UNKNOWN"`.
+  - Reference measurement display now includes `has_bubbles` using `_fmt_bool`, completing the 15-field allowlist.
+  - Updated positive fixtures across unit and integration tests to the canonical DLK-M3-039 contract (`roi_id`, nested `inspection_status` with `DETECTED`/`MISSING`/`UNASSESSED`).
+  - Added negative regression tests for missing scope, conflicting entry-level aliases, non-enum invalid statuses, and malformed scalar fields inside measurement dictionaries.
+  - Added a combined stress test with 50 long canonical ROI IDs, 60 long affected IDs, long/nested limit values, and invalid numeric fields, verifying successful multi-page PDF generation without `LayoutError` and truthful omission/unavailable notices while JSON remains lossless.
+  - Added a real end-to-end `_sync_analyze_image`-to-case-to-JSON/PDF test (`test_real_image_analysis_to_case_to_report_and_pdf`) verifying the complete vision producer contract.
+
 Report assembly queries `CaseRepository.get_case_observations(case_id, max_revision=effective_revision)` to ensure revision isolation: observations created in subsequent revisions cannot leak into an earlier pinned report. Non-image observations (`USER`, `SYSTEM`) and observations beyond `effective_revision` are strictly excluded while preserving deterministic database ID ordering, timestamps, and full existing metadata.
 
-PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read model (zero database or repository access in the PDF renderer). The layout displays:
-- Required notice that image findings represent automated visual observations and inferences, not confirmed root causes, and absence does not imply inspection passed.
-- Display bounds: first 20 image observations, and first 50 regions per observation, with visible omission notices stating unlisted sites are not implied to have passed.
-- String truncation at 200 characters with visible `[truncated (exceeds 200 chars)]` marker; all user-controlled text is HTML-escaped.
-- Distinct scope labeling: `individual_regions` versus `comparison_group` (with group participant note).
-- Applied limits labeled as a configuration snapshot, explicitly not an assertion of failure for all limits.
-- Split-friendly 4-column region evidence table showing Site ID, status, current 15-field scalar snapshot (`deposit_area_px`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `convexity`, `aspect_ratio`, `hole_void_ratio`, `bubble_count`, `has_bubbles`, `segmentation_quality`, `coverage_ratio`, `overflow_ratio`, `target_area_px`, `inspection_status`), and reference measurements when recorded.
-- Robust handling of legacy/empty/malformed metadata displaying neutral explanatory notices without crashing or fabricating measurements.
+PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read model (zero database or repository access in the PDF renderer).
 
 ### Files changed
 
 - `backend/app/schemas/case.py`: Added additive field `image_observations: list[CaseObservationResponse] = Field(default_factory=list)` to `CaseReportResponse`.
 - `backend/app/services/reporting/report_generator.py`: Added `_map_observation` and `_get_obs_metadata` mapping functions; populated `image_observations` in `build_case_report` using `repository.get_case_observations(case_id, max_revision=effective_revision)`.
-- `backend/app/services/reporting/pdf_generator.py`: Implemented Section 8 ("8. Image Inspection Evidence") with bounding, allowlisted scalar formatting, string truncation, HTML escaping, and neutral notices for empty/legacy/malformed metadata.
-- `backend/tests/unit/test_report_generator.py`: Added unit tests for observation mapping, image observation projection, non-image exclusion, legacy metadata preservation, and max_revision isolation.
-- `backend/tests/integration/test_case_report_api.py`: Added integration tests verifying `image_observations` in JSON reports, revision isolation against later observations, and backward compatibility.
-- `backend/tests/integration/test_case_report_pdf_api.py`: Added integration tests verifying Section 8 in downloadable PDF, distinct site measurements, group comparison notes, applied limits notices, neutral notice for empty evidence, malformed metadata resilience, and 20-obs / 50-region / 200-char truncation notices.
+- `backend/app/services/reporting/pdf_generator.py`: Implemented Section 8 ("8. Image Inspection Evidence") with split-safe rows, affected-ID bounding with omission notices, allowlisted limit names with finite scalar validation, strict `_fmt_num` and `_fmt_bool` treating invalid scalars as `unavailable`, canonical `roi_id` and nested `inspection_status` validation, missing scope preserved as `Not recorded or unknown`, and reference `has_bubbles` display.
+- `backend/tests/unit/test_report_generator.py`: Updated fixtures and assertions to use canonical `roi_id` and nested `inspection_status` (`DETECTED`).
+- `backend/tests/integration/test_case_report_api.py`: Updated fixtures and assertions to use canonical `roi_id` and nested `inspection_status`.
+- `backend/tests/integration/test_case_report_pdf_api.py`: Updated positive PDF test to canonical contract; added negative tests for missing scope, conflicting aliases, invalid status, and malformed scalar fields; updated stress test combining 50 long canonical ROI IDs, 60 affected IDs, nested limits, and invalid numeric fields; added real `_sync_analyze_image`-to-case-to-JSON/PDF scenario (`test_real_image_analysis_to_case_to_report_and_pdf`).
 - `docs/api/api-spec.md`: Documented `image_observations` in `CaseReportResponse` specification, updated example response, and updated Section 10 PDF rendered document structure.
 - `docs/architecture/region-inspection-improvement-plan.md`: Added Phase 4 progress note for DLK-M3-040.
 - `.agents/handoff/QUEUE.md`: Updated DLK-M3-040 status to `**implemented**`.
-- `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`: Updated status, checked acceptance criteria, recorded verification evidence.
+- `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`: Updated status, checked acceptance criteria, recorded verification evidence and R1/R2 resolution.
 - `.agents/handoff/reviews/DLK-M3-039-review.md`: Included accepted prerequisite review unchanged.
 
 ### Decisions made
 
 - Reused existing `repository.get_case_observations(case_id, max_revision=effective_revision)` with zero repository or database schema modifications; report assembly remains strictly read-only and no recalculation is performed.
 - Retained strict backward compatibility for `CaseReportResponse`: defaults `image_observations` to `[]`, contains no alias, and satisfies `extra="forbid"`.
-- Formatted PDF Section 8 using split-friendly 4-column tables (`[75, 55, 210, 200]` pt totaling 540 pt printable width on letter page with 36 pt margins) allowing clean multi-page document pagination.
-- Enforced bounding at 20 observations, 50 regions, and 200 characters per string with visible notices to ensure stable rendering regardless of input data scale.
+- Formatted PDF Section 8 using split-friendly chunked tables (`[270, 270]` pt observation summary and `[75, 55, 210, 200]` pt region table totaling 540 pt printable width on letter page with 36 pt margins) allowing clean multi-page document pagination without ReportLab `LayoutError`.
+- Enforced bounding at 20 observations, 20 affected sites (chunked 4/row), 50 regions, and 200 characters per user string with visible notices to ensure stable rendering regardless of input data scale.
 
 ### Verification results
 
 - Focused test suite:
   `$env:TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"; & .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_report_generator.py backend/tests/integration/test_case_report_api.py backend/tests/integration/test_case_report_pdf_api.py -q --basetemp=backend/.task040-focused -p no:cacheprovider`
-  Result: 37 passed, 13 warnings in 13.55s.
+  Result: 38 passed, 13 warnings in 18.42s.
 - Full backend test suite:
   `$env:TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"; & .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task040-full -p no:cacheprovider`
-  Result: 598 passed, 42 warnings in 60.12s.
+  Result: 599 passed, 42 warnings in 63.40s.
 - Task validation:
   `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`
   Result: VALID.
@@ -158,11 +168,11 @@ PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read mo
 
 ### Limitations and follow-up
 
-- Visual PDF rendering libraries (`fitz`, `pdf2image`, `pypdfium2`) are not installed in the backend environment. Verified through automated PDF parsing (`pypdf.PdfReader`), structural inspection, string escaping, multi-page layout up to 16 pages, and exact text extraction without installing unapproved dependencies.
+- Visual PDF rendering libraries (`fitz`, `pdf2image`, `pypdfium2`) are not installed in the backend environment. Verified through automated PDF parsing (`pypdf.PdfReader`), structural inspection, string escaping, multi-page layout, and exact text extraction without installing unapproved dependencies.
 - This completes Phase 4 report integration. Visual region overlays on the frontend workbench, partial score-bearing analysis, and real-image evaluations remain for subsequent tasks.
 
 ### Proposed commit message
 
-`feat(reports): include persisted region inspection evidence`
+`fix(reports): correct region evidence display bounding and canonical inspection semantics`
 
 Record the resulting commit hash in the completion message.

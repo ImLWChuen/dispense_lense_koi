@@ -672,9 +672,9 @@ def test_pdf_report_with_image_observations_and_region_evidence(tracked_cases: l
     """Verify downloadable PDF includes Section 8 with rich region evidence, measurements, limits, and notices."""
     region_evidence_payload = [
         {
-            "site_id": "site_01",
-            "inspection_status": "DEFECTIVE",
+            "roi_id": "site_01",
             "current_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 1800.0,
                 "equivalent_diameter_px": 47.87,
                 "calibrated_diameter_mm": 0.479,
@@ -691,18 +691,27 @@ def test_pdf_report_with_image_observations_and_region_evidence(tracked_cases: l
                 "target_area_px": 2500.0,
             },
             "reference_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 2500.0,
                 "equivalent_diameter_px": 56.42,
                 "calibrated_diameter_mm": 0.564,
                 "coverage_ratio": 1.0,
                 "overflow_ratio": 0.0,
-                "inspection_status": "ACCEPTABLE",
+                "circularity": 0.98,
+                "solidity": 0.98,
+                "convexity": 0.98,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.98,
+                "target_area_px": 2500.0,
             },
         },
         {
-            "site_id": "site_02",
-            "inspection_status": "ACCEPTABLE",
+            "roi_id": "site_02",
             "current_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 2480.0,
                 "equivalent_diameter_px": 56.19,
                 "calibrated_diameter_mm": None,
@@ -716,6 +725,7 @@ def test_pdf_report_with_image_observations_and_region_evidence(tracked_cases: l
                 "bubble_count": 0,
                 "has_bubbles": False,
                 "segmentation_quality": 0.98,
+                "target_area_px": 2500.0,
             },
             "reference_measurements": None,
         },
@@ -792,16 +802,16 @@ def test_pdf_report_with_image_observations_and_region_evidence(tracked_cases: l
 
     # Distinct site measurements and units
     assert "site_01" in extracted_text
-    assert "DEFECTIVE" in extracted_text
+    assert "DETECTED" in extracted_text
     assert "1800.00 px²" in extracted_text or "1800.00" in extracted_text
     assert "47.87 px" in extracted_text
     assert "0.479 mm" in extracted_text
     assert "2500.00 px²" in extracted_text or "2500.00" in extracted_text
     assert "0.564 mm" in extracted_text
+    assert "has=False" in extracted_text
 
     # Site 2 without reference measurements
     assert "site_02" in extracted_text
-    assert "ACCEPTABLE" in extracted_text
     assert "56.19 px" in extracted_text
     assert "Not recorded" in extracted_text  # null calibrated physical diameter
     assert "None (not in reference mode or unmatched)" in extracted_text
@@ -823,7 +833,9 @@ def test_pdf_report_empty_image_observations_notice(tracked_cases: list[str]):
 
 
 def test_pdf_report_malformed_and_legacy_region_metadata(tracked_cases: list[str]):
-    """Verify PDF generates cleanly without crashing when metadata is legacy, missing, or malformed."""
+    """Verify PDF generates cleanly without crashing when metadata is legacy, missing, or malformed,
+    and preserves unknown state for missing scope, conflicting aliases, invalid status, and malformed scalars.
+    """
     create_payload = {
         "description": "Case with malformed and legacy image metadata",
         "material": "epoxy",
@@ -836,14 +848,22 @@ def test_pdf_report_malformed_and_legacy_region_metadata(tracked_cases: list[str
                 "statement_type": "AI_INFERENCE",
                 "source": "IMAGE",
                 "metadata": {
-                    "region_evidence_scope": "individual_regions",
+                    # Missing region_evidence_scope -> must render as "Not recorded or unknown"
                     "applied_limits": "non_dict_limits_string",  # malformed applied limits
                     "region_evidence": [
                         "malformed_string_entry",  # malformed entry (not dict)
                         {
-                            "site_id": "site_err",
+                            # Conflicting aliases: noncontract site_id and entry-level inspection_status
+                            "site_id": "conflict_site_alias",
                             "inspection_status": "DEFECTIVE",
-                            "current_measurements": "malformed_current",  # malformed measurements
+                            "roi_id": "site_canonical_01",
+                            "current_measurements": {
+                                "inspection_status": "NON_ENUM_INVALID_STATUS",  # must render UNKNOWN
+                                "coverage_ratio": {"bad": "nested_dict"},  # invalid scalar -> unavailable
+                                "aspect_ratio": [1, 2],  # invalid scalar -> unavailable
+                                "calibrated_diameter_mm": "invalid_str",  # invalid scalar -> unavailable
+                                "has_bubbles": {"not_a_bool": 1},  # invalid -> unavailable
+                            },
                             "reference_measurements": "malformed_reference",  # malformed reference
                         },
                     ],
@@ -874,25 +894,50 @@ def test_pdf_report_malformed_and_legacy_region_metadata(tracked_cases: list[str
     assert "8. Image Inspection Evidence" in extracted_text
     assert "Detailed per-region evidence was not recorded for this observation." in extracted_text
     assert "Malformed region entry" in extracted_text
-    assert "Malformed current measurement data." in extracted_text
     assert "Malformed reference measurement data." in extracted_text
+
+    # Missing scope rendered truthfully as Not recorded or unknown
+    assert "Not recorded or unknown" in extracted_text
+
+    # Canonical roi_id used, conflicting site_id alias ignored
+    assert "site_canonical_01" in extracted_text
+    assert "conflict_site_alias" not in extracted_text
+
+    # Non-enum / invalid status rendered as UNKNOWN, entry-level DEFECTIVE ignored
+    assert "UNKNOWN" in extracted_text
+    assert "DEFECTIVE" not in extracted_text
+
+    # Malformed measurement scalars treated as unavailable
+    assert "unavailable" in extracted_text
 
 
 def test_pdf_report_truncation_limits_and_escaping(tracked_cases: list[str]):
-    """Verify bounding to 20 observations, 50 regions, 200-char strings, HTML escaping, and multi-page layout."""
-    # Build 55 region snapshots
+    """Verify bounding to 20 observations, 50 regions, 200-char strings, HTML escaping,
+    and split-safe multi-page layout combining 50 long canonical ROI IDs, >50 affected IDs,
+    long/nested limit values, and invalid numeric fields.
+    """
+    # 55 region snapshots with long canonical roi_ids and invalid numeric fields
     many_regions = []
     for i in range(1, 56):
+        long_roi_id = f"canonical_site_{i:03d}_" + ("Z" * 210)
         many_regions.append({
-            "site_id": f"site_{i:03d}",
-            "inspection_status": "ACCEPTABLE" if i % 2 == 0 else "DEFECTIVE",
+            "roi_id": long_roi_id,
             "current_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 2500.0 + i,
                 "equivalent_diameter_px": 56.4,
-                "coverage_ratio": 0.95,
+                "coverage_ratio": {"nested": "dict_is_invalid"} if i == 1 else 0.95,
+                "aspect_ratio": [1, 2, 3] if i == 2 else 1.05,
+                "has_bubbles": False,
             },
             "reference_measurements": None,
         })
+
+    # More than 50 affected IDs (60 IDs), each long (>200 chars)
+    sixty_affected_ids = [
+        f"affected_roi_{j:03d}_" + ("Y" * 210)
+        for j in range(1, 61)
+    ]
 
     long_str = "LongString<script>alert('xss')</script>&test" + ("A" * 250)
 
@@ -907,14 +952,19 @@ def test_pdf_report_truncation_limits_and_escaping(tracked_cases: list[str]):
             "source": "IMAGE",
             "metadata": {
                 "region_evidence_scope": "individual_regions",
-                "affected_roi_ids": [f"site_{i:03d}"],
-                "applied_limits": {"target_area_px": 2500.0},
+                "affected_roi_ids": sixty_affected_ids if i == 1 else [f"site_{i:03d}"],
+                "applied_limits": {
+                    "target_area_px": 2500.0,
+                    "min_coverage_ratio": {"nested": "invalid_limit"},
+                    "max_aspect_ratio": "toolong_limit_val_" + ("X" * 250),
+                    "unknown_non_allowlist_limit": 999.0,
+                } if i == 1 else {"target_area_px": 2500.0},
                 "region_evidence": many_regions if i == 1 else [],
             },
         })
 
     create_payload = {
-        "description": "Stress test case for PDF limits: 25 observations, 55 regions, long string with tags",
+        "description": "Stress test case for PDF limits: 25 observations, 55 regions, >50 affected IDs, long strings",
         "material": "solder_paste",
         "method": "jetting",
         "defect_code": "D01_TOO_LITTLE",
@@ -926,12 +976,22 @@ def test_pdf_report_truncation_limits_and_escaping(tracked_cases: list[str]):
     case_id = create_resp.json()["case_id"]
     tracked_cases.append(case_id)
 
+    # 1. Assert JSON report remains unchanged and lossless
+    json_resp = client.get(f"/api/v1/cases/{case_id}/report")
+    assert json_resp.status_code == 200
+    json_data = json_resp.json()
+    assert len(json_data["image_observations"]) == 25
+    first_obs_json = json_data["image_observations"][0]
+    assert len(first_obs_json["metadata"]["affected_roi_ids"]) == 60
+    assert len(first_obs_json["metadata"]["region_evidence"]) == 55
+    assert first_obs_json["metadata"]["applied_limits"]["unknown_non_allowlist_limit"] == 999.0
+
+    # 2. Assert PDF generates cleanly without LayoutError and spans multiple pages
     resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
     assert resp.status_code == 200
     assert resp.headers["Content-Type"] == "application/pdf"
 
     reader = pypdf.PdfReader(io.BytesIO(resp.content))
-    # Must span multiple pages cleanly
     assert len(reader.pages) >= 2, f"Expected >= 2 pages, got {len(reader.pages)}"
 
     extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
@@ -941,9 +1001,107 @@ def test_pdf_report_truncation_limits_and_escaping(tracked_cases: list[str]):
 
     # Check 50-region bound notice (55 - 50 = 5 omitted)
     assert "(5 omitted). Omission does not imply unlisted sites passed." in extracted_text
-    assert "site_050" in extracted_text
-    assert "site_051" not in extracted_text  # 51st site omitted from PDF
+
+    # Check >50 affected-ID bound notice (60 - 20 = 40 omitted)
+    assert "(40 omitted. Omission does not imply unlisted sites passed.)" in extracted_text
 
     # Check 20-observation bound notice (25 - 20 = 5 omitted)
     assert "Display bounded to first 20 observations" in extracted_text
     assert "(5 omitted). Omission does not imply unlisted observations passed." in extracted_text
+
+    # Check invalid measurement and limit scalars rendered as unavailable
+    assert "unavailable" in extracted_text
+
+    # Check unknown limit was excluded from allowlisted PDF display
+    assert "unknown_non_allowlist_limit" not in extracted_text
+
+
+def test_real_image_analysis_to_case_to_report_and_pdf(tracked_cases: list[str]):
+    """Verify an actual _sync_analyze_image result persists into a case and produces
+    truthful, lossless JSON and downloadable PDF reports verifying the producer contract.
+    """
+    from app.api.images import _sync_analyze_image
+    from app.schemas.image import AnalysisProfile, ImageAnalysisMode, NormalizedROI, ProcessLimits
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # Generate synthetic image with two distinct deposits
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 15)],
+    )
+    profile = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[
+            NormalizedROI(roi_id="site_alpha", x=0.0, y=0.0, width=0.5, height=1.0),
+            NormalizedROI(roi_id="site_beta", x=0.5, y=0.0, width=0.5, height=1.0),
+        ],
+        process_limits=ProcessLimits(min_coverage_ratio=0.10),
+    )
+
+    analysis_res = _sync_analyze_image(file_bytes=img_bytes, profile=profile)
+    assert len(analysis_res.observations) >= 1
+    produced_obs = analysis_res.observations[0]
+    produced_meta = produced_obs.metadata
+
+    # Verify producer contract from DLK-M3-039
+    assert produced_meta["region_evidence_scope"] == "individual_regions"
+    assert "site_alpha" in produced_meta["affected_roi_ids"]
+    assert "site_beta" in produced_meta["affected_roi_ids"]
+    assert len(produced_meta["region_evidence"]) == 2
+    assert produced_meta["region_evidence"][0]["roi_id"] == "site_alpha"
+    assert produced_meta["region_evidence"][0]["current_measurements"]["inspection_status"] == "DETECTED"
+
+    # Create durable case using the produced observation
+    case_payload = {
+        "description": "Real image analysis end-to-end report verification",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": (
+                    produced_obs.observation_type.value
+                    if hasattr(produced_obs.observation_type, "value")
+                    else str(produced_obs.observation_type)
+                ),
+                "value": produced_obs.value,
+                "original_text": produced_obs.original_text,
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "confidence": produced_obs.confidence,
+                "metadata": produced_meta,
+            }
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=case_payload)
+    assert create_resp.status_code == 201
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    # 1. Verify JSON report round-trip
+    json_resp = client.get(f"/api/v1/cases/{case_id}/report")
+    assert json_resp.status_code == 200
+    report_json = json_resp.json()
+    assert len(report_json["image_observations"]) == 1
+    retrieved_obs = report_json["image_observations"][0]
+    assert retrieved_obs["source"] == "IMAGE"
+    assert retrieved_obs["metadata"]["region_evidence_scope"] == "individual_regions"
+    assert len(retrieved_obs["metadata"]["region_evidence"]) == 2
+    assert retrieved_obs["metadata"]["region_evidence"][0]["roi_id"] == "site_alpha"
+    assert retrieved_obs["metadata"]["region_evidence"][1]["roi_id"] == "site_beta"
+
+    # 2. Verify PDF generation and contents
+    pdf_resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.headers["Content-Type"] == "application/pdf"
+
+    reader = pypdf.PdfReader(io.BytesIO(pdf_resp.content))
+    assert len(reader.pages) >= 1
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert "8. Image Inspection Evidence" in extracted_text
+    assert "site_alpha" in extracted_text
+    assert "site_beta" in extracted_text
+    assert "DETECTED" in extracted_text
+    assert "min_coverage_ratio: 0.1" in extracted_text or "0.10" in extracted_text
+    assert "individual_regions (Individual region defect findings)" in extracted_text

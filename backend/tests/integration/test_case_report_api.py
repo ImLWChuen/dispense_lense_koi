@@ -539,9 +539,9 @@ def test_report_exposes_persisted_image_observations_with_region_evidence(tracke
     """Verify GET /cases/{id}/report exposes persisted image observations and region evidence snapshots."""
     region_evidence_payload = [
         {
-            "site_id": "site_01",
-            "inspection_status": "DEFECTIVE",
+            "roi_id": "site_01",
             "current_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 1750.5,
                 "equivalent_diameter_px": 47.21,
                 "calibrated_diameter_mm": 0.472,
@@ -558,18 +558,27 @@ def test_report_exposes_persisted_image_observations_with_region_evidence(tracke
                 "target_area_px": 2500.0,
             },
             "reference_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 2500.0,
                 "equivalent_diameter_px": 56.42,
                 "calibrated_diameter_mm": 0.564,
                 "coverage_ratio": 1.0,
                 "overflow_ratio": 0.0,
-                "inspection_status": "ACCEPTABLE",
+                "circularity": 0.98,
+                "solidity": 0.98,
+                "convexity": 0.98,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.98,
+                "target_area_px": 2500.0,
             },
         },
         {
-            "site_id": "site_02",
-            "inspection_status": "ACCEPTABLE",
+            "roi_id": "site_02",
             "current_measurements": {
+                "inspection_status": "DETECTED",
                 "deposit_area_px": 2490.0,
                 "equivalent_diameter_px": 56.31,
                 "calibrated_diameter_mm": None,
@@ -583,6 +592,7 @@ def test_report_exposes_persisted_image_observations_with_region_evidence(tracke
                 "bubble_count": 0,
                 "has_bubbles": False,
                 "segmentation_quality": 0.98,
+                "target_area_px": 2500.0,
             },
             "reference_measurements": None,
         },
@@ -655,16 +665,17 @@ def test_report_exposes_persisted_image_observations_with_region_evidence(tracke
 
     # Site 1
     s1 = meta["region_evidence"][0]
-    assert s1["site_id"] == "site_01"
-    assert s1["inspection_status"] == "DEFECTIVE"
+    assert s1["roi_id"] == "site_01"
+    assert s1["current_measurements"]["inspection_status"] == "DETECTED"
     assert s1["current_measurements"]["deposit_area_px"] == 1750.5
     assert s1["current_measurements"]["calibrated_diameter_mm"] == 0.472
     assert s1["reference_measurements"]["deposit_area_px"] == 2500.0
+    assert s1["reference_measurements"]["inspection_status"] == "DETECTED"
 
     # Site 2
     s2 = meta["region_evidence"][1]
-    assert s2["site_id"] == "site_02"
-    assert s2["inspection_status"] == "ACCEPTABLE"
+    assert s2["roi_id"] == "site_02"
+    assert s2["current_measurements"]["inspection_status"] == "DETECTED"
     assert s2["reference_measurements"] is None
 
 
