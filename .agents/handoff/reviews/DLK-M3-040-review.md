@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-040
-reviewed_commit: 9a8e2a53270e61d7060a6342d0ee6f25a7abdf1a
+reviewed_commit: e7ce38392e2e3dfb619f8b0441401a2aa3996ae3
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -9,7 +9,21 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes requested. The additive report field and revision-filtered persisted observation projection are sound, but PDF bounding and unknown/malformed evidence handling do not meet the task contract.
+Changes still requested after correction e7ce383. The main R1/R2 issues are addressed: affected IDs and limits are chunked, nonnumeric measurements are marked unavailable, missing scope is unknown, canonical ROI/status fields are used, reference has_bubbles is displayed, and a real producer-to-report test was added. Remaining malformed-value crash paths are recorded as R3 below.
+
+## Correction review of e7ce383
+
+- Gemini reports 38 focused tests and 599 full backend tests passed on the correction, task validation VALID, and whitespace checks clean. Reviewer inspected code/tests and independently checked committed whitespace; did not rerun tests.
+- New stress coverage includes long canonical ROI IDs, 60 affected IDs, nested invalid measurement/limit values, and JSON preservation. Producer-to-case-to-report coverage now uses actual synthetic image analysis.
+- R1/R2 historical findings below are substantially resolved; final acceptance is blocked by R3.
+
+### R3 — P2: Some malformed JSON values still crash PDF rendering
+
+In pdf_generator.py lines 1159 and 1196, membership testing raw_status/ref_raw_status against a frozenset happens before checking the value is a string. Persisted JSON such as inspection_status: [] or inspection_status: {} raises TypeError (unhashable type), rather than rendering UNKNOWN. Both current and reference branches are affected.
+
+Numeric checks at lines 118, 991, 1167, and 1204 call math.isfinite on arbitrary JSON integers. An integer such as 10**400 cannot convert to a float and raises OverflowError. Such metadata is not rejected by the observation metadata dictionary contract. This bypasses the intended unavailable fallback and can make the PDF endpoint return 500.
+
+Guard status types before set membership. Centralize exception-safe finite-number validation for measurement, limit, and physical-diameter paths; preserve unavailable/unknown semantics and bound numeric display if needed. Add API-level regressions for current/reference list/dict statuses and oversized integer values in both measurement and applied-limit fields. Verify PDF success and neutral notices while JSON preserves the original metadata. Rerun focused/full checks on corrected code and record actual results.
 
 ## Acceptance evidence
 
@@ -18,7 +32,7 @@ Changes requested. The additive report field and revision-filtered persisted obs
 - Current stress tests bound region_evidence but supply only one short affected ID per observation; malformed tests check wrong outer container types but not invalid scalar values inside measurement dictionaries.
 - Visual rendering was not performed, as explicitly reported by Gemini. That permitted limitation is not itself a blocking finding.
 
-## Findings
+## Historical findings from 9a8e2a5
 
 ### R1 — P2: Unbounded metadata still enters unsplittable PDF cells
 
@@ -34,4 +48,4 @@ Render missing/unknown scope as not recorded/unknown, read canonical roi_id and 
 
 ## Follow-up
 
-Gemini should correct R1/R2 within the existing DLK-M3-040 scope, rerun focused/full checks on final corrected code, update the implementation report and queue, and commit locally. No next feature task, push, PR, or merge is authorized. Preserve unrelated files.
+Gemini should complete R3 within the existing DLK-M3-040 scope, rerun focused/full checks on final corrected code, update the implementation report and queue, and commit locally. No next feature task, push, PR, or merge is authorized. Preserve unrelated files.

@@ -1105,3 +1105,121 @@ def test_real_image_analysis_to_case_to_report_and_pdf(tracked_cases: list[str])
     assert "DETECTED" in extracted_text
     assert "min_coverage_ratio: 0.1" in extracted_text or "0.10" in extracted_text
     assert "individual_regions (Individual region defect findings)" in extracted_text
+
+
+def test_pdf_report_unhashable_statuses_and_oversized_integers(tracked_cases: list[str]):
+    """Verify that unhashable inspection statuses (list, dict) render as UNKNOWN,
+    oversized integers (e.g. 10**400) in measurements and applied limits render as unavailable
+    without raising TypeError or OverflowError, and JSON report preserves original metadata losslessly.
+    """
+    create_payload = {
+        "description": "Case with unhashable statuses and oversized integer values",
+        "material": "solder_paste",
+        "method": "jetting",
+        "defect_code": "D01_TOO_LITTLE",
+        "observations": [
+            {
+                "observation_type": "deposit_size",
+                "value": "undersized",
+                "statement_type": "AI_INFERENCE",
+                "source": "IMAGE",
+                "metadata": {
+                    "region_evidence_scope": "individual_regions",
+                    "affected_roi_ids": ["site_unhashable_01", "site_unhashable_02"],
+                    "applied_limits": {
+                        "target_area_px": 10**400,
+                        "min_coverage_ratio": 10**400,
+                        "max_aspect_ratio": 10**400,
+                    },
+                    "region_evidence": [
+                        {
+                            "roi_id": "site_unhashable_01",
+                            "current_measurements": {
+                                "inspection_status": ["unhashable_list_status"],
+                                "deposit_area_px": 10**400,
+                                "equivalent_diameter_px": 10**400,
+                                "calibrated_diameter_mm": 10**400,
+                                "coverage_ratio": 10**400,
+                                "overflow_ratio": 10**400,
+                                "circularity": 10**400,
+                                "solidity": 10**400,
+                                "convexity": 10**400,
+                                "aspect_ratio": 10**400,
+                                "hole_void_ratio": 10**400,
+                                "bubble_count": 10**400,
+                                "has_bubbles": False,
+                                "segmentation_quality": 10**400,
+                                "target_area_px": 10**400,
+                            },
+                            "reference_measurements": {
+                                "inspection_status": {"unhashable": "dict_status"},
+                                "deposit_area_px": 10**400,
+                                "equivalent_diameter_px": 10**400,
+                                "calibrated_diameter_mm": 10**400,
+                                "coverage_ratio": 10**400,
+                                "overflow_ratio": 10**400,
+                                "circularity": 10**400,
+                                "solidity": 10**400,
+                                "convexity": 10**400,
+                                "aspect_ratio": 10**400,
+                                "hole_void_ratio": 10**400,
+                                "bubble_count": 10**400,
+                                "has_bubbles": False,
+                                "segmentation_quality": 10**400,
+                                "target_area_px": 10**400,
+                            },
+                        },
+                        {
+                            "roi_id": "site_unhashable_02",
+                            "current_measurements": {
+                                "inspection_status": {"current_unhashable": "dict_val"},
+                                "deposit_area_px": 2500.0,
+                            },
+                            "reference_measurements": {
+                                "inspection_status": ["reference_unhashable_list"],
+                                "deposit_area_px": 2500.0,
+                            },
+                        },
+                    ],
+                },
+            }
+        ],
+    }
+
+    create_resp = client.post("/api/v1/cases", json=create_payload)
+    assert create_resp.status_code == 201, f"Failed to create case: {create_resp.text}"
+    case_id = create_resp.json()["case_id"]
+    tracked_cases.append(case_id)
+
+    # 1. Assert JSON report round-trip retains exact metadata losslessly
+    json_resp = client.get(f"/api/v1/cases/{case_id}/report")
+    assert json_resp.status_code == 200
+    report_json = json_resp.json()
+    obs = report_json["image_observations"][0]
+    reg0 = obs["metadata"]["region_evidence"][0]
+    assert reg0["current_measurements"]["inspection_status"] == ["unhashable_list_status"]
+    assert reg0["reference_measurements"]["inspection_status"] == {"unhashable": "dict_status"}
+    assert reg0["current_measurements"]["coverage_ratio"] == 10**400
+    assert reg0["current_measurements"]["calibrated_diameter_mm"] == 10**400
+    assert obs["metadata"]["applied_limits"]["target_area_px"] == 10**400
+    assert obs["metadata"]["applied_limits"]["min_coverage_ratio"] == 10**400
+
+    # 2. Assert PDF report succeeds (status 200, valid PDF, no 500)
+    pdf_resp = client.get(f"/api/v1/cases/{case_id}/report.pdf")
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.headers["Content-Type"] == "application/pdf"
+
+    reader = pypdf.PdfReader(io.BytesIO(pdf_resp.content))
+    assert len(reader.pages) >= 1
+    extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    import re
+
+    # Verify UNKNOWN rendered for unhashable statuses
+    assert "UNKNOWN" in extracted_text
+
+    # Verify unavailable rendered for oversized integer measurements and applied limits
+    assert "unavailable" in extracted_text
+    assert re.search(r"target_area_px:\s*unavailable", extracted_text) is not None
+    assert re.search(r"min_coverage_ratio:\s*unavailable", extracted_text) is not None
+    assert re.search(r"max_aspect_ratio:\s*unavailable", extracted_text) is not None

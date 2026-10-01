@@ -134,14 +134,14 @@ PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read mo
 
 - `backend/app/schemas/case.py`: Added additive field `image_observations: list[CaseObservationResponse] = Field(default_factory=list)` to `CaseReportResponse`.
 - `backend/app/services/reporting/report_generator.py`: Added `_map_observation` and `_get_obs_metadata` mapping functions; populated `image_observations` in `build_case_report` using `repository.get_case_observations(case_id, max_revision=effective_revision)`.
-- `backend/app/services/reporting/pdf_generator.py`: Implemented Section 8 ("8. Image Inspection Evidence") with split-safe rows, affected-ID bounding with omission notices, allowlisted limit names with finite scalar validation, strict `_fmt_num` and `_fmt_bool` treating invalid scalars as `unavailable`, canonical `roi_id` and nested `inspection_status` validation, missing scope preserved as `Not recorded or unknown`, and reference `has_bubbles` display.
-- `backend/tests/unit/test_report_generator.py`: Updated fixtures and assertions to use canonical `roi_id` and nested `inspection_status` (`DETECTED`).
+- `backend/app/services/reporting/pdf_generator.py`: Implemented Section 8 ("8. Image Inspection Evidence") with split-safe rows, affected-ID bounding with omission notices, allowlisted limit names with finite scalar validation, strict `_fmt_num` and `_fmt_bool` treating invalid scalars as `unavailable`, canonical `roi_id` and nested `inspection_status` validation, missing scope preserved as `Not recorded or unknown`, reference `has_bubbles` display; and for R3, guarded current/reference status types with `isinstance(..., str)` before set membership, centralized exception-safe `_is_finite_number` catching `(OverflowError, ValueError, TypeError)` on oversized integers (e.g. `10**400`) across measurements, limits, and calibrated diameters, and bounded long formatted numeric strings (>200 chars).
+- `backend/tests/unit/test_report_generator.py`: Updated fixtures and assertions to use canonical `roi_id` and nested `inspection_status` (`DETECTED`); added unit test `test_pdf_numeric_formatting_helpers_and_finite_checks` verifying `_is_finite_number` and `_fmt_num`.
 - `backend/tests/integration/test_case_report_api.py`: Updated fixtures and assertions to use canonical `roi_id` and nested `inspection_status`.
-- `backend/tests/integration/test_case_report_pdf_api.py`: Updated positive PDF test to canonical contract; added negative tests for missing scope, conflicting aliases, invalid status, and malformed scalar fields; updated stress test combining 50 long canonical ROI IDs, 60 affected IDs, nested limits, and invalid numeric fields; added real `_sync_analyze_image`-to-case-to-JSON/PDF scenario (`test_real_image_analysis_to_case_to_report_and_pdf`).
+- `backend/tests/integration/test_case_report_pdf_api.py`: Updated positive PDF test to canonical contract; added negative tests for missing scope, conflicting aliases, invalid status, and malformed scalar fields; updated stress test combining 50 long canonical ROI IDs, 60 affected IDs, nested limits, and invalid numeric fields; added real `_sync_analyze_image`-to-case-to-JSON/PDF scenario (`test_real_image_analysis_to_case_to_report_and_pdf`); added R3 regression `test_pdf_report_unhashable_statuses_and_oversized_integers` verifying list/dict statuses render as `UNKNOWN`, oversized integers (`10**400`) render as `unavailable`, and JSON report preserves original metadata losslessly.
 - `docs/api/api-spec.md`: Documented `image_observations` in `CaseReportResponse` specification, updated example response, and updated Section 10 PDF rendered document structure.
 - `docs/architecture/region-inspection-improvement-plan.md`: Added Phase 4 progress note for DLK-M3-040.
 - `.agents/handoff/QUEUE.md`: Updated DLK-M3-040 status to `**implemented**`.
-- `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`: Updated status, checked acceptance criteria, recorded verification evidence and R1/R2 resolution.
+- `.agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`: Updated status, checked acceptance criteria, recorded verification evidence and R1/R2/R3 resolutions.
 - `.agents/handoff/reviews/DLK-M3-039-review.md`: Included accepted prerequisite review unchanged.
 
 ### Decisions made
@@ -150,15 +150,16 @@ PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read mo
 - Retained strict backward compatibility for `CaseReportResponse`: defaults `image_observations` to `[]`, contains no alias, and satisfies `extra="forbid"`.
 - Formatted PDF Section 8 using split-friendly chunked tables (`[270, 270]` pt observation summary and `[75, 55, 210, 200]` pt region table totaling 540 pt printable width on letter page with 36 pt margins) allowing clean multi-page document pagination without ReportLab `LayoutError`.
 - Enforced bounding at 20 observations, 20 affected sites (chunked 4/row), 50 regions, and 200 characters per user string with visible notices to ensure stable rendering regardless of input data scale.
+- Centralized `_is_finite_number` to safely catch `(OverflowError, ValueError, TypeError)` on arbitrary precision JSON numbers (such as `10**400`), ensuring PDF rendering never fails with 500 when encountering unhashable or oversized numeric metadata.
 
 ### Verification results
 
 - Focused test suite:
   `$env:TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"; & .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_report_generator.py backend/tests/integration/test_case_report_api.py backend/tests/integration/test_case_report_pdf_api.py -q --basetemp=backend/.task040-focused -p no:cacheprovider`
-  Result: 38 passed, 13 warnings in 18.42s.
+  Result: 40 passed, 13 warnings in 14.58s.
 - Full backend test suite:
   `$env:TEST_DATABASE_URL="postgresql+psycopg://dispenselens_user:dispenselens_dev_password@localhost:5432/dispenselens_test"; & .\backend\.venv\Scripts\python.exe -m pytest backend/tests -q --basetemp=backend/.task040-full -p no:cacheprovider`
-  Result: 599 passed, 42 warnings in 63.40s.
+  Result: 601 passed, 42 warnings in 61.95s.
 - Task validation:
   `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-040-region-evidence-case-reports.md`
   Result: VALID.
@@ -173,6 +174,6 @@ PDF Section 8 renders exclusively from the supplied `CaseReportResponse` read mo
 
 ### Proposed commit message
 
-`fix(reports): correct region evidence display bounding and canonical inspection semantics`
+`fix(reports): guard status types and centralize exception-safe numeric validation`
 
 Record the resulting commit hash in the completion message.

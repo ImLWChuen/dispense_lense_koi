@@ -617,3 +617,32 @@ def test_build_case_report_image_observations_legacy_and_empty_metadata():
     assert len(report.image_observations) == 1
     assert report.image_observations[0].id == "obs_legacy"
     assert report.image_observations[0].metadata == {}
+
+
+def test_pdf_numeric_formatting_helpers_and_finite_checks():
+    """Verify exception-safe finite number validation and numeric formatting."""
+    from app.services.reporting.pdf_generator import _fmt_num, _is_finite_number
+
+    assert _is_finite_number(42) is True
+    assert _is_finite_number(3.1415) is True
+    assert _is_finite_number(0) is True
+    assert _is_finite_number(0.0) is True
+    assert _is_finite_number(True) is False
+    assert _is_finite_number(False) is False
+    assert _is_finite_number(float("nan")) is False
+    assert _is_finite_number(float("inf")) is False
+    assert _is_finite_number(float("-inf")) is False
+    assert _is_finite_number("123") is False
+    assert _is_finite_number([1, 2]) is False
+    assert _is_finite_number({"val": 1}) is False
+    assert _is_finite_number(None) is False
+    # Oversized integer beyond float conversion
+    assert _is_finite_number(10**400) is False
+    assert _is_finite_number(-(10**400)) is False
+
+    assert _fmt_num(None) == "-"
+    assert _fmt_num("invalid") == "unavailable"
+    assert _fmt_num(True) == "unavailable"
+    assert _fmt_num(10**400) == "unavailable"
+    assert _fmt_num(42) == "42"
+    assert _fmt_num(3.14159) == "3.1416"

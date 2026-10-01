@@ -111,15 +111,29 @@ def _truncate_str(val: Any, max_len: int = 200) -> str:
     return html.escape(s) if s else "-"
 
 
+def _is_finite_number(val: Any) -> bool:
+    """Exception-safe check whether val is a finite int or float."""
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return False
+    try:
+        f = float(val)
+        return math.isfinite(f)
+    except (OverflowError, ValueError, TypeError):
+        return False
+
+
 def _fmt_num(val: Any) -> str:
     """Format numeric values cleanly, '-' if None, or 'unavailable' if invalid scalar."""
     if val is None:
         return "-"
-    if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+    if not _is_finite_number(val):
         return "unavailable"
     if isinstance(val, float):
         return f"{val:.4f}".rstrip("0").rstrip(".") if abs(val) < 10 else f"{val:.2f}"
-    return str(val)
+    s = str(val)
+    if len(s) > 200:
+        return f"{s[:200]} <font color='#b45309'>[truncated (exceeds 200 chars)]</font>"
+    return s
 
 
 def _fmt_bool(val: Any) -> str:
@@ -987,11 +1001,8 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                         v_str = "-"
                     elif isinstance(v, bool):
                         v_str = "True" if v else "False"
-                    elif isinstance(v, (int, float)):
-                        if math.isfinite(v):
-                            v_str = _fmt_num(v)
-                        else:
-                            v_str = "unavailable"
+                    elif _is_finite_number(v):
+                        v_str = _fmt_num(v)
                     else:
                         v_str = "unavailable"
                     limit_items.append(f"{_escape(k)}: {v_str}")
@@ -1156,7 +1167,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                 else:
                     # Read nested inspection_status strictly from curr_m and validate against enum
                     raw_status = curr_m.get("inspection_status")
-                    if raw_status in ALLOWED_INSPECTION_STATUSES:
+                    if isinstance(raw_status, str) and raw_status in ALLOWED_INSPECTION_STATUSES:
                         curr_status = raw_status
                     else:
                         curr_status = "UNKNOWN"
@@ -1164,8 +1175,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                     cal_d = curr_m.get("calibrated_diameter_mm")
                     if cal_d is None:
                         cal_d_str = "Not recorded"
-                    elif not isinstance(cal_d, bool) and isinstance(cal_d, (int, float)) and math.isfinite(cal_d):
-                        cal_d_str = f"{cal_d:.3f} mm"
+                    elif _is_finite_number(cal_d):
+                        raw_cal_str = f"{float(cal_d):.3f} mm"
+                        if len(raw_cal_str) > 200:
+                            cal_d_str = f"{raw_cal_str[:200]} <font color='#b45309'>[truncated (exceeds 200 chars)]</font>"
+                        else:
+                            cal_d_str = raw_cal_str
                     else:
                         cal_d_str = "unavailable"
 
@@ -1193,7 +1208,7 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                     ref_text = "Malformed reference measurement data."
                 else:
                     ref_raw_status = ref_m.get("inspection_status")
-                    if ref_raw_status in ALLOWED_INSPECTION_STATUSES:
+                    if isinstance(ref_raw_status, str) and ref_raw_status in ALLOWED_INSPECTION_STATUSES:
                         ref_status_str = ref_raw_status
                     else:
                         ref_status_str = "UNKNOWN"
@@ -1201,8 +1216,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
                     ref_cal_d = ref_m.get("calibrated_diameter_mm")
                     if ref_cal_d is None:
                         ref_cal_str = "Not recorded"
-                    elif not isinstance(ref_cal_d, bool) and isinstance(ref_cal_d, (int, float)) and math.isfinite(ref_cal_d):
-                        ref_cal_str = f"{ref_cal_d:.3f} mm"
+                    elif _is_finite_number(ref_cal_d):
+                        raw_ref_cal_str = f"{float(ref_cal_d):.3f} mm"
+                        if len(raw_ref_cal_str) > 200:
+                            ref_cal_str = f"{raw_ref_cal_str[:200]} <font color='#b45309'>[truncated (exceeds 200 chars)]</font>"
+                        else:
+                            ref_cal_str = raw_ref_cal_str
                     else:
                         ref_cal_str = "unavailable"
 
