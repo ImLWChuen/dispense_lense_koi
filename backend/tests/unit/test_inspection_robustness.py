@@ -17,9 +17,11 @@ Verifies:
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -978,3 +980,184 @@ def test_summary_cli_end_to_end(
 
     # Verify absence of static scenario text
     assert "Optical Defocus / Blur Blindspot (Cases 02 & 03)" not in md_content
+
+
+@pytest.fixture(scope="module")
+def valid_dataset_and_report(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, dict[str, Any]]:
+    """Generates and evaluates the robustness dataset once for module-level CLI regression checks."""
+    base_dir = tmp_path_factory.mktemp("base_dataset")
+    manifest_path = generate_robustness_dataset(base_dir / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, base_dir / "dataset")
+    return manifest_path, report
+
+
+@pytest.mark.parametrize(
+    "corrupt_type,corrupt_val",
+    [
+        ("inconsistent", 0.25),
+        ("missing", "__MISSING__"),
+        ("string", "0.25"),
+        ("boolean_true", True),
+        ("boolean_false", False),
+        ("out_of_range_low", -0.1),
+        ("out_of_range_high", 1.5),
+        ("nonfinite_nan", float("nan")),
+        ("nonfinite_inf", float("inf")),
+    ],
+)
+def test_summary_cli_rejects_status_accuracy_rate_corruptions(
+    valid_dataset_and_report: tuple[Path, dict[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    corrupt_type: str,
+    corrupt_val: Any,
+) -> None:
+    """Verifies CLI cleanly rejects status_accuracy rate corruptions (inconsistent, missing, string, bool, out-of-range, nonfinite)."""
+    manifest_path, base_report = valid_dataset_and_report
+    report = copy.deepcopy(base_report)
+
+    if corrupt_val == "__MISSING__":
+        del report["summary"]["status_accuracy"]["rate"]
+    else:
+        report["summary"]["status_accuracy"]["rate"] = corrupt_val
+
+    report_path = tmp_path / "corrupted_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert str(tmp_path) not in captured.err
+
+
+@pytest.mark.parametrize(
+    "corrupt_type,corrupt_val",
+    [
+        ("inconsistent", 0.99),
+        ("missing", "__MISSING__"),
+        ("string", "0.50"),
+        ("boolean_true", True),
+        ("boolean_false", False),
+        ("out_of_range_low", -0.01),
+        ("out_of_range_high", 2.0),
+        ("nonfinite_nan", float("nan")),
+        ("nonfinite_inf", float("inf")),
+    ],
+)
+def test_summary_cli_rejects_abstention_rate_corruptions(
+    valid_dataset_and_report: tuple[Path, dict[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    corrupt_type: str,
+    corrupt_val: Any,
+) -> None:
+    """Verifies CLI cleanly rejects abstention_rate rate corruptions (inconsistent, missing, string, bool, out-of-range, nonfinite)."""
+    manifest_path, base_report = valid_dataset_and_report
+    report = copy.deepcopy(base_report)
+
+    if corrupt_val == "__MISSING__":
+        del report["summary"]["abstention_rate"]["rate"]
+    else:
+        report["summary"]["abstention_rate"]["rate"] = corrupt_val
+
+    report_path = tmp_path / "corrupted_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert str(tmp_path) not in captured.err
+
+
+@pytest.mark.parametrize(
+    "corrupt_type,corrupt_val",
+    [
+        ("inconsistent", 0.75),
+        ("missing", "__MISSING__"),
+        ("string", "0.00"),
+        ("boolean_true", True),
+        ("boolean_false", False),
+        ("out_of_range_low", -1.0),
+        ("out_of_range_high", 1.2),
+        ("nonfinite_nan", float("nan")),
+        ("nonfinite_inf", float("inf")),
+    ],
+)
+def test_summary_cli_rejects_false_missing_rate_corruptions(
+    valid_dataset_and_report: tuple[Path, dict[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    corrupt_type: str,
+    corrupt_val: Any,
+) -> None:
+    """Verifies CLI cleanly rejects false_missing_rate rate corruptions (inconsistent, missing, string, bool, out-of-range, nonfinite)."""
+    manifest_path, base_report = valid_dataset_and_report
+    report = copy.deepcopy(base_report)
+
+    if corrupt_val == "__MISSING__":
+        del report["summary"]["false_missing_rate"]["rate"]
+    else:
+        report["summary"]["false_missing_rate"]["rate"] = corrupt_val
+
+    report_path = tmp_path / "corrupted_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert str(tmp_path) not in captured.err
+
+
+def test_generate_markdown_summary_derives_percentages_from_canonical_metrics(
+    valid_dataset_and_report: tuple[Path, dict[str, Any]],
+) -> None:
+    """Verifies that generate_markdown_summary derives all percentages from canonical recomputed metrics."""
+    manifest_path, report = valid_dataset_and_report
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+
+    md = generate_markdown_summary(manifest, report)
+
+    # Recomputed metrics for the 14-case matrix:
+    # 6 labeled control sites, all matched -> 100.0% (6/6)
+    # 8/28 sites unassessed -> 28.6% (8/28)
+    # 0/4 non-missing labeled controls misclassified as missing -> 0.0% (0/4)
+    assert "**100.0% (6/6)**" in md
+    assert "**28.6% (8/28)**" in md
+    assert "**0.0% (0/4)**" in md
+    assert "All 6 labeled control sites matched ground truth" in md
+    assert "8/28 total sites flagged UNASSESSED by quality gates" in md
+    assert "0/4 non-missing labeled control sites misclassified as MISSING" in md

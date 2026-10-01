@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-045
-reviewed_commit: 055e48b3c34dd085a67c63a96715b26255b1b348
+reviewed_commit: ce34c7db0b91141be69279df60cb4be35966473a
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -8,6 +8,18 @@ reviewed_by: ChatGPT planner/reviewer
 # Review: DLK-M3-045
 
 ## Decision
+
+Follow-up at ce34c7db0b91141be69279df60cb4be35966473a: changes requested for one remaining R3 metric-integrity gap. R1 failure classification is resolved; R2 remains resolved. Exact ROI membership, malformed-report handling and count consistency checks address the previous structural findings. Gemini reports 66 focused tests passing; reviewer inspected the implementation and tests without rerunning them under the planner/executor separation. Committed whitespace check passes.
+
+### R3 remaining — P2: Derive or validate the percentages actually rendered
+
+In backend/tests/inspection_robustness_summary.py:232–263, validate_identities compares status_accuracy, abstention_rate and false_missing_rate numerators/denominators with compute_dataset_metrics, but never checks their rate fields. generate_markdown_summary at lines 406–427 still formats rates from the original report. Consequently changing only status_accuracy.rate to 0.25 while retaining matching 6/6 counts passes these checks and renders 25.0% (6/6). The same gap affects abstention and false-missing rates; out-of-range or nonfinite numeric values can also become misleading displayed percentages. The contradictory-summary regression changes successful_cases only and does not cover this path. This finding follows from source inspection, not an independently executed reproduction.
+
+Use canonical recomputed metrics for every displayed count/percentage, or validate all consumed rates as finite numeric non-boolean values consistent with recomputed metrics and the evaluator's zero-denominator semantics. Do not silently default a missing rate to zero. Add CLI regression cases changing only each of these three rate fields, including missing, string, boolean, out-of-range and nonfinite values. Require either safe rejection (nonzero exit, no traceback/private marker, no output publication) or a clearly consistent policy of rendering canonical recomputed values; valid evaluator reports must remain supported. Continue DLK-M3-045 only, rerun its focused checks and update its implementation report. No production changes or new task packet.
+
+Completion remains manual-region prototype 90–95%, full roadmap 65–75%; these are scope estimates, not measured real-image accuracy. Review and queue edits remain uncommitted for Gemini's next local commit. No remote Git operations performed.
+
+## Historical first follow-up
 
 Follow-up at 055e48b3c34dd085a67c63a96715b26255b1b348: R2 is resolved with corrected runtime/measurement values, qualified conclusions and recorded fixture inspection. Hardcoded scenario narratives were removed and safe publication is reused. Gemini reports 57 focused tests passing; reviewer inspected code/evidence without rerunning tests. Committed whitespace check passes. Two bounded R1/R3 gaps remain.
 

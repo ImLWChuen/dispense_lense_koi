@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import uuid
@@ -228,6 +229,23 @@ def validate_identities(
         if r_sc.get(k) != e_sc.get(k):
             raise IdentityMismatchError(f"Report site_counts '{k}' contradicts individual site records.")
 
+    def _validate_rate_field(
+        metric_name: str,
+        metric_dict: dict[str, Any],
+        expected_rate: float,
+    ) -> None:
+        if "rate" not in metric_dict:
+            raise IdentityMismatchError(f"Report {metric_name} missing 'rate' field.")
+        val = metric_dict["rate"]
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+            raise IdentityMismatchError(f"Report {metric_name} rate must be a finite numeric non-boolean value.")
+        if val < 0.0 or val > 1.0:
+            raise IdentityMismatchError(f"Report {metric_name} rate must be between 0.0 and 1.0.")
+        if abs(val - expected_rate) > 1e-4:
+            raise IdentityMismatchError(
+                f"Report {metric_name} rate ({val}) contradicts recomputed metric rate ({expected_rate})."
+            )
+
     # Check status accuracy
     r_acc = summary.get("status_accuracy")
     e_acc = recomputed["status_accuracy"]
@@ -235,32 +253,44 @@ def validate_identities(
         if r_acc is not None:
             raise IdentityMismatchError("Report status_accuracy must be null when there are no eligible labeled sites.")
     else:
+        if not isinstance(r_acc, dict):
+            raise IdentityMismatchError("Report status_accuracy must be a JSON object.")
         if (
-            not isinstance(r_acc, dict)
+            isinstance(r_acc.get("numerator"), bool)
             or r_acc.get("numerator") != e_acc["numerator"]
+            or isinstance(r_acc.get("denominator"), bool)
             or r_acc.get("denominator") != e_acc["denominator"]
         ):
             raise IdentityMismatchError("Report status_accuracy contradicts labeled site records.")
+        _validate_rate_field("status_accuracy", r_acc, e_acc["rate"])
 
     # Check abstention rate
     r_abs = summary.get("abstention_rate")
     e_abs = recomputed["abstention_rate"]
+    if not isinstance(r_abs, dict):
+        raise IdentityMismatchError("Report abstention_rate must be a JSON object.")
     if (
-        not isinstance(r_abs, dict)
+        isinstance(r_abs.get("numerator"), bool)
         or r_abs.get("numerator") != e_abs["numerator"]
+        or isinstance(r_abs.get("denominator"), bool)
         or r_abs.get("denominator") != e_abs["denominator"]
     ):
         raise IdentityMismatchError("Report abstention_rate contradicts site prediction records.")
+    _validate_rate_field("abstention_rate", r_abs, e_abs["rate"])
 
     # Check false missing rate
     r_fm = summary.get("false_missing_rate")
     e_fm = recomputed["false_missing_rate"]
+    if not isinstance(r_fm, dict):
+        raise IdentityMismatchError("Report false_missing_rate must be a JSON object.")
     if (
-        not isinstance(r_fm, dict)
+        isinstance(r_fm.get("numerator"), bool)
         or r_fm.get("numerator") != e_fm["numerator"]
+        or isinstance(r_fm.get("denominator"), bool)
         or r_fm.get("denominator") != e_fm["denominator"]
     ):
         raise IdentityMismatchError("Report false_missing_rate contradicts ground-truth label records.")
+    _validate_rate_field("false_missing_rate", r_fm, e_fm["rate"])
 
 
 def verify_summary_output_safe(
@@ -398,34 +428,43 @@ def generate_markdown_summary(
     report: dict[str, Any],
 ) -> str:
     """Generate comprehensive Markdown summary from validated manifest and report data."""
-    summary = report["summary"]
     cases = report["cases"]
-    case_counts = summary.get("case_counts", {})
-    site_counts = summary.get("site_counts", {})
+    recomputed = compute_dataset_metrics(cases)
+    case_counts = recomputed["case_counts"]
+    site_counts = recomputed["site_counts"]
 
-    acc = summary.get("status_accuracy")
+    acc = recomputed["status_accuracy"]
     if acc and isinstance(acc, dict) and acc.get("denominator", 0) > 0:
-        acc_str = f"{acc['rate']*100:.1f}% ({acc['numerator']}/{acc['denominator']})"
-        if acc["numerator"] == acc["denominator"]:
-            acc_meaning = f"All {acc['denominator']} labeled control sites matched ground truth"
+        acc_rate = acc["rate"]
+        acc_num = acc["numerator"]
+        acc_den = acc["denominator"]
+        acc_str = f"{acc_rate * 100:.1f}% ({acc_num}/{acc_den})"
+        if acc_num == acc_den:
+            acc_meaning = f"All {acc_den} labeled control sites matched ground truth"
         else:
-            acc_meaning = f"{acc['denominator'] - acc['numerator']} labeled control site(s) mismatched ground truth"
+            acc_meaning = f"{acc_den - acc_num} labeled control site(s) mismatched ground truth"
     else:
         acc_str = "null (no labels)"
         acc_meaning = "No labeled control sites present in dataset"
 
-    abstention = summary.get("abstention_rate", {})
+    abstention = recomputed["abstention_rate"]
     if abstention and isinstance(abstention, dict) and abstention.get("denominator", 0) > 0:
-        abs_str = f"{abstention.get('rate', 0.0)*100:.1f}% ({abstention.get('numerator', 0)}/{abstention.get('denominator', 0)})"
-        abs_meaning = f"{abstention.get('numerator', 0)}/{abstention.get('denominator', 0)} total sites flagged UNASSESSED by quality gates"
+        abs_rate = abstention["rate"]
+        abs_num = abstention["numerator"]
+        abs_den = abstention["denominator"]
+        abs_str = f"{abs_rate * 100:.1f}% ({abs_num}/{abs_den})"
+        abs_meaning = f"{abs_num}/{abs_den} total sites flagged UNASSESSED by quality gates"
     else:
         abs_str = "0.0% (0/0)"
         abs_meaning = "No sites evaluated"
 
-    false_missing = summary.get("false_missing_rate", {})
+    false_missing = recomputed["false_missing_rate"]
     if false_missing and isinstance(false_missing, dict) and false_missing.get("denominator", 0) > 0:
-        fm_str = f"{false_missing.get('rate', 0.0)*100:.1f}% ({false_missing.get('numerator', 0)}/{false_missing.get('denominator', 0)})"
-        fm_meaning = f"{false_missing.get('numerator', 0)}/{false_missing.get('denominator', 0)} non-missing labeled control sites misclassified as MISSING"
+        fm_rate = false_missing["rate"]
+        fm_num = false_missing["numerator"]
+        fm_den = false_missing["denominator"]
+        fm_str = f"{fm_rate * 100:.1f}% ({fm_num}/{fm_den})"
+        fm_meaning = f"{fm_num}/{fm_den} non-missing labeled control sites misclassified as MISSING"
     else:
         fm_str = "null (no non-missing controls)"
         fm_meaning = "No non-missing labeled control sites evaluated"
@@ -444,7 +483,7 @@ def generate_markdown_summary(
         total_cases_meaning = f"All {total_cases_cnt} cases completed without execution error"
 
     labeled_sites_cnt = site_counts.get("eligible_labeled_sites", 0)
-    unlabeled_sites_cnt = site_counts.get("unlabeled_sites", site_counts.get("unlabeled_sites_count", 0))
+    unlabeled_sites_cnt = site_counts.get("unlabeled_sites", 0)
     total_sites_meaning = f"{labeled_sites_cnt} labeled control sites, {unlabeled_sites_cnt} unlabeled perturbation sites"
 
     dist_meaning = (
