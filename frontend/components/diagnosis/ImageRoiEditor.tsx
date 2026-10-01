@@ -26,6 +26,7 @@ interface ImageRoiEditorProps {
     result?: ImageAnalysisResponse | null;
     interactionMode?: RoiInteractionMode;
     onInteractionModeChange?: (mode: RoiInteractionMode) => void;
+    onDimensionsChange?: (dims: { width: number; height: number }) => void;
 }
 
 export default function ImageRoiEditor({
@@ -40,6 +41,7 @@ export default function ImageRoiEditor({
     result,
     interactionMode: propInteractionMode,
     onInteractionModeChange: propOnInteractionModeChange,
+    onDimensionsChange,
 }: ImageRoiEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
@@ -106,13 +108,15 @@ export default function ImageRoiEditor({
 
     // Sync natural dimensions from image element when URL changes
     useEffect(() => {
-        if (imgRef.current && imgRef.current.naturalWidth > 0) {
-            setNaturalSize({
+        if (imgRef.current && imgRef.current.naturalWidth > 0 && imgRef.current.naturalHeight > 0) {
+            const dims = {
                 width: imgRef.current.naturalWidth,
                 height: imgRef.current.naturalHeight,
-            });
+            };
+            setNaturalSize(dims);
+            onDimensionsChange?.(dims);
         }
-    }, [imageUrl]);
+    }, [imageUrl, onDimensionsChange]);
 
     // Letterbox/pillarbox content rectangle
     const contentRect = useMemo(() => {
@@ -362,10 +366,12 @@ export default function ImageRoiEditor({
                     src={imageUrl}
                     alt="Deposit target"
                     onLoad={(e) => {
-                        setNaturalSize({
-                            width: e.currentTarget.naturalWidth,
-                            height: e.currentTarget.naturalHeight,
-                        });
+                        const width = e.currentTarget.naturalWidth;
+                        const height = e.currentTarget.naturalHeight;
+                        if (width > 0 && height > 0) {
+                            setNaturalSize({ width, height });
+                            onDimensionsChange?.({ width, height });
+                        }
                     }}
                     className={`block w-full object-contain pointer-events-none select-none ${
                         isStudioMode ? "max-h-[600px]" : "max-h-[440px] xl:max-h-[480px]"

@@ -18,6 +18,7 @@ import {
 import ImageRoiEditor from "./ImageRoiEditor";
 import ImageCalibrationPanel from "./ImageCalibrationPanel";
 import RegionInspectionPanel from "./RegionInspectionPanel";
+import RegionLayoutControls from "./RegionLayoutControls";
 import {
     getEffectiveRoiStatus,
     formatMetricNumber,
@@ -39,8 +40,12 @@ import {
     reconfigureUpload,
     removeUploadItem,
     cleanupControllerEntry,
+    importRegionLayout,
+    confirmRegionPlacement,
+    abandonImportedLayout,
     type InFlightController,
 } from "@/lib/image-upload-state";
+import type { RegionLayoutFile } from "@/lib/region-layout";
 
 export { validateAnalysisConfiguration } from "@/lib/image-upload-state";
 
@@ -58,6 +63,8 @@ export default function ImageUpload({
 }: ImageUploadProps) {
     const [uploads, setUploads] = useState<UploadSnapshot>({});
     const [selectedRoiByUpload, setSelectedRoiByUpload] = useState<Record<string, string | null>>({});
+    const [previewDimensions, setPreviewDimensions] = useState<Record<string, { width: number; height: number }>>({});
+    const [layoutErrors, setLayoutErrors] = useState<Record<string, string | null>>({});
     const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
     const [studioUploadId, setStudioUploadId] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -87,7 +94,11 @@ export default function ImageUpload({
         if (onAnalysisComplete) {
             const allObs: unknown[] = [];
             Object.values(uploads).forEach((u) => {
-                if (u.status === "analyzed" && u.result?.status === "CALIBRATED") {
+                if (
+                    u.status === "analyzed" &&
+                    u.result?.status === "CALIBRATED" &&
+                    (!u.importedLayout || u.importedLayout.confirmed)
+                ) {
                     allObs.push(...u.result.observations);
                 }
             });
@@ -174,6 +185,44 @@ export default function ImageUpload({
         }
     };
 
+    const handleDimensionsChange = useCallback((uploadId: string, dims: { width: number; height: number }) => {
+        setPreviewDimensions((prev) => {
+            if (prev[uploadId]?.width === dims.width && prev[uploadId]?.height === dims.height) {
+                return prev;
+            }
+            return {
+                ...prev,
+                [uploadId]: dims,
+            };
+        });
+    }, []);
+
+    const handleImportLayout = useCallback((uploadId: string, layout: RegionLayoutFile) => {
+        // Synchronously abort any running request for this upload
+        const pending = controllersRef.current[uploadId];
+        if (pending) {
+            delete controllersRef.current[uploadId];
+            pending.controller.abort();
+        }
+
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
+        setUploads((prev) => importRegionLayout(prev, uploadId, layout));
+    }, []);
+
+    const handleConfirmPlacement = useCallback((uploadId: string) => {
+        const dims = previewDimensions[uploadId] || null;
+        setUploads((prev) => confirmRegionPlacement(prev, uploadId, dims));
+    }, [previewDimensions]);
+
+    const handleAbandonLayout = useCallback((uploadId: string) => {
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
+        setUploads((prev) => abandonImportedLayout(prev, uploadId));
+    }, []);
+
+    const handleLayoutError = useCallback((uploadId: string, error: string | null) => {
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: error }));
+    }, []);
+
     const handleRunAnalysis = async (uploadId: string) => {
         const item = uploadsRef.current[uploadId] || uploads[uploadId];
         if (!item) return;
@@ -199,6 +248,24 @@ export default function ImageUpload({
         // Generate unique upload ID
         const uploadId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         const previewUrl = URL.createObjectURL(file);
+
+        // Decode image dimensions eagerly from previewUrl with cleanup
+        const img = new Image();
+        img.onload = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setPreviewDimensions((prev) => ({
+                    ...prev,
+                    [uploadId]: { width: img.naturalWidth, height: img.naturalHeight },
+                }));
+            }
+            img.onload = null;
+            img.onerror = null;
+        };
+        img.onerror = () => {
+            img.onload = null;
+            img.onerror = null;
+        };
+        img.src = previewUrl;
 
         // Initialize with calibrated defaults so visual defect evidence is ready immediately
         const newItem: UploadItem = {
@@ -277,6 +344,18 @@ export default function ImageUpload({
 
         setUploads((prev) => removeUploadItem(prev, uploadId));
         setSelectedRoiByUpload((prev) => {
+            if (!(uploadId in prev)) return prev;
+            const next = { ...prev };
+            delete next[uploadId];
+            return next;
+        });
+        setPreviewDimensions((prev) => {
+            if (!(uploadId in prev)) return prev;
+            const next = { ...prev };
+            delete next[uploadId];
+            return next;
+        });
+        setLayoutErrors((prev) => {
             if (!(uploadId in prev)) return prev;
             const next = { ...prev };
             delete next[uploadId];
@@ -487,24 +566,37 @@ export default function ImageUpload({
 
                                     {/* Action Row */}
                                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 pt-2.5">
-                                        <button
-                                            type="button"
-                                            disabled={isAnalyzing}
-                                            onClick={() => handleRunAnalysis(item.id)}
-                                            className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition hover:bg-[#5848e8] disabled:opacity-50"
-                                        >
-                                            {isAnalyzing ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" />
-                                                    <span>Analyzing...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Play size={14} />
-                                                    <span>Analyze</span>
-                                                </>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                disabled={isAnalyzing || Boolean(item.importedLayout && !item.importedLayout.confirmed)}
+                                                onClick={() => handleRunAnalysis(item.id)}
+                                                title={
+                                                    Boolean(item.importedLayout && !item.importedLayout.confirmed)
+                                                        ? "Confirm region placement before running analysis"
+                                                        : undefined
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition hover:bg-[#5848e8] disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isAnalyzing ? (
+                                                    <>
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        <span>Analyzing...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play size={14} />
+                                                        <span>Analyze</span>
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            {item.importedLayout && !item.importedLayout.confirmed && (
+                                                <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                                                    Placement confirmation required
+                                                </span>
                                             )}
-                                        </button>
+                                        </div>
 
                                         {item.result?.observations && item.result.observations.length > 0 && (
                                             <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#eeebff] dark:bg-[#6d5dfc]/20 px-2.5 py-1 text-xs font-semibold text-[#5848e8] dark:text-[#a397ff] border border-[#dcd6ff] dark:border-[#6d5dfc]/40">
@@ -528,6 +620,17 @@ export default function ImageUpload({
                                         <div className={isFullWidth ? "grid grid-cols-1 xl:grid-cols-12 gap-8 items-start" : "space-y-6"}>
                                             {/* ROI Editor */}
                                             <div className={isFullWidth ? "xl:col-span-7 space-y-5" : "space-y-5"}>
+                                                <RegionLayoutControls
+                                                    uploadItem={item}
+                                                    targetDimensions={previewDimensions[item.id] || null}
+                                                    isAnalyzing={isAnalyzing}
+                                                    onImportLayout={(layout) => handleImportLayout(item.id, layout)}
+                                                    onConfirmPlacement={() => handleConfirmPlacement(item.id)}
+                                                    onAbandonLayout={() => handleAbandonLayout(item.id)}
+                                                    onLayoutError={(err) => handleLayoutError(item.id, err)}
+                                                    layoutError={layoutErrors[item.id]}
+                                                />
+
                                                 <ImageRoiEditor
                                                     imageUrl={item.previewUrl}
                                                     rois={item.rois}
@@ -535,6 +638,7 @@ export default function ImageUpload({
                                                     onChange={(newRois) =>
                                                         updateUploadConfig(item.id, { rois: newRois })
                                                     }
+                                                    onDimensionsChange={(dims) => handleDimensionsChange(item.id, dims)}
                                                     onExpandStudio={() => setStudioUploadId(item.id)}
                                                     selectedRoiId={selectedRoiByUpload[item.id] ?? null}
                                                     onSelectRoi={(roiId) => handleSelectRoi(item.id, roiId)}
@@ -626,9 +730,17 @@ export default function ImageUpload({
                             <div className="flex items-center gap-2 shrink-0">
                                 <button
                                     type="button"
-                                    disabled={studioItem.status === "analyzing"}
+                                    disabled={
+                                        studioItem.status === "analyzing" ||
+                                        Boolean(studioItem.importedLayout && !studioItem.importedLayout.confirmed)
+                                    }
                                     onClick={() => handleRunAnalysis(studioItem.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#5848e8] transition disabled:opacity-50"
+                                    title={
+                                        Boolean(studioItem.importedLayout && !studioItem.importedLayout.confirmed)
+                                            ? "Confirm region placement before running analysis"
+                                            : undefined
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#5848e8] transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {studioItem.status === "analyzing" ? (
                                         <>
@@ -658,12 +770,24 @@ export default function ImageUpload({
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                 {/* Left: Interactive Canvas */}
                                 <div className="lg:col-span-7 space-y-4">
-                                    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
+                                    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs space-y-4">
+                                        <RegionLayoutControls
+                                            uploadItem={studioItem}
+                                            targetDimensions={previewDimensions[studioItem.id] || null}
+                                            isAnalyzing={studioItem.status === "analyzing"}
+                                            onImportLayout={(layout) => handleImportLayout(studioItem.id, layout)}
+                                            onConfirmPlacement={() => handleConfirmPlacement(studioItem.id)}
+                                            onAbandonLayout={() => handleAbandonLayout(studioItem.id)}
+                                            onLayoutError={(err) => handleLayoutError(studioItem.id, err)}
+                                            layoutError={layoutErrors[studioItem.id]}
+                                        />
+
                                         <ImageRoiEditor
                                             imageUrl={studioItem.previewUrl}
                                             rois={studioItem.rois}
                                             disabled={studioItem.status === "analyzing"}
                                             onChange={(newRois) => updateUploadConfig(studioItem.id, { rois: newRois })}
+                                            onDimensionsChange={(dims) => handleDimensionsChange(studioItem.id, dims)}
                                             isStudioMode={true}
                                             selectedRoiId={selectedRoiByUpload[studioItem.id] ?? null}
                                             onSelectRoi={(roiId) => handleSelectRoi(studioItem.id, roiId)}

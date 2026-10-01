@@ -115,6 +115,15 @@ export interface ImageAnalysisResponse {
 
 export type UploadLifecycleStatus = "ready" | "analyzing" | "analyzed" | "error";
 
+export interface ImportedLayoutMetadata {
+    name: string;
+    sourceDimensions: { width: number; height: number };
+    importedAt: string;
+    confirmed: boolean;
+    confirmedAt?: string | null;
+    confirmedRevision?: number | null;
+}
+
 export interface UploadItem {
     id: string;
     file: File;
@@ -131,6 +140,7 @@ export interface UploadItem {
     errorMessage?: string | null;
     configRevision: number;
     activeRequestToken: number | null;
+    importedLayout?: ImportedLayoutMetadata | null;
 }
 
 export type UploadSnapshot = Record<string, UploadItem>;

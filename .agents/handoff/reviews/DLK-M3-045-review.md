@@ -1,13 +1,21 @@
 ---
 task_id: DLK-M3-045
-reviewed_commit: ce34c7db0b91141be69279df60cb4be35966473a
-decision: changes_requested
+reviewed_commit: 75e61eac82db04279697856d64aa972c798b7e6d
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
 # Review: DLK-M3-045
 
 ## Decision
+
+Accepted at 75e61eac82db04279697856d64aa972c798b7e6d. The remaining R3 rate-integrity finding is resolved. All rendered counts and percentages now use compute_dataset_metrics(cases), rather than the report's supplied summary. Validation rejects missing, nonnumeric, boolean, nonfinite, out-of-range and materially inconsistent rates for status accuracy, abstention and false missing. Existing evaluator rounding and zero-denominator behavior remain compatible. Earlier R1/R2 and structural R3 corrections remain resolved. No actionable blocking finding was identified in the latest correction.
+
+Evidence: source review of the exact parent-to-HEAD diff and relevant evaluator contract; 27 parametrized CLI corruption cases cover all three rates with assertions for safe failure and no output publication, plus a valid-report percentage regression. Gemini's implementation report records 94 focused tests passed in 5.92s (54 robustness, 33 evaluator, 7 baseline), successful generator/evaluator/summary CLI execution, baseline runner success and VALID task validation. Reviewer independently checked committed whitespace (passed), but did not rerun tests or CLI execution under the planner/reviewer-only policy. No production code changed.
+
+This accepts the synthetic robustness checkpoint, not real-image accuracy or completion of the full roadmap. Scope estimates remain manual-region prototype 90–95% and full improvement roadmap 65–75%. Representative real-image validation, profiles/alignment, partial scoring and full inspection-session history remain deferred. Review/queue changes are left uncommitted for the next authorized Gemini commit. No push, PR or merge performed.
+
+## Historical second follow-up
 
 Follow-up at ce34c7db0b91141be69279df60cb4be35966473a: changes requested for one remaining R3 metric-integrity gap. R1 failure classification is resolved; R2 remains resolved. Exact ROI membership, malformed-report handling and count consistency checks address the previous structural findings. Gemini reports 66 focused tests passing; reviewer inspected the implementation and tests without rerunning them under the planner/executor separation. Committed whitespace check passes.
 

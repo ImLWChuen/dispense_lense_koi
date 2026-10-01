@@ -1,20 +1,20 @@
 # Region-based dispensing inspection improvement plan
 
-Date: 2026-09-30
-Status: Partially delivered roadmap. Scoped increments through DLK-M3-041 are accepted; broader scope decisions remain pending. Only the ready packet in QUEUE.md releases implementation.
+Date: 2026-10-02
+Status: Partially delivered roadmap. Scoped increments through DLK-M3-045 are accepted; DLK-M3-046 implemented pending review. Only the ready packet in QUEUE.md releases implementation.
 
-## Progress checkpoint — 2026-10-01
+## Progress checkpoint — 2026-10-02
 
-Accepted increments DLK-M3-033–041 establish manual expected-site inspection, bounded outlines, current/reference coverage, affected-site snapshots, JSON/PDF report integration and the inline/studio workbench. Acceptance uses inspected commits and implementer-reported execution evidence; it does not establish manufacturing accuracy.
+Accepted increments DLK-M3-033–045 establish manual expected-site inspection, bounded outlines, current/reference coverage, affected-site snapshots, JSON/PDF report integration, saved-case multi-site evidence presentation, offline dataset evaluation, and synthetic robustness characterization. Acceptance uses inspected commits and implementer-reported execution evidence; it does not establish manufacturing accuracy.
 
 | Phase | Current status | Remaining gap |
 | --- | --- | --- |
 | 0: Fixtures/contract | Synthetic baseline and additive contracts delivered | Representative images, broader capture conditions and final supported scope |
 | 1: Reliable region results | Foundation delivered | Partial score-bearing evidence and per-site reference failure handling remain deferred; whole-image conservative gate remains |
 | 2: Workbench | Scoped manual-ROI workbench accepted | Integrated rehearsal and any gaps found there; automatic site proposals are outside this slice |
-| 3: Profiles/alignment | Not implemented | Layout priority, storage choice and alignment approach require decisions |
-| 4: Assistant/reports | Persistence and JSON/PDF integration delivered | Saved-case frontend still reads legacy first-site metadata; full coverage/uncertainty history is not persisted as an inspection session |
-| 5: Evaluation/rehearsal | Synthetic baseline, component browser checks, integrated acceptance (DLK-M3-042), and offline local dataset runner (DLK-M3-044) delivered | Representative labeled images, held-out evaluation, and agreed targets |
+| 3: Profiles/alignment | Increment DLK-M3-046 implemented (pending review): portable geometry-only layout save/load with manual placement confirmation delivered | Shared database storage, automatic alignment, and process-limit export |
+| 4: Assistant/reports | Persistence, JSON/PDF report integration (039, 040), and saved-case multi-site evidence presentation (043) delivered | Full coverage/uncertainty history is not persisted as an inspection session |
+| 5: Evaluation/rehearsal | Synthetic baseline (038), integrated acceptance (042), offline local dataset runner (044), and synthetic robustness characterization (045 accepted) delivered | Representative labeled real images, held-out evaluation, and agreed targets |
 
 Delivered slice: DLK-M3-042 verifies the integrated existing workflow (public multipart analysis, durable case lifecycle, revision progression, JSON/PDF export, and real browser rehearsal) without new product behavior. Full roadmap completion must not be inferred from the implemented increment notes below.
 
@@ -93,6 +93,8 @@ Scope depends on user decision. For repeated layouts, save versioned expected si
 
 For varied products, prioritize per-image ROI editing and optional site proposals requiring confirmation. Do not equate automatically detected blobs with the complete set of expected sites.
 
+- **Increment DLK-M3-046 Status (Implemented, Pending Review):** Delivered bounded portable geometry-only region layouts (`dispense-region-layout` v1 JSON) with strict client-side allowlisted parsing, safe serialization, and explicit manual placement confirmation in the frontend workbench. Requires explicit technician positioning confirmation before any analysis dispatch; dimension differences between source and target images are visibly flagged with comparative warnings. ROIs and reference image changes strictly invalidate confirmation; clearing regions allows seamless manual drawing fallback. Shared database storage, automatic alignment, and process-limit export remain deferred.
+
 Acceptance: profile round-trip preserves IDs and limits; displaced images either align within a fixture-defined tolerance or produce an actionable unassessed result; missing sites remain inspectable. Do not reuse mm-per-pixel blindly after geometric changes.
 
 ### Phase 4: Assistant and report integration
@@ -113,7 +115,7 @@ Acceptance: repeatable end-to-end demonstration including a normal image, mixed 
 
 - **Increment DLK-M3-038 Status (Implemented):** Established offline synthetic baseline runner and evaluation report (`docs/evaluation/region-inspection-synthetic-baseline.md`) measuring status confusion, abstention, outline availability, and polygon-mask IoU before tuning segmentation on production data.
 - **Increment DLK-M3-044 Status (Accepted):** Delivered offline local image evaluation runner CLI (`backend/tests/vision_inspection_dataset.py`), Manifest v1 specification, synthetic fixture generator (`backend/tests/fixtures/generate_local_image_evaluation.py`), and evaluation runbook and worksheet (`docs/evaluation/local-image-evaluation.md`). Enforces honest un-inflated metric denominators (including failed cases and missing pipeline output in eligible totals, null accuracy for unlabeled datasets, distinct abstention and false-missing rates), strict path containment security, and strict JSON output reports without altering production CV services, database schemas, or manufacturing accuracy claims.
-- **Increment DLK-M3-045 Status (Implemented):** Delivered deterministic synthetic inspection robustness generator (`backend/tests/fixtures/generate_inspection_robustness.py`), structured Markdown summary utility (`backend/tests/inspection_robustness_summary.py`), and evaluation checkpoint report (`docs/evaluation/inspection-robustness-checkpoint.md`). Characterized 14 controlled acquisition-degradation scenarios (defocus blur, illumination shifts, low contrast, specular glare, edge clipping, and missing-site perturbations). Identified critical pipeline blindspots (defocused deposits segmented as DETECTED without sharpness gating) and confirmed conservative gating behavior (low contrast, glare, and clipping safely trigger UNRELIABLE/UNASSESSED without false-missing alarms). Estimated roadmap completion: manual-region prototype ~90–95%, full region-inspection roadmap ~65–75% (scope estimates, not accuracy; representative real-image evaluation, profiles/alignment, and partial scoring remain deferred).
+- **Increment DLK-M3-045 Status (Accepted):** Delivered deterministic synthetic inspection robustness generator (`backend/tests/fixtures/generate_inspection_robustness.py`), structured Markdown summary utility (`backend/tests/inspection_robustness_summary.py`), and evaluation checkpoint report (`docs/evaluation/inspection-robustness-checkpoint.md`). Characterized 14 controlled synthetic acquisition-degradation scenarios (defocus blur, illumination shifts, low contrast, specular glare, edge clipping, and missing-site perturbations). Observed that synthetic defocused deposits segmented as DETECTED in the current pipeline without sharpness gating, while synthetic low contrast, glare, and clipping triggered UNRELIABLE/UNASSESSED without false-missing alarms in the tested fixtures (these are observations of specific synthetic test cases, not proof of industrial defect classification or general glare safety in factory environments). Estimated roadmap completion: manual-region prototype ~90–95%, full region-inspection roadmap ~65–75% (scope estimates, not accuracy; representative real-image evaluation, profiles/alignment, and partial scoring remain deferred).
 
 ## Implementation ownership and sequence
 

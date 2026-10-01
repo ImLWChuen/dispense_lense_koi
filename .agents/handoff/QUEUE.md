@@ -234,8 +234,10 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-045` — Establish a repeatable synthetic inspection robustness checkpoint — **implemented**
-  - follow-up reviewed commit: `ce34c7db0b91141be69279df60cb4be35966473a`
+- `DLK-M3-045` — Establish a repeatable synthetic inspection robustness checkpoint — **accepted**
+  - accepted/reviewed commit: `75e61eac82db04279697856d64aa972c798b7e6d`
+  - final R3 resolution: displayed counts/percentages use canonical recomputed metrics; all three supplied rate fields receive finite numeric, non-boolean, range and consistency validation, with 27 CLI corruption regressions.
+  - verification: Gemini reports 94 focused tests passed and successful CLI/baseline/task checks; reviewer inspected code and tests, verified committed whitespace, and did not rerun execution checks.
   - review: `.agents/handoff/reviews/DLK-M3-045-review.md`
   - resolved corrections R1–R3 and follow-up findings:
     - R1 (follow-up): separated execution/input failures (`INPUT_FAILURE` for `FILESYSTEM_ACCESS`, `IMAGE_VALIDATION`, `PATH_VALIDATION`; `EXECUTION_FAILURE` for `EXECUTION_ERROR`) from `DEMONSTRATED_DEFECT` (strictly reserved for labeled control status mismatches and omitted outputs); computed control agreement directly from validated `expected_status == predicted_status` with `output_present`;
@@ -248,5 +250,23 @@ Do not implement inside DLK-M3-031:
   - estimated completion before task: manual-region prototype 90–95%; full improvement roadmap 65–75%; scope estimates, not accuracy
   - deferred: representative real-image validation, profiles/alignment, partial scoring and full inspection-session history
   - include accepted DLK-M3-044 review unchanged in local implementation commit
+
+## Active task
+
+- `DLK-M3-046` — Save and load portable region layouts with manual confirmation — **implemented, pending review**
+  - task: `.agents/handoff/tasks/DLK-M3-046-portable-region-layouts.md`
+  - depends on: accepted DLK-M3-045 at `75e61eac82db04279697856d64aa972c798b7e6d`
+  - branch: `backend-database`
+  - user decision 2026-10-02: portable files with manual confirmation, no automatic alignment
+  - outcome: geometry-only layout save/load in the existing workbench, strict file validation and per-upload placement confirmation before analysis
+  - implemented outcome:
+    - pure parser/validator/serializer (`frontend/lib/region-layout.ts`) enforcing 256 KiB limit, [0, 1] normalized coordinates, unique IDs, non-blank strings, and no unknown keys/versions;
+    - upload state management (`frontend/lib/image-upload-state.ts`, `frontend/types/image.ts`) strictly gating analysis when an imported layout is pending confirmation, resetting confirmation on ROI edits or reference image change, clearing the gate on manual abandon or region clear, and tracking source vs target dimensions;
+    - accessible UI controls (`frontend/components/diagnosis/RegionLayoutControls.tsx`, `ImageRoiEditor.tsx`, `ImageUpload.tsx`) with save layout modal, load layout input, persistent placement confirmation banner with mismatch warning and technician checklist, disabled Analyze button with tooltip, and inline/studio modal synchronization;
+    - comprehensive documentation (`docs/vision/portable-region-layouts.md`) and roadmap update (`docs/architecture/region-inspection-improvement-plan.md`);
+  - verification: unit layout tests 9/9 passed, upload state tests 14/14 passed, region view tests 6/6 passed, frontend lint 0 errors (0 added warnings), frontend build clean (20/20 routes), browser rehearsal passed (11/11 steps including save/load, mismatch warning, analysis blocking, abandonment, confirmation, studio parity, and live unmocked backend analysis API round trip to port 8000), task validation VALID, git diff whitespace clean;
+  - completion after implementation: manual-region prototype ~95%; full roadmap ~70–75%; scope estimates, not accuracy;
+  - deferred: full process profiles, shared storage, alignment, real-image validation, partial scoring and inspection-session history;
+  - include pending accepted DLK-M3-045 review unchanged in the local implementation commit; no remote Git operations.
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

@@ -7,9 +7,12 @@
 
 import type {
     ImageAnalysisResponse,
+    ImportedLayoutMetadata,
+    NormalizedROI,
     UploadItem,
     UploadSnapshot,
 } from "@/types/image";
+import type { RegionLayoutFile } from "./region-layout";
 
 export interface InFlightController {
     token: number;
@@ -21,6 +24,10 @@ export interface InFlightController {
  * Returns an error message string if invalid, or null if valid.
  */
 export function validateAnalysisConfiguration(item: UploadItem): string | null {
+    if (item.importedLayout && !item.importedLayout.confirmed) {
+        return "Imported region layout placement must be confirmed before running analysis.";
+    }
+
     if (!item.rois || item.rois.length === 0) {
         return "At least one target ROI must be defined before running analysis.";
     }
@@ -310,6 +317,11 @@ export function commitUploadError(
 /**
  * Reconfigures an upload item: bumps configRevision, clears activeRequestToken,
  * resets status to "ready", and clears any existing result or error message.
+ *
+ * Enforces imported layout lifecycle rules:
+ * - If ROIs are cleared (length === 0), removes imported layout to allow manual drawing fallback.
+ * - If ROIs are edited/modified, invalidates confirmation.
+ * - If in REFERENCE_IMAGE mode and reference image is changed, invalidates confirmation.
  */
 export function reconfigureUpload(
     prev: UploadSnapshot,
@@ -319,11 +331,154 @@ export function reconfigureUpload(
     const current = prev[uploadId];
     if (!current) return prev;
 
+    let nextImportedLayout = current.importedLayout ? { ...current.importedLayout } : null;
+
+    if ("importedLayout" in updates) {
+        nextImportedLayout = updates.importedLayout ?? null;
+    } else if (nextImportedLayout) {
+        if (updates.rois !== undefined) {
+            if (updates.rois.length === 0) {
+                // Clearing regions abandons imported layout and allows manual drawing fallback
+                nextImportedLayout = null;
+            } else {
+                // Editing ROIs invalidates confirmation
+                nextImportedLayout.confirmed = false;
+                nextImportedLayout.confirmedAt = null;
+                nextImportedLayout.confirmedRevision = null;
+            }
+        }
+        if (
+            nextImportedLayout &&
+            ((updates.referenceFile !== undefined && updates.referenceFile !== current.referenceFile) ||
+             (updates.referencePreviewUrl !== undefined && updates.referencePreviewUrl !== current.referencePreviewUrl))
+        ) {
+            if (current.mode === "REFERENCE_IMAGE" || updates.mode === "REFERENCE_IMAGE") {
+                nextImportedLayout.confirmed = false;
+                nextImportedLayout.confirmedAt = null;
+                nextImportedLayout.confirmedRevision = null;
+            }
+        }
+    }
+
     return {
         ...prev,
         [uploadId]: {
             ...current,
             ...updates,
+            importedLayout: nextImportedLayout,
+            status: "ready",
+            result: null,
+            errorMessage: null,
+            configRevision: current.configRevision + 1,
+            activeRequestToken: null,
+        },
+    };
+}
+
+/**
+ * Transitions an upload item to use an imported region layout.
+ * Replaces ROI geometry, invalidates confirmation and previous results,
+ * bumps configRevision, and preserves current image, mode, scale, and limits.
+ */
+export function importRegionLayout(
+    prev: UploadSnapshot,
+    uploadId: string,
+    layout: RegionLayoutFile
+): UploadSnapshot {
+    const current = prev[uploadId];
+    if (!current) return prev;
+
+    const newRois: NormalizedROI[] = layout.rois.map((r) => ({
+        roi_id: r.roi_id,
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+    }));
+
+    const importedMetadata: ImportedLayoutMetadata = {
+        name: layout.name,
+        sourceDimensions: {
+            width: layout.source_image.width,
+            height: layout.source_image.height,
+        },
+        importedAt: new Date().toISOString(),
+        confirmed: false,
+        confirmedAt: null,
+        confirmedRevision: null,
+    };
+
+    return {
+        ...prev,
+        [uploadId]: {
+            ...current,
+            rois: newRois,
+            importedLayout: importedMetadata,
+            status: "ready",
+            result: null,
+            errorMessage: null,
+            configRevision: current.configRevision + 1,
+            activeRequestToken: null,
+        },
+    };
+}
+
+/**
+ * Confirms the placement of an imported region layout on the target image.
+ * Requires valid target image dimensions if provided.
+ * Does not rerun analysis automatically or bump configRevision.
+ */
+export function confirmRegionPlacement(
+    prev: UploadSnapshot,
+    uploadId: string,
+    targetDimensions?: { width: number; height: number } | null
+): UploadSnapshot {
+    const current = prev[uploadId];
+    if (!current || !current.importedLayout) return prev;
+
+    if (targetDimensions !== undefined && targetDimensions !== null) {
+        if (
+            !Number.isSafeInteger(targetDimensions.width) ||
+            !Number.isSafeInteger(targetDimensions.height) ||
+            targetDimensions.width <= 0 ||
+            targetDimensions.height <= 0
+        ) {
+            return prev;
+        }
+    }
+
+    return {
+        ...prev,
+        [uploadId]: {
+            ...current,
+            importedLayout: {
+                ...current.importedLayout,
+                confirmed: true,
+                confirmedAt: new Date().toISOString(),
+                confirmedRevision: current.configRevision,
+            },
+            errorMessage: null,
+        },
+    };
+}
+
+/**
+ * Abandons an imported layout by clearing ROIs and removing importedLayout metadata.
+ * Removes the imported-layout analysis gate and allows manual ROI creation.
+ */
+export function abandonImportedLayout(
+    prev: UploadSnapshot,
+    uploadId: string
+): UploadSnapshot {
+    const current = prev[uploadId];
+    if (!current) return prev;
+
+    return {
+        ...prev,
+        [uploadId]: {
+            ...current,
+            rois: [],
+            importedLayout: null,
             status: "ready",
             result: null,
             errorMessage: null,
@@ -367,4 +522,7 @@ export {
     reconfigureUpload as handleReconfigure,
     removeUploadItem as handleRemove,
     cleanupControllerEntry as cleanupController,
+    importRegionLayout as handleImportLayout,
+    confirmRegionPlacement as handleConfirmPlacement,
+    abandonImportedLayout as handleAbandonLayout,
 };
