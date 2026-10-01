@@ -262,9 +262,10 @@ function runTests() {
         console.log("✓ Test 5 Passed: Inspection coverage projection handles modern counts and legacy unavailable states.");
     }
 
-    // --- 6. Emitted Observations for ROI ---
+    // --- 6. Emitted Observations for ROI and Finding Semantics (R1) ---
     {
         const observations = [
+            // Case 1: Individual deposit_size finding with explicit individual_regions scope
             {
                 observation_type: "deposit_size",
                 value: "undersized",
@@ -273,36 +274,91 @@ function runTests() {
                     affected_roi_ids: ["site_01"],
                 },
             },
+            // Case 2: Realistic individual deposit_shape finding with explicit individual_regions scope
             {
-                observation_type: "D03_INCONSISTENT_SIZE",
-                value: "size_variance",
+                observation_type: "deposit_shape",
+                value: "abnormal",
+                metadata: {
+                    region_evidence_scope: "individual_regions",
+                    affected_roi_ids: ["site_01"],
+                },
+            },
+            // Case 3: Realistic individual deposit_shape finding WITHOUT scope (legacy) -> must NOT infer group
+            {
+                observation_type: "deposit_shape",
+                value: "tailing",
+                metadata: {
+                    affected_roi_ids: ["site_01"],
+                },
+            },
+            // Case 4: Explicit comparison_group canonical D03 pair (deposit_size / inconsistent)
+            {
+                observation_type: "deposit_size",
+                value: "inconsistent",
                 metadata: {
                     region_evidence_scope: "comparison_group",
                     affected_roi_ids: ["site_01", "site_02"],
                 },
             },
+            // Case 5: Canonical legacy D03 pair WITHOUT scope (deposit_size / inconsistent) -> fallback to group
             {
-                observation_type: "deposit_voids",
-                value: "bubbles",
+                observation_type: "deposit_size",
+                value: "inconsistent",
                 metadata: {
-                    region_evidence_scope: "individual_regions",
+                    affected_roi_ids: ["site_02"],
+                },
+            },
+            // Case 6: Individual bubble presence without scope -> must NOT infer group
+            {
+                observation_type: "bubble_presence",
+                value: "visible_bubbles",
+                metadata: {
                     affected_roi_ids: ["site_02"],
                 },
             },
         ];
 
-        // Site 01 has individual deposit_size AND comparison_group D03
+        // Site 01 observations check
         const site1Obs = findEmittedObservationsForRoi(observations, "site_01");
-        assert.equal(site1Obs.length, 2);
+        assert.equal(site1Obs.length, 4, "Site 01 has 4 matching observations");
+
+        // 1) deposit_size=undersized (individual_regions scope)
+        assert.equal(site1Obs[0].observation.observation_type, "deposit_size");
         assert.equal(site1Obs[0].isGroupFinding, false, "individual_regions scope is not a group finding");
-        assert.equal(site1Obs[1].isGroupFinding, true, "D03_INCONSISTENT_SIZE / comparison_group is identified as group finding");
+
+        // 2) deposit_shape=abnormal (individual_regions scope) -> must be individual
+        assert.equal(site1Obs[1].observation.observation_type, "deposit_shape");
+        assert.equal(site1Obs[1].isGroupFinding, false, "deposit_shape with individual_regions is not a group finding");
+
+        // 3) deposit_shape=tailing (no scope) -> must NEVER infer group
+        assert.equal(site1Obs[2].observation.observation_type, "deposit_shape");
+        assert.equal(site1Obs[2].isGroupFinding, false, "deposit_shape without scope must never infer group finding");
+
+        // 4) deposit_size=inconsistent (comparison_group scope) -> group finding
+        assert.equal(site1Obs[3].observation.observation_type, "deposit_size");
+        assert.equal(site1Obs[3].isGroupFinding, true, "comparison_group scope is identified as group finding");
+
+        // Site 02 observations check
+        const site2Obs = findEmittedObservationsForRoi(observations, "site_02");
+        assert.equal(site2Obs.length, 3, "Site 02 has 3 matching observations");
+
+        // 1) deposit_size=inconsistent (comparison_group)
+        assert.equal(site2Obs[0].isGroupFinding, true);
+
+        // 2) deposit_size=inconsistent (legacy canonical D03 without scope) -> fallback to group finding
+        assert.equal(site2Obs[1].observation.value, "inconsistent");
+        assert.equal(site2Obs[1].isGroupFinding, true, "Legacy canonical D03 deposit_size=inconsistent without scope is identified as group finding");
+
+        // 3) bubble_presence=visible_bubbles (no scope) -> must be individual
+        assert.equal(site2Obs[2].observation.observation_type, "bubble_presence");
+        assert.equal(site2Obs[2].isGroupFinding, false, "bubble_presence without scope is not a group finding");
 
         // Site 03 has no observations
         const site3Obs = findEmittedObservationsForRoi(observations, "site_03");
         assert.equal(site3Obs.length, 0);
 
         testsPassed++;
-        console.log("✓ Test 6 Passed: Emitted observation lookup finds affected sites and identifies comparison-group findings.");
+        console.log("✓ Test 6 Passed: Emitted observation lookup honors explicit scope, handles canonical legacy D03, and never mislabels shape findings.");
     }
 
     console.log(`\nAll ${testsPassed} region inspection view tests passed successfully.`);

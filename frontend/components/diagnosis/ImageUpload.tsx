@@ -226,9 +226,7 @@ export default function ImageUpload({
                 max_aspect_ratio: 1.35,
                 max_bubble_count: 0,
             },
-            referenceLimits: {
-                tolerance_ratio: 0.10,
-            },
+            referenceLimits: null,
             referenceFile: null,
             referencePreviewUrl: null,
             result: null,

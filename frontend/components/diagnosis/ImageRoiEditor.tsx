@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Trash2, RotateCcw, AlertCircle, Crosshair, Maximize2 } from "lucide-react";
+import { Trash2, RotateCcw, AlertCircle, Crosshair, Maximize2, MousePointer, Plus } from "lucide-react";
 import { NormalizedROI, ImageAnalysisResponse } from "@/types/image";
 import {
     computeContentRect,
@@ -11,6 +11,8 @@ import {
     matchMeasurementByRoiId,
     getEffectiveRoiStatus,
 } from "@/lib/region-inspection-view";
+
+export type RoiInteractionMode = "inspect" | "draw";
 
 interface ImageRoiEditorProps {
     imageUrl: string;
@@ -22,6 +24,8 @@ interface ImageRoiEditorProps {
     selectedRoiId?: string | null;
     onSelectRoi?: (roiId: string | null) => void;
     result?: ImageAnalysisResponse | null;
+    interactionMode?: RoiInteractionMode;
+    onInteractionModeChange?: (mode: RoiInteractionMode) => void;
 }
 
 export default function ImageRoiEditor({
@@ -34,12 +38,39 @@ export default function ImageRoiEditor({
     selectedRoiId,
     onSelectRoi,
     result,
+    interactionMode: propInteractionMode,
+    onInteractionModeChange: propOnInteractionModeChange,
 }: ImageRoiEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
 
     const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
     const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+
+    const [internalMode, setInternalMode] = useState<RoiInteractionMode>(() => {
+        if (rois.length === 0) return "draw";
+        if (result) return "inspect";
+        return "draw";
+    });
+
+    const activeMode = propInteractionMode ?? internalMode;
+    const setInteractionMode = useCallback(
+        (nextMode: RoiInteractionMode) => {
+            if (propOnInteractionModeChange) {
+                propOnInteractionModeChange(nextMode);
+            } else {
+                setInternalMode(nextMode);
+            }
+        },
+        [propOnInteractionModeChange]
+    );
+
+    // Auto-switch to draw mode if rois becomes empty (e.g. after reset)
+    useEffect(() => {
+        if (rois.length === 0 && activeMode !== "draw") {
+            setInteractionMode("draw");
+        }
+    }, [rois.length, activeMode, setInteractionMode]);
 
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
@@ -119,6 +150,12 @@ export default function ImageRoiEditor({
         // Only accept primary button
         if (e.button !== 0) return;
 
+        // In Inspect mode: clicking empty space on the image deselects the current ROI; never draws
+        if (activeMode === "inspect") {
+            onSelectRoi?.(null);
+            return;
+        }
+
         const coords = getNormalizedCoords(e);
         // Reject drags starting outside rendered image content in empty letterbox space
         if (!coords.isInside) {
@@ -139,6 +176,7 @@ export default function ImageRoiEditor({
     };
 
     const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (activeMode !== "draw") return;
         if (!isDrawingRef.current || !startPointRef.current || disabled) return;
         const coords = getNormalizedCoords(e);
         currentPointRef.current = { x: coords.x, y: coords.y };
@@ -146,6 +184,7 @@ export default function ImageRoiEditor({
     };
 
     const handlePointerUp = () => {
+        if (activeMode !== "draw") return;
         const isDrawingVal = isDrawingRef.current;
         const startPt = startPointRef.current;
         const currentPt = currentPointRef.current;
@@ -201,6 +240,7 @@ export default function ImageRoiEditor({
         if (disabled) return;
         onSelectRoi?.(null);
         onChange([]);
+        setInteractionMode("draw");
     };
 
     // Calculate active drawing box
@@ -214,9 +254,11 @@ export default function ImageRoiEditor({
               }
             : null;
 
+    const isDrawMode = activeMode === "draw";
+
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
                     <Crosshair size={16} className="text-[#6d5dfc] shrink-0" />
                     <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
@@ -228,6 +270,46 @@ export default function ImageRoiEditor({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                    {/* Explicit Draw / Inspect Mode Toggle */}
+                    <div
+                        role="radiogroup"
+                        aria-label="ROI Interaction Mode"
+                        className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 p-0.5 text-xs font-semibold"
+                    >
+                        <button
+                            type="button"
+                            role="radio"
+                            aria-checked={activeMode === "inspect"}
+                            onClick={() => setInteractionMode("inspect")}
+                            disabled={disabled || rois.length === 0}
+                            title={rois.length === 0 ? "Draw an ROI first before inspecting" : "Inspect and select target regions"}
+                            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition cursor-pointer ${
+                                activeMode === "inspect"
+                                    ? "bg-white dark:bg-[#141b29] text-[#5848e8] dark:text-[#a397ff] shadow-xs"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                            } ${disabled || rois.length === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                            <MousePointer size={12} />
+                            <span>Inspect</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="radio"
+                            aria-checked={activeMode === "draw"}
+                            onClick={() => setInteractionMode("draw")}
+                            disabled={disabled}
+                            title="Draw new rectangular target ROIs"
+                            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition cursor-pointer ${
+                                activeMode === "draw"
+                                    ? "bg-white dark:bg-[#141b29] text-[#5848e8] dark:text-[#a397ff] shadow-xs"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                            } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                            <Plus size={12} />
+                            <span>Draw ROI</span>
+                        </button>
+                    </div>
+
                     {rois.length > 0 && !disabled && (
                         <button
                             type="button"
@@ -249,7 +331,11 @@ export default function ImageRoiEditor({
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
                 className={`relative select-none overflow-hidden rounded-xl border border-gray-300 bg-gray-950 flex items-center justify-center ${
-                    disabled ? "cursor-not-allowed opacity-75" : "cursor-crosshair"
+                    disabled
+                        ? "cursor-not-allowed opacity-75"
+                        : isDrawMode
+                        ? "cursor-crosshair"
+                        : "cursor-default"
                 }`}
                 style={{ touchAction: "none" }}
             >
@@ -378,22 +464,33 @@ export default function ImageRoiEditor({
                         return (
                             <div
                                 key={roi.roi_id}
-                                tabIndex={0}
+                                tabIndex={isDrawMode ? -1 : 0}
                                 role="button"
                                 aria-label={`Select region ${roi.roi_id}: ${statusInfo.label}`}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectRoi?.(isSelected ? null : roi.roi_id);
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        onSelectRoi?.(isSelected ? null : roi.roi_id);
-                                    }
-                                }}
-                                className={`absolute pointer-events-auto transition-all cursor-pointer focus:outline-hidden ${borderClass} ${
+                                onClick={
+                                    isDrawMode
+                                        ? undefined
+                                        : (e) => {
+                                              e.stopPropagation();
+                                              onSelectRoi?.(isSelected ? null : roi.roi_id);
+                                          }
+                                }
+                                onKeyDown={
+                                    isDrawMode
+                                        ? undefined
+                                        : (e) => {
+                                              if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  onSelectRoi?.(isSelected ? null : roi.roi_id);
+                                              }
+                                          }
+                                }
+                                className={`absolute transition-all ${
+                                    isDrawMode
+                                        ? "pointer-events-none"
+                                        : "pointer-events-auto cursor-pointer focus:outline-hidden"
+                                } ${borderClass} ${
                                     isSelected
                                         ? "ring-2 ring-offset-2 ring-[#6d5dfc] dark:ring-[#a397ff] z-20 shadow-md"
                                         : "hover:border-opacity-100 z-10"
@@ -406,7 +503,7 @@ export default function ImageRoiEditor({
                                 }}
                             >
                                 <div
-                                    className={`absolute -top-6 left-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-xs ${tagBgClass}`}
+                                    className={`absolute -top-6 left-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-xs pointer-events-auto ${tagBgClass}`}
                                 >
                                     <span>{roi.roi_id}</span>
                                     {result && (
@@ -417,11 +514,12 @@ export default function ImageRoiEditor({
                                     {!disabled && (
                                         <button
                                             type="button"
+                                            onPointerDown={(e) => e.stopPropagation()}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleRemoveRoi(roi.roi_id);
                                             }}
-                                            className="ml-1 hover:text-red-200"
+                                            className="ml-1 hover:text-red-200 cursor-pointer"
                                             title={`Remove ${roi.roi_id}`}
                                             aria-label={`Remove ${roi.roi_id}`}
                                         >
@@ -449,14 +547,34 @@ export default function ImageRoiEditor({
             </div>
 
             {/* Helper guidance */}
-            {rois.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+            {rois.length === 0 && (
+                <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                     <AlertCircle size={14} className="shrink-0 text-amber-600" />
                     <span>
                         Draw at least one rectangular target ROI over the image by clicking and dragging.
                     </span>
                 </div>
-            ) : (
+            )}
+
+            {rois.length > 0 && isDrawMode && (
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 p-2.5 text-xs text-[#5848e8] dark:text-[#a397ff] border border-indigo-100 dark:border-indigo-900/50">
+                    <div className="flex items-center gap-2">
+                        <Crosshair size={14} className="shrink-0 text-[#6d5dfc]" />
+                        <span>
+                            <strong>Draw Mode active:</strong> Drag anywhere on the image to add a new ROI. You can start drawing inside existing regions.
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setInteractionMode("inspect")}
+                        className="text-[11px] font-semibold underline hover:text-[#4335c4] cursor-pointer shrink-0"
+                    >
+                        Switch to Inspect
+                    </button>
+                </div>
+            )}
+
+            {rois.length > 0 && (
                 <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between">
                         <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">

@@ -41,9 +41,6 @@ export default function ImageCalibrationPanel({
 
     const handleModeSelect = (newMode: ImageAnalysisMode) => {
         if (disabled) return;
-        if (newMode === "REFERENCE_IMAGE" && !referenceLimits) {
-            onReferenceLimitsChange({ tolerance_ratio: 0.10 });
-        }
         onModeChange(newMode);
     };
 

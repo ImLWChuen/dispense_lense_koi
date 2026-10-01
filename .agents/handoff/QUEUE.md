@@ -167,6 +167,13 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **implemented**
+  - reviewed commit: `a72b1a28ecce5bd8acbdb796a2cfb67108b14e28`
+  - review: `.agents/handoff/reviews/DLK-M3-041-review.md`
+  - resolved corrections:
+    - R1: honored explicit `region_evidence_scope` (`"comparison_group"` vs `"individual_regions"`); canonical D03 comparison group finding uses deposit_size/inconsistent pair only when scope is absent; abnormal/tailing deposit_shape findings are never labeled as group findings; added realistic unit tests for individual shape, explicit group, and canonical legacy D03; verified in-browser explanations for shape and D03
+    - R2: added explicit Draw vs Inspect interaction mode (`RoiInteractionMode = "inspect" | "draw"`) with accessible segmented toggle; Inspect mode selects regions and empty clicks deselect without drawing; Draw mode allows starting drags inside existing or full-frame ROIs by routing pointer events to the container; actual ROI additions or deletions invalidate prior evidence and clear results; keyboard navigation and reset preserved
+    - R3: completed full 12-scenario browser verification suite including (a)-(i), R1, R2, and real backend analyze request; tested portrait (1:2) and landscape (2:1) overlays, narrow (768px) and wide (1440px) viewports, browser zoom (scale factor 2), in-flight late-response rejection, and multi-upload selection isolation with zero console errors; corrected PDF limitation statement in task report
+    - scope note: reverted unrelated 3-line reference tolerance default in `ImageCalibrationPanel.tsx` and restored `referenceLimits: null` default in `ImageUpload.tsx`
   - task: `.agents/handoff/tasks/DLK-M3-041-region-inspection-workbench.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-040 at `3d0b2dbad5f8ce9ef3ced7bcdb5fb6ac83ad5b69`

@@ -325,6 +325,26 @@ export function projectRegionItemViews(
 }
 
 /**
+ * Determines whether an observation represents a group comparison finding (such as D03 inconsistent size)
+ * rather than an individual region defect.
+ * Honors recognized explicit region_evidence_scope ("comparison_group" vs "individual_regions").
+ * When region_evidence_scope is absent or unrecognized, falls back to the exact canonical D03 pair:
+ * observation_type === "deposit_size" && value === "inconsistent".
+ * Never infers group finding from deposit_shape or other individual findings.
+ */
+export function isComparisonGroupFinding(obs: Observation): boolean {
+    const scope = obs.metadata?.region_evidence_scope;
+    if (scope === "comparison_group") {
+        return true;
+    }
+    if (scope === "individual_regions") {
+        return false;
+    }
+    // Canonical legacy D03 pair fallback when scope is absent or unrecognized
+    return obs.observation_type === "deposit_size" && obs.value === "inconsistent";
+}
+
+/**
  * Finds all emitted diagnostic observations that include the given ROI ID in affected_roi_ids.
  * Identifies comparison-group findings (e.g. D03 inconsistent size) so technicians
  * understand it is an overall group finding rather than proof of individual failure.
@@ -339,12 +359,10 @@ export function findEmittedObservationsForRoi(
     for (const obs of observations) {
         const affected = obs.metadata?.affected_roi_ids;
         if (Array.isArray(affected) && affected.includes(roiId)) {
-            const scope = obs.metadata?.region_evidence_scope;
-            const isGroupFinding =
-                scope === "comparison_group" ||
-                obs.observation_type === "D03_INCONSISTENT_SIZE" ||
-                obs.observation_type === "deposit_shape";
-            matched.push({ observation: obs, isGroupFinding });
+            matched.push({
+                observation: obs,
+                isGroupFinding: isComparisonGroupFinding(obs),
+            });
         }
     }
     return matched;
