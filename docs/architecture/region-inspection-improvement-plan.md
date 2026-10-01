@@ -1,13 +1,28 @@
 # Region-based dispensing inspection improvement plan
 
 Date: 2026-09-30
-Status: Draft implementation roadmap; inspection scope awaiting user decision. Not a released Gemini task.
+Status: Partially delivered roadmap. Scoped increments through DLK-M3-041 are accepted; broader scope decisions remain pending. Only the ready packet in QUEUE.md releases implementation.
+
+## Progress checkpoint — 2026-10-01
+
+Accepted increments DLK-M3-033–041 establish manual expected-site inspection, bounded outlines, current/reference coverage, affected-site snapshots, JSON/PDF report integration and the inline/studio workbench. Acceptance uses inspected commits and implementer-reported execution evidence; it does not establish manufacturing accuracy.
+
+| Phase | Current status | Remaining gap |
+| --- | --- | --- |
+| 0: Fixtures/contract | Synthetic baseline and additive contracts delivered | Representative images, broader capture conditions and final supported scope |
+| 1: Reliable region results | Foundation delivered | Partial score-bearing evidence and per-site reference failure handling remain deferred; whole-image conservative gate remains |
+| 2: Workbench | Scoped manual-ROI workbench accepted | Integrated rehearsal and any gaps found there; automatic site proposals are outside this slice |
+| 3: Profiles/alignment | Not implemented | Layout priority, storage choice and alignment approach require decisions |
+| 4: Assistant/reports | Persistence and JSON/PDF integration delivered | Saved-case frontend still reads legacy first-site metadata; full coverage/uncertainty history is not persisted as an inspection session |
+| 5: Evaluation/rehearsal | Synthetic baseline, component browser checks, and integrated acceptance (DLK-M3-042) delivered | Representative labeled images, held-out evaluation, and agreed targets |
+
+Delivered slice: DLK-M3-042 verifies the integrated existing workflow (public multipart analysis, durable case lifecycle, revision progression, JSON/PDF export, and real browser rehearsal) without new product behavior. Full roadmap completion must not be inferred from the implemented increment notes below.
 
 ## Objective
 
 Inspect expected dispensing sites individually, show the detected material boundaries and evidence, and feed trustworthy observations into the existing troubleshooting assistant. Retain a manual ROI workflow. Reuse existing OpenCV services before considering replacement models.
 
-## Verified starting point
+## Original starting point (historical; superseded by accepted increments below)
 
 - `backend/app/api/images.py` analyzes each configured ROI and maps segmentation outputs into measurements.
 - `backend/app/services/vision/segmentation.py` already returns status, masks, contours, quality, and warnings.

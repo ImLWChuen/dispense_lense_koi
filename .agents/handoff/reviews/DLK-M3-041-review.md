@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-041
-reviewed_commit: 5af203cd59e462a1a9ed7fafe24d079ba0497051
-decision: changes_requested
+reviewed_commit: 938e99de0825167b7dadc5a72bbce2d684e93448
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,16 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes still requested only for the remaining alignment/zoom verification portion of R3. R1 and R2 are resolved in 5af203c; the unrelated calibration-panel insertion is reverted. No further code correction is requested from this review unless the remaining browser checks reveal a failure.
+Accepted at 938e99d. R1/R2 were resolved in 5af203c, and the documentation-only follow-up supplies the remaining R3 alignment measurements, page-scale zoom evidence, and target-site selector explanation. No further actionable finding in this follow-up. Historical findings below remain for traceability.
+
+## Final verification review of 938e99d
+
+- The latest commit changes handoff documentation only. Prior code-check results remain tied to unchanged implementation 5af203c: 7 upload-state tests, 6 projection tests, lint with zero errors/140 warnings, and successful build. Reviewer independently checked committed whitespace.
+- Gemini records portrait/landscape image and overlay bounds for inline narrow/wide and studio views, including approximately 0.5–2 CSS-pixel differences attributed to border accounting/rounding. These are reported measurements, not a claim of exact zero error.
+- Gemini reports CDP page-scale checks at visualViewport.scale 1.5 and 2.0, separately from DPR 2 emulation. This adds visual-viewport/page-scale zoom coverage; it is not evidence of desktop browser menu/Ctrl+plus layout zoom specifically.
+- The previous hasTargetSites=false is explained by uppercase CSS affecting a case-sensitive innerText assertion. The report records the accessible region-list selector and actual target tab text confirming the section is present.
+- Acceptance relies on implementer-reported browser measurements and results. The reviewer did not rerun browser execution or inspect the referenced screenshot files; the scratch harness/screenshots are not available at a repository-relative location in this checkout. Do not describe this review as independent visual verification.
+- This accepts the scoped frontend workbench, not templates/alignment automation, partial scoring, real manufacturing image accuracy, or complete finalist readiness.
 
 ## Correction review of 5af203c
 
@@ -52,4 +61,4 @@ ImageCalibrationPanel.tsx was changed outside the task allowlist to insert a 10%
 
 ## Follow-up
 
-Complete the remaining R3 verification and report corrections above, then commit the scoped handoff documentation locally (plus a fix only if testing reveals one). Include this pending review record. No next feature task or remote Git action is authorized. Preserve unrelated untracked files.
+R1/R2/R3 are closed for this scoped task. Leave this accepted record and queue update for the next authorized local handoff commit. No next feature task or remote Git action is authorized by this review. Preserve unrelated untracked files.

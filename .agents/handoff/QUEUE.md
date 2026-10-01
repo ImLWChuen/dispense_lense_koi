@@ -166,8 +166,8 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **implemented**
-  - reviewed commit: `5af203cd59e462a1a9ed7fafe24d079ba0497051`
+- `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **accepted**
+  - reviewed commit: `938e99de0825167b7dadc5a72bbce2d684e93448`
   - review: `.agents/handoff/reviews/DLK-M3-041-review.md`
   - resolved corrections:
     - R1: honored explicit `region_evidence_scope` (`"comparison_group"` vs `"individual_regions"`); canonical D03 comparison group finding uses deposit_size/inconsistent pair only when scope is absent; abnormal/tailing deposit_shape findings are never labeled as group findings; added realistic unit tests for individual shape, explicit group, and canonical legacy D03; verified in-browser explanations for shape and D03
@@ -182,5 +182,16 @@ Do not implement inside DLK-M3-031:
   - preserve: manual ROI editing, stale-request guards, diagnostic intake and backend scoring
   - deferred: templates/alignment, automatic site detection, partial evidence, saved-case page redesign, real-image evaluation
   - include pending review record `.agents/handoff/reviews/DLK-M3-041-review.md` in the local implementation commit
+
+## Active task
+
+- `DLK-M3-042` — Verify integrated region inspection workflow and record readiness — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-042-region-inspection-acceptance.md`
+  - branch: `backend-database`
+  - depends on: accepted DLK-M3-041 at `938e99de0825167b7dadc5a72bbce2d684e93448`
+  - outcome: public-API acceptance scenarios, real browser rehearsal and honest scoped readiness matrix
+  - preserve: current production behavior, conservative gates and existing records
+  - deferred: saved-case frontend enhancement, profiles/alignment, partial evidence and representative real-image evaluation
+  - include pending accepted DLK-M3-041 review in the local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
