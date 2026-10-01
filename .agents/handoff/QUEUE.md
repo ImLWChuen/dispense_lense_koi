@@ -235,6 +235,12 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-045` — Establish a repeatable synthetic inspection robustness checkpoint — **implemented**
+  - reviewed commit: `1f49e9b3bd9ca8629719113c8a24f1d128a11e1f`
+  - review: `.agents/handoff/reviews/DLK-M3-045-review.md`
+  - resolved corrections R1–R3:
+    - R1: generated all measured claims dynamically from report data without hardcoded conclusions or static scenario text; verified control agreement via explicit is_labeled and status_match fields; reported unlabeled cases as observations requiring review without inferring absent sharpness gates;
+    - R2: reconciled all quantitative statements with report fields (baseline diameter 39.94 px, heavy blur 41.38 px [+3.61%], mild blur 39.94 px and circularity 0.9526 identical to control; false-missing 0/4 on labeled controls only); corrected runtime versions (Python 3.14.0, OpenCV 5.0.0, Pydantic 2.13.5); recorded visual inspection of representative images (cases 01, 02, 03, 07, 09); separated synthetic pipeline findings from physical camera hypotheses;
+    - R3: rendered per-site warnings, emitted observations with affected ROI IDs, assessed/expected site counts, and separate current/reference inspection coverage; used UNCALIBRATED for features-only analysis status; verified schema version, dataset ID, origin, case counts, image paths, profiles, and label matching in validate_identities; reused publish_report_file helper with atomic no-clobber protection and temp-file cleanup, preventing sentinel races.
   - task: `.agents/handoff/tasks/DLK-M3-045-inspection-robustness-checkpoint.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-044 at `54d03538f11efe20eea5f742b79f6f3e3104c963`

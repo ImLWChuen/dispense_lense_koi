@@ -100,53 +100,63 @@ Proposed commit message: `test(vision): establish synthetic inspection robustnes
 
 ### Summary
 
-Delivered a deterministic 14-case synthetic inspection robustness evaluation matrix (`backend/tests/fixtures/generate_inspection_robustness.py`), a structured Markdown summary utility (`backend/tests/inspection_robustness_summary.py`), comprehensive unit test coverage (`backend/tests/unit/test_inspection_robustness.py`), and a tracked checkpoint report (`docs/evaluation/inspection-robustness-checkpoint.md`).
-
-Executed the existing local evaluator (`backend/tests/vision_inspection_dataset.py`) against this matrix without altering production code. All 14 cases evaluated cleanly with 0 execution failures, achieving 100% status accuracy on clean controls (6/6 sites), 28.6% abstention (8/28 sites flagged UNASSESSED), and 0.0% false-missing rate (0/4 non-missing control sites). Identified critical pipeline blindspots (mild and severe optical blur segment as DETECTED without sharpness gating) and confirmed conservative multi-site reliability (low contrast, glare, and clipping safely trigger UNRELIABLE/UNASSESSED without corrupting unaffected neighboring sites).
+Continued DLK-M3-045 and fully resolved review findings R1–R3 from `.agents/handoff/reviews/DLK-M3-045-review.md`:
+- **R1 (Data-Derived Summary Findings):** Refactored `backend/tests/inspection_robustness_summary.py` to eliminate hardcoded conclusions ("100% agreement", "All cases completed without execution crashes", and static scenario text). All executive metric meanings, control agreement checks, and categorized finding breakdowns are now generated dynamically from validated report data. Control cases are evaluated using explicit `is_labeled` and `status_match` fields rather than case-ID string matching; unlabeled cases are reported as observations requiring review without claiming "correct" gating or inferring absent sharpness gates.
+- **R2 (Reconciled Tracked Checkpoint & Evidence):** Reconciled all quantitative claims in `docs/evaluation/inspection-robustness-checkpoint.md` with actual evaluator report fields. Corrected runtime versions to Python 3.14.0, OpenCV 5.0.0, Pydantic 2.13.5. Replaced unsupported blur expansion claims with actual measured data (baseline diameter $39.94\text{ px}$; mild blur retains $39.94\text{ px}$ and circularity $0.9526$; heavy blur expands by $+3.61\%$ to $41.38\text{ px}$ with $+7.34\%$ area increase). Clarified that the $0/4$ false-missing rate evaluates only non-missing labeled controls. Accurately described deterministic generated inputs and non-timing evaluation outputs. Recorded visual inspection of representative images (`case_01`, `case_02`, `case_03`, `case_07`, `case_09`) and separated synthetic pipeline responses from hypotheses about real cameras.
+- **R3 (Completed Contract & Safe Publication):** Summary table now renders all required fields: per-site statuses and warnings, emitted observations and affected ROI IDs, assessed/expected site counts, and separate current and reference inspection coverage summaries. Analysis status displays `UNCALIBRATED` for features-only mode. Expanded `validate_identities` to verify report schema version ("v1"), dataset ID, origin, case counts, case IDs, image paths, profiles, and label matching. Reused the accepted `publish_report_file` helper with atomic no-clobber publication and temp-file cleanup. Handled CLI and report errors with safe diagnostics.
+- Added comprehensive hand-authored unit tests in `backend/tests/unit/test_inspection_robustness.py` covering failed cases, control mismatches, omitted outputs, warning-bearing detected sites, all-unlabeled datasets, changed blur outcomes, and sentinel-created-during-generation race prevention (17 tests, all passing).
 
 ### Files changed
 
 - `backend/tests/fixtures/generate_inspection_robustness.py` (new): Deterministic generator creating 14-case synthetic image matrix and Manifest v1 with preflight target collision rejection, explicit coordinate transforms for clipped edge cases, and strict ground-truth label separation.
-- `backend/tests/inspection_robustness_summary.py` (new): Markdown summary CLI validating manifest/report identities, enforcing input/output collision protection, classifying case findings into measured baseline, potential risk, and demonstrated defect, and producing an engineering weakness inventory.
-- `backend/tests/unit/test_inspection_robustness.py` (new): 9 unit tests verifying deterministic generation (byte-identical images), manifest schema compliance, label separation, clipping ROI normalization, collision preflights, identity validation, and summary risk classification.
-- `docs/evaluation/inspection-robustness-checkpoint.md` (new): Tracked checkpoint report documenting the 14-case matrix, reproduction commands, executive metrics, per-case outcomes, weakness inventory, supported assumptions, and unresolved uncertainties.
+- `backend/tests/inspection_robustness_summary.py` (new): Markdown summary CLI validating manifest/report identities (schema version, dataset ID, origin, profiles, labels), enforcing input/output collision protection, publishing reports safely via `publish_report_file`, classifying case findings dynamically into measured baseline, potential risk, and demonstrated defect, and rendering all required inspection coverage, warning, and observation fields.
+- `backend/tests/unit/test_inspection_robustness.py` (new): 17 unit tests verifying deterministic generation (byte-identical images), manifest schema compliance, label separation, clipping ROI normalization, collision preflights, comprehensive identity validation, safe publication sentinel race prevention, and hand-authored summary tests across failed cases, control mismatches, omitted outputs, warning-bearing detected sites, all-unlabeled datasets, and changed blur outcomes.
+- `docs/evaluation/inspection-robustness-checkpoint.md` (new): Tracked checkpoint report documenting the 14-case matrix, reproduction commands, exact reconciled runtime versions and measurements, per-case outcomes, visual inspection evidence, supported assumptions, and unresolved uncertainties.
 - `docs/architecture/region-inspection-improvement-plan.md` (modified): Updated Phase 5 with DLK-M3-045 status note and completion estimates.
 - `.agents/handoff/tasks/DLK-M3-045-inspection-robustness-checkpoint.md` (modified): Completed implementation report and marked implemented.
 - `.agents/handoff/QUEUE.md` (modified): Updated queue moving DLK-M3-044 to accepted verification tasks and DLK-M3-045 to implemented.
+- `.agents/handoff/reviews/DLK-M3-045-review.md` (modified/included): Review record tracking resolution of R1–R3.
 
 ### Decisions made
 
-- **Fixed 14-Case Robustness Matrix:** Configured 14 distinct scenarios covering all requested capture degradations (cases 01-14) under a nominal 400x200 two-site canvas without resizing.
-- **Strict Ground-Truth Label Separation:** Only construction-grounded clean baseline controls (cases 01, 10, 11) have `expected_statuses` populated. All 11 degraded/ambiguous cases remain unlabeled (`expected_statuses: None`), preventing artificial pass/fail inflation.
-- **Explicit Coordinate Transform for Clipped Edge:** Modeled camera translation $dx = +85\text{ px}$, causing the left deposit to clip against $x=0$, and transformed ROIs to valid normalized bounds (`[0.0, 0.20, 0.1875, 0.60]` and `[0.3875, 0.20, 0.30, 0.60]`).
-- **Safe Summary Output Handling:** Summary utility rejects output paths matching manifest or report inputs (direct resolved equality and `os.path.samefile` aliases) and refuses overwriting existing outputs unless `--overwrite` is specified.
-- **Three-Tier Risk Classification:** Summary categorizes findings into `DEMONSTRATED_DEFECT` (execution error or missing output site), `POTENTIAL_RISK` (defocused or degraded image classified DETECTED without quality warning), and `MEASURED_BASELINE` (clean control or expected conservative gate).
+- **Data-Driven Summary Reporting:** Summary generation derives all metrics, meaning descriptions, and finding classifications strictly from parsed JSON fields. Removed all static scenario conclusions and hardcoded assertions.
+- **Explicit Ground-Truth Agreement:** Control cases are checked directly for `is_labeled` and `status_match`. Any mismatch is classified as `DEMONSTRATED_DEFECT` with exact expected vs predicted statuses.
+- **Safe No-Clobber Publication Reuse:** Reused `publish_report_file` from `tests.vision_inspection_dataset` with atomic no-replace publication semantics and temporary-file cleanup, preventing race conditions where sentinel files are created during report generation.
+- **Deep Identity Validation:** `validate_identities` cross-references report version, dataset ID, origin, case counts, case IDs, image paths, serialized profiles, and ground-truth label definitions against the manifest.
+- **Strict Separation of Findings from Hypotheses:** Documented synthetic Otsu gradient segmentation findings honestly with exact measurements, while framing focus gating and surface textures as hypotheses requiring real hardware and technician adjudication.
 
 ### Verification results
 
 1. **Unit Test Suite:**
    - Command: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_inspection_robustness.py backend/tests/unit/test_vision_inspection_dataset.py backend/tests/unit/test_vision_inspection_baseline.py -q`
-   - Output: `49 passed in 2.16s` (9 robustness tests, 33 dataset evaluation tests, 7 baseline tests).
-2. **CLI End-to-End Execution in Scratch Location (`scratch/robustness_checkpoint`):**
+   - Output: `57 passed in 3.45s` (17 robustness tests, 33 dataset evaluation tests, 7 baseline tests).
+2. **Visual Inspection of Generated Fixtures (`scratch/robustness_checkpoint/images/`):**
+   - Method: In-IDE visual inspection via `view_file` on representative generated images.
+   - Clean control (`case_01_control_clean.png`): Two high-contrast dark circular deposits (radius 20 px, gray level 30) centered at (100, 100) and (300, 100) on bright substrate (gray level 245).
+   - Mild blur (`case_02_blur_mild.png`): Softened edge gradients ($5 \times 5, \sigma=1.5$) with dark cores preserved.
+   - Heavy blur (`case_03_blur_heavy.png`): Diffuse radial Gaussian blur ($19 \times 19, \sigma=5.0$) extending into substrate.
+   - Specular glare (`case_07_glare_bounded.png`): Saturated white circular spot (radius 25 px, intensity 255) covering site 1 while site 2 is unaffected.
+   - Edge clipping (`case_09_clipping_edge.png`): Sensor translated $dx = +85\text{ px}$; site 1 truncated against image boundary $x=0$, site 2 shifted inward to $x=215\text{ px}$.
+3. **CLI End-to-End Execution in Scratch Location (`scratch/robustness_checkpoint`):**
    - Generator: `backend/tests/fixtures/generate_inspection_robustness.py -o scratch/robustness_checkpoint --overwrite` (Exit code 0).
    - Evaluator: `backend/tests/vision_inspection_dataset.py -m scratch/robustness_checkpoint/manifest.json -o scratch/robustness_checkpoint/report.json --overwrite` (Exit code 0; 14 cases, 28 sites, 100.0% control accuracy, 28.6% abstention).
-   - Summary: `backend/tests/inspection_robustness_summary.py -m scratch/robustness_checkpoint/manifest.json -r scratch/robustness_checkpoint/report.json -o scratch/robustness_checkpoint/summary.md --overwrite` (Exit code 0).
-3. **Existing Baseline Runner:**
+   - Summary: `backend/tests/inspection_robustness_summary.py -m scratch/robustness_checkpoint/manifest.json -r scratch/robustness_checkpoint/report.json -o scratch/robustness_checkpoint/summary.md --overwrite` (Exit code 0; outputs data-derived summary with zero hardcoded scenario conclusions).
+4. **Existing Baseline Runner:**
    - Command: `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_baseline.py`
    - Output: Exit code 0, 6 cases, 9 sites, 100% status accuracy, 0.9970 mean IoU, 0.018s elapsed.
-4. **Task Validation:**
+5. **Task Validation:**
    - Command: `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-045-inspection-robustness-checkpoint.md`
    - Output: `VALID: .agents\handoff\tasks\DLK-M3-045-inspection-robustness-checkpoint.md`.
-5. **Git Whitespace Hygiene:**
+6. **Git Whitespace Hygiene:**
    - Command: `git diff --check`
    - Output: 0 errors / 0 trailing whitespace issues.
 
 ### Limitations and follow-up
 
 - **Purely Synthetic Proof-of-Concept:** Evaluates mathematical pipeline properties and conservative gate logic under controlled perturbations. Does not represent physical PCB solder mask textures, meniscus variations, or factory dust.
-- **Defocus Blindspot Identified:** Otsu thresholding without a Laplacian variance / frequency sharpness pre-gate leaves out-of-focus captures ungated, which should be addressed in future sharpness-gating increments.
+- **Defocus Pipeline Behavior:** Synthetic Gaussian blur segments as DETECTED due to Otsu thresholding of intensity gradients. Whether physical camera defocus requires an explicit sharpness pre-gate in production remains an uncertainty to be evaluated with real hardware images.
 - **Estimated Completion Checkpoint:** Manual-region prototype scope is estimated at ~90–95%, and the broader region-inspection roadmap at ~65–75% (scope estimates, not accuracy metrics). Real-image evaluation, reusable profiles/alignment, and partial scoring remain deferred.
 
 ### Proposed commit message
 
-`test(vision): establish synthetic inspection robustness checkpoint`
+`test(vision): resolve inspection robustness review findings`
