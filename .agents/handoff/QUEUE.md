@@ -216,9 +216,8 @@ Do not implement inside DLK-M3-031:
   - deferred: complete inspection-session history, profiles/alignment, partial evidence and real-image accuracy evaluation
   - include pending accepted DLK-M3-042 review in local implementation commit
 
-## Active task
-
-- `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **implemented**
+- `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **accepted**
+  - accepted commit: `54d03538f11efe20eea5f742b79f6f3e3104c963`
   - reviewed commit: `2f27c1922cff29485f87be4b0166f66de7cf6ae5`
   - review: `.agents/handoff/reviews/DLK-M3-044-review.md`
   - resolved corrections R1–R3 and follow-up findings:
@@ -232,5 +231,16 @@ Do not implement inside DLK-M3-031:
   - preserve: production CV/API, database, scoring, frontend and existing synthetic baseline
   - deferred: actual representative-image evaluation until supplied, accuracy targets, profiles/alignment and partial scoring
   - include pending accepted DLK-M3-043 review in local implementation commit
+
+## Active task
+
+- `DLK-M3-045` — Establish a repeatable synthetic inspection robustness checkpoint — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-045-inspection-robustness-checkpoint.md`
+  - branch: `backend-database`
+  - depends on: accepted DLK-M3-044 at `54d03538f11efe20eea5f742b79f6f3e3104c963`
+  - outcome: deterministic capture-degradation matrix, evaluator-derived summary and observed weakness inventory; no production tuning
+  - estimated completion before task: manual-region prototype 90–95%; full improvement roadmap 65–75%; scope estimates, not accuracy
+  - deferred: representative real-image validation, profiles/alignment, partial scoring and full inspection-session history
+  - include accepted DLK-M3-044 review unchanged in local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

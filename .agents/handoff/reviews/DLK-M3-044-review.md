@@ -1,13 +1,19 @@
 ---
 task_id: DLK-M3-044
-reviewed_commit: 2f27c1922cff29485f87be4b0166f66de7cf6ae5
-decision: changes_requested
+reviewed_commit: 54d03538f11efe20eea5f742b79f6f3e3104c963
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
 # Review: DLK-M3-044
 
 ## Decision
+
+Accepted at 54d03538f11efe20eea5f742b79f6f3e3104c963. All R1–R3 findings are resolved for the scoped local evaluator. The final correction removes the unsafe POSIX move fallback and fails closed on unsupported atomic publication. Schema diagnostics now use allowlisted location segments, placeholders for dynamic keys and fixed explanations rather than echoing custom validator messages. Added tests cover failed publication with preserved sentinel/temporary-file cleanup and private markers in unknown ROI labels, duplicate case IDs and extra fields. Previously reviewed profile/provenance, independent reference coverage, input alias protection and failed-case denominator fixes remain intact.
+
+Gemini reports 40 focused tests passing (33 evaluator plus 7 baseline), the unchanged six-case/nine-site synthetic baseline, and labeled/unlabeled/corrupt CLI verification. Reviewer inspected the exact correction and tests without rerunning execution; committed whitespace check passes. No further blocking findings. This accepts tooling readiness, not representative manufacturing accuracy: real images and independent labels remain user-supplied, and external boundary accuracy remains unevaluated. No push or merge performed.
+
+## Historical follow-ups (resolved)
 
 Follow-up at 2f27c1922cff29485f87be4b0166f66de7cf6ae5: Windows no-replace publication and fixed per-case filesystem/execution messages are corrected. R2 remains resolved. Gemini reports 36 focused tests passing and the existing sample runs; reviewer inspected code and did not rerun tests. Committed whitespace check passes. Two remaining code paths prevent acceptance:
 

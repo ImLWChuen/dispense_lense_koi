@@ -18,6 +18,8 @@ ChatGPT may inspect the repository, create task and review artifacts, and review
 
 ## Review record policy
 
+- From DLK-M3-045 onward, each task-creation response and packet must include an estimated completion for the region-inspection improvement, distinguishing delivered manual-region prototype scope from the full roadmap. Treat percentages as scope estimates, not measured accuracy; identify remaining dependencies and do not automatically increase completion for tooling alone.
+
 - Every Gemini implementation review must produce or update a permanent review record at `.agents/handoff/reviews/<task-id>-review.md`, including when the detailed review is also summarized in chat.
 - An accepted review records the exact accepted commit and supporting verification evidence.
 - A review with corrections records each actionable finding, its affected file or behavior, and its consequence. The planner must carry those correction requirements into the next bounded task packet before releasing further dependent work.
