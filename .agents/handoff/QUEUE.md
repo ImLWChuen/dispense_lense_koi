@@ -148,8 +148,8 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-040` — Include persisted region evidence in case reports — **implemented**
-  - reviewed commit: `e7ce38392e2e3dfb619f8b0441401a2aa3996ae3`
+- `DLK-M3-040` — Include persisted region evidence in case reports — **accepted**
+  - reviewed commit: `3d0b2dbad5f8ce9ef3ced7bcdb5fb6ac83ad5b69`
   - review: `.agents/handoff/reviews/DLK-M3-040-review.md`
   - resolved corrections:
     - R1: bounded all PDF metadata presentation paths (20 affected IDs chunked 4/row with explicit omission counts; strictly allowlisted 21 limit keys with finite scalar validation chunked 3/row; strict `_fmt_num` and `_fmt_bool` treating non-finite/invalid scalars as `unavailable`; user strings bounded at 200 chars);
@@ -163,5 +163,17 @@ Do not implement inside DLK-M3-031:
   - deferred: frontend workbench, partial evidence, reusable profiles/alignment, real-image evaluation, and 8D report changes
   - verification: focused suite 40 passed; full backend suite 601 passed; task validation VALID; whitespace checks passed
   - accepted DLK-M3-039 review included in the implementation commit
+
+## Active task
+
+- `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-041-region-inspection-workbench.md`
+  - branch: `backend-database`
+  - depends on: accepted DLK-M3-040 at `3d0b2dbad5f8ce9ef3ced7bcdb5fb6ac83ad5b69`
+  - ownership: user explicitly authorized Gemini to implement this frontend workbench
+  - outcome: aligned current-image outlines, selectable expected sites, trustworthy statuses/details and separate coverage in inline upload and expanded studio
+  - preserve: manual ROI editing, stale-request guards, diagnostic intake and backend scoring
+  - deferred: templates/alignment, automatic site detection, partial evidence, saved-case page redesign, real-image evaluation
+  - include pending accepted DLK-M3-040 review in the local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

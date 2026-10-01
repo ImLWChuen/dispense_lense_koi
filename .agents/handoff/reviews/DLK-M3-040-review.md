@@ -1,7 +1,7 @@
 ---
 task_id: DLK-M3-040
-reviewed_commit: e7ce38392e2e3dfb619f8b0441401a2aa3996ae3
-decision: changes_requested
+reviewed_commit: 3d0b2dbad5f8ce9ef3ced7bcdb5fb6ac83ad5b69
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
@@ -9,7 +9,15 @@ reviewed_by: ChatGPT planner/reviewer
 
 ## Decision
 
-Changes still requested after correction e7ce383. The main R1/R2 issues are addressed: affected IDs and limits are chunked, nonnumeric measurements are marked unavailable, missing scope is unknown, canonical ROI/status fields are used, reference has_bubbles is displayed, and a real producer-to-report test was added. Remaining malformed-value crash paths are recorded as R3 below.
+Accepted at 3d0b2db. The R1/R2 presentation corrections remain in place and R3 is now resolved by string guards on current/reference statuses and shared exception-safe numeric validation. No further actionable finding in this correction. Historical findings below are retained for traceability.
+
+## Final correction review of 3d0b2db
+
+- Both status branches check isinstance(value, str) before set membership, preventing list/dictionary TypeError failures.
+- _is_finite_number rejects booleans/non-numbers and catches numeric conversion errors; measurements, applied limits, and both physical-diameter branches use it. Oversized integers render unavailable instead of raising OverflowError.
+- New API regression persists both list/dictionary statuses and 10**400 in current/reference measurements and limits, verifies JSON preservation, and checks successful parseable PDF output with UNKNOWN/unavailable notices. Focused helper coverage was also added.
+- Gemini reports 40 focused tests and 601 full backend tests passed, task validation VALID, and whitespace checks clean. Reviewer inspected code/tests and independently verified the committed whitespace check, but did not rerun suites.
+- Visual PDF inspection remains unverified as previously disclosed; automated parsing/text and multi-page stress checks are reported. This acceptance is for the scoped report integration, not completion of all roadmap Phase 4 requirements or real-image validation.
 
 ## Correction review of e7ce383
 
@@ -17,7 +25,7 @@ Changes still requested after correction e7ce383. The main R1/R2 issues are addr
 - New stress coverage includes long canonical ROI IDs, 60 affected IDs, nested invalid measurement/limit values, and JSON preservation. Producer-to-case-to-report coverage now uses actual synthetic image analysis.
 - R1/R2 historical findings below are substantially resolved; final acceptance is blocked by R3.
 
-### R3 — P2: Some malformed JSON values still crash PDF rendering
+### R3 — P2: Some malformed JSON values still crash PDF rendering (resolved in 3d0b2db)
 
 In pdf_generator.py lines 1159 and 1196, membership testing raw_status/ref_raw_status against a frozenset happens before checking the value is a string. Persisted JSON such as inspection_status: [] or inspection_status: {} raises TypeError (unhashable type), rather than rendering UNKNOWN. Both current and reference branches are affected.
 
@@ -48,4 +56,4 @@ Render missing/unknown scope as not recorded/unknown, read canonical roi_id and 
 
 ## Follow-up
 
-Gemini should complete R3 within the existing DLK-M3-040 scope, rerun focused/full checks on final corrected code, update the implementation report and queue, and commit locally. No next feature task, push, PR, or merge is authorized. Preserve unrelated files.
+R1/R2/R3 are closed. Leave the accepted review and queue edits for the next authorized local handoff commit. No next feature task, push, PR, or merge is authorized by this review. Preserve unrelated files.

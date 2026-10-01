@@ -98,6 +98,24 @@ All actor, confirmer, verifier, and reporter string fields enforce max length of
 - **Non-Persistence of Raw Images:**
   - Raw image bytes, base64 strings, or object URLs are strictly transient client-side artifacts. They are **never** persisted to the database or stored on the backend filesystem.
   - When a case is created (`POST /api/v1/cases`), only the extracted canonical `Observation` records (with `source: "IMAGE"` and structured `metadata`) are transmitted and persisted.
+- **Additive Inspection Fields (DLK-M3-039 / DLK-M3-040 / DLK-M3-041):**
+  - `RoiMeasurement`:
+    - `roi_id`: string (canonical identifier, e.g. `"dot-1"`).
+    - `inspection_status`: Optional `RoiInspectionStatus` (`"DETECTED"` | `"MISSING"` | `"UNASSESSED"`). Truthfully distinguishes detected material, confirmed empty sites, and unassessed/omitted regions without inferring status from area or legacy flags.
+    - `deposit_outline_normalized`: Optional `list[NormalizedPoint]` (`list[{ x: number, y: number }]`) with normalized coordinates in `[0.0, 1.0]` representing the convex polygon of the detected fluid deposit. Valid outlines require between 3 and 128 finite coordinate vertices.
+    - `inspection_warnings`: Optional `list[str]` of per-region visual warnings (e.g. low contrast, low coverage).
+  - `AggregateMeasurements`:
+    - `expected_roi_count`: Optional `int` (total count of target sites configured for inspection).
+    - `assessed_roi_count`: Optional `int` (count of target sites successfully evaluated).
+    - `inspection_coverage_status`: Optional `InspectionCoverageStatus` (`"COMPLETE"` | `"PARTIAL"` | `"NONE"`). Indicates whether all expected sites were evaluated; does not assert zero defects.
+  - `ImageAnalysisResponse`:
+    - `reference_aggregate_measurements`: Optional `AggregateMeasurements` evaluated independently on the golden reference image in `REFERENCE_IMAGE` mode. Preserves separate denominator, numerator, and coverage status without duplicating current image counts.
+- **Frontend Region Inspection Workbench (DLK-M3-041):**
+  - Implemented in `frontend/components/diagnosis/RegionInspectionPanel.tsx`, `ImageRoiEditor.tsx`, and `ImageUpload.tsx`.
+  - Supports selectable target sites displaying individual site status badges, SVG `<polygon>` deposit outlines with emerald selection highlights, physical and pixel diameters, coverage/overflow ratios, morphology attributes, and emitted observations.
+  - Group comparison findings (such as D03 inconsistent size) clearly inform technicians that listed sites are comparison candidates rather than asserting individual site failure.
+  - Truthful fallback handling: legacy responses without additive fields render "Status unavailable" rather than guessing.
+  - Aspect-ratio letterbox/pillarbox coordinate mapping strictly maps ROI overlays to rendered image content rectangles, rejecting letterbox empty-space clicks.
 - **Evidence Gating:**
   - Only `CALIBRATED` analysis results may contribute observations to case creation. If status is `UNCALIBRATED` (e.g. `FEATURES_ONLY` mode) or `UNRELIABLE` (ambiguous/uniform frames), results produce 0 diagnostic observations and must never be submitted as case evidence.
 - **Request Cancellation & Stale-Result Lifecycle:**
