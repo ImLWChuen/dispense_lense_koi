@@ -117,48 +117,45 @@ Delivered saved-case multi-site image evidence presentation on `/diagnosis/[id]/
 ### Decisions made
 
 - **Separate Reference Measurements Section:** Reference measurements are never merged with current measurements. When reference data is omitted (single-image mode), a dedicated neutral message ("Not recorded (single-image inspection or unmatched reference site)") is displayed instead of fabricating zero values.
-- **Strict Allowlist for Applied Limits:** Defined `KNOWN_LIMIT_KEYS` (21 keys covering coverage, area, diameter, circularity, aspect ratio, solidity, voids, and tolerance) with user-friendly labels and metric-specific formatters. Unknown keys or raw nested objects are safely ignored.
-- **Unique React Keys for Corrupt/Duplicate IDs:** Persisted snapshots generate keys combining observation ID, array index, and sanitized ROI ID (`${obsId}-snap-${idx}-${roiIdStr}`) to eliminate duplicate-key console warnings if duplicate or missing IDs occur in metadata.
-- **Unmeasured Affected IDs vs Snapshots:** Affected ROI IDs lacking matching snapshots in `region_evidence` are clearly listed as unmeasured affected sites with explanatory context, rather than attaching unrelated measurements to them.
-- **Truthful Data Retention Copy:** Footer updated to clarify that raw image uploads and polygon outlines are discarded after analysis, while quantitative scalar defect measurements, target ROI identifiers, and threshold limit snapshots are stored in durable PostgreSQL records.
+- **Strict Allowlist for Applied Limits:** Defined `KNOWN_LIMIT_KEYS` with user-friendly labels and metric-specific formatters. Units for `target_area_px` are formatted as `px²`, and numeric limit keys containing boolean values return `unavailable`.
+- **Unique Instance DOM IDs & Identity:** Persisted site tabs and tabpanels use instance-unique namespaces (`${instanceId}-tab-${idx}-${snap.key}` and `${instanceId}-panel-${idx}-${snap.key}`) so identical or repeated site IDs across observations or within malformed inputs never produce DOM collisions or invalid ARIA associations.
+- **Roving Tab Stop & Focus Movement:** Implemented standard WAI-ARIA roving tabstop (`tabIndex={isSelected ? 0 : -1}`) and actual DOM focus movement via `tabRefs.current[idx]?.focus()` across `ArrowRight`, `ArrowLeft`, `Home`, and `End` keys. Tab collapse after selecting site 13+ automatically clamps selection and focus to tab 11 (site 12).
+- **Comprehensive 15-Parameter Scalar View (Current & Reference):** Shared `ScalarMetricsView` exposes all 15 supported scalar metrics (`deposit_area_px`, `target_area_px`, `coverage_ratio`, `overflow_ratio`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `convexity`, `aspect_ratio`, `hole_void_ratio`, `bubble_count`, `has_bubbles`, `segmentation_quality`, `inspection_status`) for both current and reference measurements.
+- **Restored 12 Legacy Comparison Fields:** Retains and renders all 12 legacy fields (`status`, `roiId`, `mode`, `coverageRatio`, `overflowRatio`, `currentCoverage`, `referenceCoverage`, `coverageRatioToReference`, `equivDiameterPx`, `calibratedDiameterMm`, `segQuality`, `sizeCv`) without attributing them to every site.
+- **Strict Distinction for Malformed & Empty Evidence:** Tracks `regionEvidenceState` (`present`, `absent`, `empty`, `malformed`). Malformed and empty metadata render explicit notices without being masked as legacy. Genuine legacy is strictly limited to absent snapshots with legacy fields. Scope fallback strictly requires canonical `deposit_size` and `inconsistent` without raw scope, keeping explicit unknown scopes unknown.
+- **Truthful Data Retention Copy:** Footer clarifies that raw image uploads and polygon outlines are discarded after analysis, while quantitative scalar defect measurements, target ROI identifiers, and threshold limit snapshots are stored in durable PostgreSQL records.
 
 ### Verification results
 
 1. **Saved Region Evidence Unit Test Suite:**
    `node frontend/scripts/test-saved-region-evidence.mjs`
-   - Test 1 Passed: Two distinct sites projected with correct limits, measurements, and unique keys.
-   - Test 2 Passed: Reference measurements projected separately from current measurements.
-   - Test 3 Passed: Scope handled accurately with canonical D03 fallback and shape protection.
-   - Test 4 Passed: Legacy observation without region_evidence provides clean first-site summary.
-   - Test 5 Passed: Malformed metadata safely narrowed without exceptions or duplicate keys.
-   - Test 6 Passed: Affected IDs without snapshots identified as unmeasured.
-   - Test 7 Passed: Formatting helpers format numbers, percentages, physical units, and missing states.
-   - Outcome: **All 7 tests passed successfully**.
+   - Test 1 Passed: Two distinct sites projected with full IDs, correct limits, and unique keys.
+   - Test 2 Passed: Reference measurements expose all 15 fields separately from current.
+   - Test 3 Passed: Scope handling enforces strict canonical D03 fallback and preserves unknown scopes.
+   - Test 4 Passed: Genuine legacy observation renders all 12 comparison fields.
+   - Test 5 Passed: Malformed and empty region evidence tracked distinctly from genuine legacy.
+   - Test 6 Passed: Empty measurement objects treated as unavailable/malformed, duplicate keys avoided.
+   - Test 7 Passed: Affected IDs without snapshots identified as unmeasured.
+   - Test 8 Passed: Limits formatting enforces px² and rejects booleans for numeric limits.
+   - Outcome: **All 8 tests passed successfully**.
 
 2. **Frontend View Model & State Regressions:**
    - `node frontend/scripts/test-region-inspection-view.mjs`: **All 6 tests passed successfully**.
    - `node frontend/scripts/test-image-upload-state.mjs`: **All 7 tests passed successfully**.
 
 3. **Frontend Lint & Build:**
-   - `npm run lint` from `frontend/`: Exited code 0 (144 pre-existing warnings in unrelated legacy files, 0 new errors or warnings).
-   - `npm run build` from `frontend/`: Compiled successfully in 6.4s; TypeScript finished with 0 errors; all 18 static and dynamic routes generated, including `/diagnosis/[id]/analysis`.
+   - `npm run lint` from `frontend/`: Exited code 0 (0 errors, 143 pre-existing legacy warnings).
+   - `npm run build` from `frontend/`: Compiled successfully in 6.9s; TypeScript finished with 0 errors; all 18 static and dynamic routes generated, including `/diagnosis/[id]/analysis`.
 
-4. **Real Browser CDP Rehearsal on Live Services:**
-   - Services: Backend on `http://127.0.0.1:8000` (`dispense-lens-api` v0.1.0), Frontend on `http://localhost:3001` (`DispenseIQ`), PostgreSQL on port 5432.
-   - Target Case: `e1d8db2d-fdce-4edf-974c-97ce671f0792` (accepted DLK-M3-042 rehearsal case with two affected sites).
-   - Analysis Page: `http://localhost:3001/diagnosis/e1d8db2d-fdce-4edf-974c-97ce671f0792/analysis`.
-   - Observation Header: Title `deposit presence`, badge `missing`, Scope badge `Individual Regions`, Revision badge `Rev 1`. Scope explanation: `Individual region defect findings: each listed region was evaluated and independently triggered defect criteria.`
-   - Summary Cards: Recorded Affected Sites: `dot-1`, `dot-2`. Applied Limits Snapshot: `0.75`, `1.35`, `0`, `0.45`, `0.2`, `0.1`, `0.05`.
-   - Rendered Site Tabs: `saved-tab-dot-1` (`dot-1 DETECTED`, selected), `saved-tab-dot-2` (`dot-2 DETECTED`).
-   - Active Tab 0 (`dot-1`): Coverage `0.9%`, Overflow `0.0%`, Equiv Diam `20.0 px`, Physical Diam `0.399 mm`, Deposit Area `313 px² / 35328 px²`, Circularity `100%`, Reference: `Not recorded (single-image inspection or unmatched reference site)`.
-   - Active Tab 1 (`dot-2`): Clicking `dot-2` updated active panel to `Site: dot-2 DETECTED`. Coverage `2.0%`, Overflow `0.0%`, Equiv Diam `30.0 px`, Physical Diam `0.599 mm`, Deposit Area `705 px² / 35328 px²`, Circularity `97%`, Reference: `Not recorded (single-image inspection or unmatched reference site)`.
-   - Keyboard Navigation: `ArrowLeft` from `dot-2` tab immediately returned focus and selection to `dot-1`.
-   - Mobile Viewport (375x812): Card container adapted to 259px width with cleanly wrapped tabs and responsive table.
-   - Retention Footer Note: Confirmed exact text `Raw image files and polygon outlines are not retained in durable storage. Visual evidence is preserved as quantitative scalar defect measurements, target ROI identifiers, and threshold limit snapshots.`
-   - Captured Screenshots:
-     - `04-saved-case-multi-site-evidence.png` (189 KB, full page screenshot)
-     - `04-saved-case-card-detail.png` (focused card header screenshot)
-     - `04-saved-case-tabs-detail.png` (tabs and active snapshot metrics screenshot)
+4. **Real Browser CDP Verification Suite (R1–R3 Evidence):**
+   - Script: `scratch/verify-saved-case-browser-suite.mjs` running against live Next.js on `http://localhost:3001` with headless Chrome.
+   - Test 1 (R1 Roving Tab Stop & Focus): Initial tab 0 had `tabIndex=0`, tabs 1-11 had `tabIndex=-1`. Focus tab 0 set `document.activeElement.id` to `_r_0_-tab-0-...`. Three consecutive `ArrowRight` presses updated `document.activeElement.id` to tab 1, tab 2, and tab 3, updating panels and `tabIndex` at each step. `Home` returned focus to tab 0 (`tabIndex=0`). `End` moved focus to tab 11 (`tabIndex=0`).
+   - Test 2 (R1 Expand & Collapse Clamping): Expanded 14-site observation to all 14 tabs. Selected site 13 (`tab12Selected="true"`). Clicked collapse: visible tabs clamped to 12, `document.activeElement.id` clamped to tab 11 (site 12) with `tabIndex=0`, panel synchronized to site 12.
+   - Test 3 (R1 DOM ID Uniqueness): Evaluated 17 tabs and 4 panels across repeated site IDs within malformed input (`dup-site`) and across observations (`common-site`). Exactly 0 duplicate tab IDs and 0 duplicate panel IDs. All active tabs associated bidirectionally with rendered panels (`aria-controls` / `aria-labelledby`).
+   - Test 4 (R2 15-Parameter Scalar Evidence): Confirmed rendered DOM content in current and reference sections: Coverage Ratio, Overflow Ratio, Equivalent Diameter, Physical Diameter, Area (`35328 px²`), Circularity, Aspect Ratio, Solidity, Convexity (`89%` current, `99%` ref), Voids/Bubbles (`void=6.0%, bubbles=3 (bubbles)`), Seg Quality, and Golden Reference Mode (`0.504 mm`).
+   - Test 5 (R2 Legacy 12 Fields & Limit Units): Confirmed rendered DOM content for all 12 legacy fields: Status (`CALIBRATED`), ROI Target (`legacy-dot-prime`), Mode (`GOLDEN_TEMPLATE`), Coverage Ratio (`12.5%`), Overflow Ratio (`1.5%`), Current Coverage (`12.5%`), Reference Coverage (`25.0%`), Coverage vs Ref (`0.50`), Equiv Diameter (`24.5 px`), Physical Diameter (`0.490 mm`), Seg Quality (`97%`), Size CV (`7.5%`). Limit units: `target_area_px` formatted as `35328 px²`, boolean in numeric limit rendered as `unavailable`.
+   - Test 6 (R3 Malformed & Empty Handling): Rendered explicit "Malformed Region Evidence: Region evidence metadata is not a valid list of site snapshots" banner and "Empty Region Evidence: Region evidence was recorded as an empty list (0 site snapshots)" banner. Legacy fallback fields rendered below banners without masking the malformed state.
+   - Captured Screenshot: `06-comprehensive-browser-suite-full.png` (40 KB).
 
 5. **Task Validation & Git Hygiene:**
    - `validate_task.py`: VALID.
@@ -175,5 +172,4 @@ Delivered saved-case multi-site image evidence presentation on `/diagnosis/[id]/
 
 ### Proposed commit message
 
-`feat(vision-ui): display saved multi-site inspection evidence`
-
+`feat(vision-ui): correct saved evidence focus, metrics and malformed handling`

@@ -75,7 +75,7 @@ export const LIMIT_LABELS: Record<string, string> = {
     tolerance_ratio: "Tolerance Ratio",
     min_circularity_ratio: "Min Circularity Ratio",
     min_solidity_ratio: "Min Solidity Ratio",
-    target_area_px: "Target Area (px)",
+    target_area_px: "Target Area (px²)",
     tolerance_pct: "Tolerance (%)",
     target_diameter_mm: "Target Diameter (mm)",
     tolerance_pct_diameter: "Diameter Tolerance (%)",
@@ -146,6 +146,7 @@ export interface SavedImageObservationView {
     snapshots: SavedRegionSiteSnapshot[];
     unmeasuredAffectedIds: string[];
     hasSnapshots: boolean;
+    regionEvidenceState: "present" | "absent" | "empty" | "malformed";
     isLegacyOnly: boolean;
     legacySummary: LegacyObservationSummary | null;
     warnings: string[];
@@ -181,27 +182,31 @@ export function formatPhysicalDiameter(val: number | null | undefined): string {
 
 export function formatLimitValue(key: string, val: unknown): string {
     if (val === null || val === undefined) return "-";
-    if (typeof val === "boolean") return val ? "True" : "False";
+    if (typeof val === "boolean") {
+        if (key === "has_bubbles") return val ? "True" : "False";
+        return "unavailable";
+    }
     if (isFiniteNumber(val)) {
+        if (key === "target_area_px") {
+            return `${val} px²`;
+        }
+        if (key === "tolerance_pct" || key === "tolerance_pct_diameter") {
+            return `${val}%`;
+        }
+        if (key === "target_diameter_mm" || key.includes("mm")) {
+            return `${val} mm`;
+        }
+        if (key.includes("px")) {
+            return `${val} px`;
+        }
         if (
             key.includes("ratio") ||
-            key.includes("pct") ||
             key.includes("cv") ||
             key.includes("circularity") ||
             key.includes("solidity") ||
             key.includes("convexity")
         ) {
-            // If it's a tolerance_pct (e.g. 10 or 0.10)
-            if (key === "tolerance_pct" || key === "tolerance_pct_diameter") {
-                return `${val}%`;
-            }
             return String(val);
-        }
-        if (key.includes("mm")) {
-            return `${val} mm`;
-        }
-        if (key.includes("px")) {
-            return `${val} px`;
         }
         return String(val);
     }
@@ -229,22 +234,58 @@ export function parseScalarMeasurements(raw: unknown): SavedScalarMeasurements |
         return typeof v === "boolean" ? v : null;
     };
 
+    const deposit_area_px = parseNum("deposit_area_px");
+    const target_area_px = parseNum("target_area_px");
+    const coverage_ratio = parseNum("coverage_ratio");
+    const overflow_ratio = parseNum("overflow_ratio");
+    const equivalent_diameter_px = parseNum("equivalent_diameter_px");
+    const calibrated_diameter_mm = parseNum("calibrated_diameter_mm");
+    const circularity = parseNum("circularity");
+    const solidity = parseNum("solidity");
+    const convexity = parseNum("convexity");
+    const aspect_ratio = parseNum("aspect_ratio");
+    const hole_void_ratio = parseNum("hole_void_ratio");
+    const bubble_count = parseNum("bubble_count");
+    const has_bubbles = parseBool("has_bubbles");
+    const segmentation_quality = parseNum("segmentation_quality");
+
+    const hasUsableStatus = inspection_status !== "UNKNOWN";
+    const hasUsableScalar =
+        deposit_area_px !== null ||
+        target_area_px !== null ||
+        coverage_ratio !== null ||
+        overflow_ratio !== null ||
+        equivalent_diameter_px !== null ||
+        calibrated_diameter_mm !== null ||
+        circularity !== null ||
+        solidity !== null ||
+        convexity !== null ||
+        aspect_ratio !== null ||
+        hole_void_ratio !== null ||
+        bubble_count !== null ||
+        segmentation_quality !== null;
+    const hasUsableBool = has_bubbles !== null;
+
+    if (!hasUsableStatus && !hasUsableScalar && !hasUsableBool) {
+        return null;
+    }
+
     return {
         inspection_status,
-        deposit_area_px: parseNum("deposit_area_px"),
-        target_area_px: parseNum("target_area_px"),
-        coverage_ratio: parseNum("coverage_ratio"),
-        overflow_ratio: parseNum("overflow_ratio"),
-        equivalent_diameter_px: parseNum("equivalent_diameter_px"),
-        calibrated_diameter_mm: parseNum("calibrated_diameter_mm"),
-        circularity: parseNum("circularity"),
-        solidity: parseNum("solidity"),
-        convexity: parseNum("convexity"),
-        aspect_ratio: parseNum("aspect_ratio"),
-        hole_void_ratio: parseNum("hole_void_ratio"),
-        bubble_count: parseNum("bubble_count"),
-        has_bubbles: parseBool("has_bubbles"),
-        segmentation_quality: parseNum("segmentation_quality"),
+        deposit_area_px,
+        target_area_px,
+        coverage_ratio,
+        overflow_ratio,
+        equivalent_diameter_px,
+        calibrated_diameter_mm,
+        circularity,
+        solidity,
+        convexity,
+        aspect_ratio,
+        hole_void_ratio,
+        bubble_count,
+        has_bubbles,
+        segmentation_quality,
     };
 }
 
@@ -255,6 +296,9 @@ export function parseLegacySummary(meta: Record<string, unknown>): LegacyObserva
         meta.mode !== undefined ||
         meta.coverage_ratio !== undefined ||
         meta.overflow_ratio !== undefined ||
+        meta.current_coverage !== undefined ||
+        meta.reference_coverage !== undefined ||
+        meta.coverage_ratio_to_reference !== undefined ||
         meta.equivalent_diameter_px !== undefined ||
         meta.calibrated_diameter_mm !== undefined ||
         meta.segmentation_quality !== undefined ||
@@ -269,7 +313,7 @@ export function parseLegacySummary(meta: Record<string, unknown>): LegacyObserva
 
     return {
         status: typeof meta.status === "string" ? truncateStr(meta.status) : null,
-        roiId: typeof meta.roi_id === "string" ? truncateStr(meta.roi_id) : null,
+        roiId: typeof meta.roi_id === "string" ? String(meta.roi_id) : null,
         mode: typeof meta.mode === "string" ? truncateStr(meta.mode) : null,
         coverageRatio: parseNum("coverage_ratio"),
         overflowRatio: parseNum("overflow_ratio"),
@@ -306,30 +350,36 @@ export function projectSavedRegionEvidence(
         scope = "comparison_group";
         scopeLabel = "Comparison Group";
         scopeDescription = "Group comparison finding: listed regions are eligible comparison participants evaluated for group variation, not individually confirmed failures.";
+    } else if (typeof rawScope === "string" && rawScope.trim() !== "") {
+        // Explicit unrecognized scope remains strictly unknown
+        scope = "unknown";
+        scopeLabel = "Unknown Scope";
+        scopeDescription = `Unrecognized region evidence scope: "${rawScope.trim()}".`;
     } else if (
-        (obs.observation_type === "deposit_size" || obs.observation_type === "deposit_size_cv") &&
+        (rawScope === undefined || rawScope === null) &&
+        obs.observation_type === "deposit_size" &&
         obs.value === "inconsistent"
     ) {
-        // Canonical legacy D03 fallback
+        // Canonical legacy D03 fallback strictly when scope is absent and observation_type is canonical deposit_size
         scope = "comparison_group";
         scopeLabel = "Comparison Group (Canonical D03)";
         scopeDescription = "Group comparison finding: listed regions are eligible comparison participants evaluated for group variation, not individually confirmed failures.";
     }
 
-    // 2. Affected ROI IDs
+    // 2. Affected ROI IDs (retain full, untruncated string for identity and matching)
     const affectedRoiIds: string[] = [];
     const rawAffected = meta.affected_roi_ids;
     if (Array.isArray(rawAffected)) {
         for (const item of rawAffected) {
             if (typeof item === "string" || typeof item === "number") {
-                affectedRoiIds.push(truncateStr(String(item)));
+                affectedRoiIds.push(String(item));
             } else {
                 affectedRoiIds.push("unavailable");
             }
         }
     } else if (meta.roi_id !== undefined && meta.roi_id !== null) {
         if (typeof meta.roi_id === "string" || typeof meta.roi_id === "number") {
-            affectedRoiIds.push(truncateStr(String(meta.roi_id)));
+            affectedRoiIds.push(String(meta.roi_id));
         } else {
             affectedRoiIds.push("unavailable");
         }
@@ -349,12 +399,21 @@ export function projectSavedRegionEvidence(
         }
     }
 
-    // 4. Region Evidence Snapshots
-    const snapshots: SavedRegionSiteSnapshot[] = [];
+    // 4. Region Evidence State and Snapshots
     const rawEvidence = meta.region_evidence;
-    const hasEvidenceArray = Array.isArray(rawEvidence);
+    let regionEvidenceState: "present" | "absent" | "empty" | "malformed" = "absent";
+    if (rawEvidence === undefined || rawEvidence === null) {
+        regionEvidenceState = "absent";
+    } else if (!Array.isArray(rawEvidence)) {
+        regionEvidenceState = "malformed";
+    } else if (rawEvidence.length === 0) {
+        regionEvidenceState = "empty";
+    } else {
+        regionEvidenceState = "present";
+    }
 
-    if (hasEvidenceArray) {
+    const snapshots: SavedRegionSiteSnapshot[] = [];
+    if (Array.isArray(rawEvidence)) {
         rawEvidence.forEach((entry, idx) => {
             const uniqueKey = `${obsId}-snap-${idx}`;
             if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -374,7 +433,7 @@ export function projectSavedRegionEvidence(
             const rawRoiId = e.roi_id;
             let roiIdStr = "UNKNOWN";
             if (typeof rawRoiId === "string" || typeof rawRoiId === "number") {
-                roiIdStr = truncateStr(String(rawRoiId));
+                roiIdStr = String(rawRoiId);
             }
 
             const currentMeasurements = parseScalarMeasurements(e.current_measurements);
@@ -393,7 +452,7 @@ export function projectSavedRegionEvidence(
         });
     }
 
-    // 5. Unmeasured Affected IDs
+    // 5. Unmeasured Affected IDs (matching full IDs)
     const measuredIds = new Set(
         snapshots
             .filter((s) => !s.isMalformed && s.roi_id !== "UNKNOWN")
@@ -401,13 +460,19 @@ export function projectSavedRegionEvidence(
     );
     const unmeasuredAffectedIds = affectedRoiIds.filter((id) => !measuredIds.has(id));
 
-    // 6. Legacy Only Check
+    // 6. Legacy Only Check (strictly when region_evidence is absent and legacy fields exist)
     const hasSnapshots = snapshots.length > 0;
     const legacySummary = parseLegacySummary(meta);
-    const isLegacyOnly = !hasSnapshots && legacySummary !== null;
+    const isLegacyOnly = regionEvidenceState === "absent" && !hasSnapshots && legacySummary !== null;
 
-    // 7. Warnings
+    // 7. Warnings and notices
     const warnings: string[] = [];
+    if (regionEvidenceState === "malformed") {
+        warnings.push(`Region evidence metadata is malformed (expected an array of site snapshots, received ${typeof rawEvidence}).`);
+    } else if (regionEvidenceState === "empty") {
+        warnings.push("Region evidence array is empty (0 site snapshots recorded).");
+    }
+
     if (Array.isArray(meta.warnings)) {
         for (const w of meta.warnings) {
             if (typeof w === "string") warnings.push(truncateStr(w));
@@ -432,6 +497,7 @@ export function projectSavedRegionEvidence(
         snapshots,
         unmeasuredAffectedIds,
         hasSnapshots,
+        regionEvidenceState,
         isLegacyOnly,
         legacySummary,
         warnings,

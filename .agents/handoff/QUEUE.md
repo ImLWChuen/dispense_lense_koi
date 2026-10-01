@@ -202,6 +202,12 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-043` — Display persisted multi-site image evidence on saved cases — **implemented**
+  - reviewed commit: `4fb539c16895b92e3a3135d883ca683eff3e1f72`
+  - review: `.agents/handoff/reviews/DLK-M3-043-review.md`
+  - resolved corrections R1–R3:
+    - R1: implemented roving tab stop (`tabIndex={isSelected ? 0 : -1}`) and actual DOM focus movement via `tabRefs.current[idx]?.focus()`; verified 3 consecutive arrow presses, Home/End, recording actual `document.activeElement.id`; isolated instance-unique DOM IDs preventing collisions across repeated site IDs; enforced tab collapse clamping to tab 11 with panel update and focus transfer;
+    - R2: exposed all 15 supported scalar metrics in current and reference sections via shared `ScalarMetricsView`; restored all 12 legacy comparison fields; formatted `target_area_px` limits with `px²` and returned `unavailable` for booleans in numeric limit keys; verified via in-browser CDP inspection;
+    - R3: tracked `regionEvidenceState` distinctly (`present`, `absent`, `empty`, `malformed`); restricted genuine legacy fallback strictly to absent snapshots without record-age inference; rendered explicit malformed/empty warning banners without masking; treated empty scalar objects as unavailable/malformed; preserved full untruncated ROI IDs; enforced strict canonical D03 fallback while keeping explicit unrecognized scopes unknown.
   - task: `.agents/handoff/tasks/DLK-M3-043-saved-case-region-evidence.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-042 at `a9803d01db253437c564ddea2dac743995957a6a`
