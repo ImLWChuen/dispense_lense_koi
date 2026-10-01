@@ -7,8 +7,10 @@ Verifies:
 - Clipped edge coordinate transformation and valid normalized ROIs.
 - Collision preflight on generator and summary output paths (including hardlink/symlink aliases).
 - Identity validation between manifest and evaluation report (origin, profile, labels, schema version).
-- Data-driven summary risk classification across failed cases, wrong controls, omitted outputs,
-  warning-bearing detected sites, all-unlabeled datasets, and changed blur outcomes.
+- Data-driven summary risk classification separating input/execution failures from demonstrated inspection defects.
+- Inconsistent status_match rejection.
+- Rejection of malformed reports (removed/duplicate/unknown sites, sites=null, non-object sites,
+  non-string image paths, contradictory summary metrics) cleanly via CLI without tracebacks.
 - Safe report publication helper reuse and sentinel-created-during-generation race prevention.
 - CLI argument handling and end-to-end execution.
 """
@@ -46,6 +48,7 @@ from tests.vision_inspection_dataset import (
     DatasetManifest,
     DatasetOrigin,
     ManifestCase,
+    compute_dataset_metrics,
     evaluate_dataset,
 )
 
@@ -203,7 +206,7 @@ def test_summary_identity_mismatch_validation(tmp_path: Path) -> None:
     # 4. Origin mismatch
     bad_report = json.loads(json.dumps(report))
     bad_report["origin"] = "real"
-    with pytest.raises(IdentityMismatchError, match="Origin mismatch"):
+    with pytest.raises(IdentityMismatchError, match="Dataset origin mismatch"):
         validate_identities(manifest, bad_report)
 
     # 5. Case count mismatch
@@ -221,13 +224,29 @@ def test_summary_identity_mismatch_validation(tmp_path: Path) -> None:
     # 7. Profile mismatch
     bad_report = json.loads(json.dumps(report))
     bad_report["cases"][0]["profile"]["mode"] = "FEATURES_ONLY"
-    with pytest.raises(IdentityMismatchError, match="Profile specification mismatch"):
+    with pytest.raises(IdentityMismatchError, match="profile specification mismatch"):
         validate_identities(manifest, bad_report)
 
     # 8. Label mismatch (labeled control marked unlabeled in report)
     bad_report = json.loads(json.dumps(report))
     bad_report["cases"][0]["sites"][0]["is_labeled"] = False
-    with pytest.raises(IdentityMismatchError, match="Label status mismatch"):
+    with pytest.raises(IdentityMismatchError, match="should be labeled according to manifest"):
+        validate_identities(manifest, bad_report)
+
+
+def test_summary_inconsistent_status_match_rejected(tmp_path: Path) -> None:
+    """Verifies that an inconsistent status_match flag (claiming match when predicted != expected) is rejected."""
+    manifest_path = generate_robustness_dataset(tmp_path)
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path)
+
+    # Set site predicted_status to MISSING, but leave status_match as True
+    bad_report = json.loads(json.dumps(report))
+    site = bad_report["cases"][0]["sites"][0]
+    site["predicted_status"] = "MISSING"
+    site["status_match"] = True
+
+    with pytest.raises(IdentityMismatchError, match="status_match contradicts expected/predicted states"):
         validate_identities(manifest, bad_report)
 
 
@@ -273,7 +292,7 @@ def test_summary_output_alias_collision_protection(tmp_path: Path) -> None:
 
 
 def test_summary_risk_classification_and_accounting(tmp_path: Path) -> None:
-    """Verifies classify_case_finding across hand-crafted mixed outcomes."""
+    """Verifies classify_case_finding separates input/execution failures from inspection defects."""
     # 1. Clean control matching -> MEASURED_BASELINE
     c_control_match = {
         "case_id": "case_01_control_clean",
@@ -322,7 +341,68 @@ def test_summary_risk_classification_and_accounting(tmp_path: Path) -> None:
     assert cat2 == "DEMONSTRATED_DEFECT"
     assert "Control status mismatch" in rat2
 
-    # 3. Unlabeled perturbation DETECTED without warnings -> POTENTIAL_RISK
+    # 3. Input failure (FILESYSTEM_ACCESS) -> INPUT_FAILURE (not DEMONSTRATED_DEFECT)
+    c_fs_err = {
+        "case_id": "case_missing_image",
+        "analysis_status": None,
+        "status": "ERROR",
+        "error": {
+            "category": "FILESYSTEM_ACCESS",
+            "type": "FileNotFoundError",
+            "message": "Image file not found on disk for case 'case_missing_image'.",
+        },
+        "sites": [],
+    }
+    cat_fs, rat_fs = classify_case_finding(c_fs_err)
+    assert cat_fs == "INPUT_FAILURE"
+    assert "Input failure (FILESYSTEM_ACCESS)" in rat_fs
+
+    # 4. Input failure (IMAGE_VALIDATION) -> INPUT_FAILURE (not DEMONSTRATED_DEFECT)
+    c_img_err = {
+        "case_id": "case_corrupt_image",
+        "analysis_status": None,
+        "status": "ERROR",
+        "error": {
+            "category": "IMAGE_VALIDATION",
+            "type": "ImageDecodeError",
+            "message": "Image format unsupported, damaged, or unreadable.",
+        },
+        "sites": [],
+    }
+    cat_img, rat_img = classify_case_finding(c_img_err)
+    assert cat_img == "INPUT_FAILURE"
+    assert "Input failure (IMAGE_VALIDATION)" in rat_img
+
+    # 5. Unexpected pipeline execution crash -> EXECUTION_FAILURE (not DEMONSTRATED_DEFECT)
+    c_exec_err = {
+        "case_id": "case_crash",
+        "analysis_status": None,
+        "status": "ERROR",
+        "error": {
+            "category": "EXECUTION_ERROR",
+            "type": "RuntimeError",
+            "message": "Pipeline execution error encountered while inspecting case 'case_crash'.",
+        },
+        "sites": [],
+    }
+    cat_exec, rat_exec = classify_case_finding(c_exec_err)
+    assert cat_exec == "EXECUTION_FAILURE"
+    assert "Execution failure (EXECUTION_ERROR)" in rat_exec
+
+    # 6. Omitted output site -> DEMONSTRATED_DEFECT
+    c_missing_out = {
+        "case_id": "case_missing_output",
+        "analysis_status": "CALIBRATED",
+        "status": "SUCCESS",
+        "sites": [
+            {"roi_id": "roi_1", "is_labeled": False, "predicted_status": "DETECTED", "output_present": False},
+        ],
+    }
+    cat_omitted, rat_omitted = classify_case_finding(c_missing_out)
+    assert cat_omitted == "DEMONSTRATED_DEFECT"
+    assert "Output omitted for site(s): roi_1" in rat_omitted
+
+    # 7. Unlabeled perturbation DETECTED without warnings -> POTENTIAL_RISK
     c_blur = {
         "case_id": "case_03_blur_heavy",
         "analysis_status": "CALIBRATED",
@@ -332,11 +412,11 @@ def test_summary_risk_classification_and_accounting(tmp_path: Path) -> None:
             {"roi_id": "roi_2", "is_labeled": False, "predicted_status": "DETECTED", "output_present": True, "warnings": []},
         ],
     }
-    cat3, rat3 = classify_case_finding(c_blur)
-    assert cat3 == "POTENTIAL_RISK"
-    assert "without warnings" in rat3
+    cat_blur, rat_blur = classify_case_finding(c_blur)
+    assert cat_blur == "POTENTIAL_RISK"
+    assert "without warnings" in rat_blur
 
-    # 4. Unlabeled perturbation DETECTED with warnings -> POTENTIAL_RISK
+    # 8. Unlabeled perturbation DETECTED with warnings -> POTENTIAL_RISK
     c_warn = {
         "case_id": "case_warning_detected",
         "analysis_status": "CALIBRATED",
@@ -351,11 +431,11 @@ def test_summary_risk_classification_and_accounting(tmp_path: Path) -> None:
             },
         ],
     }
-    cat4, rat4 = classify_case_finding(c_warn)
-    assert cat4 == "POTENTIAL_RISK"
-    assert "with warning(s)" in rat4
+    cat_warn, rat_warn = classify_case_finding(c_warn)
+    assert cat_warn == "POTENTIAL_RISK"
+    assert "with warning(s)" in rat_warn
 
-    # 5. Low-contrast gated UNRELIABLE -> MEASURED_BASELINE
+    # 9. Low-contrast gated UNRELIABLE -> MEASURED_BASELINE
     c_low_contrast = {
         "case_id": "case_06_contrast_low",
         "analysis_status": "UNRELIABLE",
@@ -365,60 +445,94 @@ def test_summary_risk_classification_and_accounting(tmp_path: Path) -> None:
             {"roi_id": "roi_2", "is_labeled": False, "predicted_status": "UNASSESSED", "output_present": True},
         ],
     }
-    cat5, rat5 = classify_case_finding(c_low_contrast)
-    assert cat5 == "MEASURED_BASELINE"
-    assert "UNASSESSED" in rat5
-
-    # 6. Missing output site -> DEMONSTRATED_DEFECT
-    c_missing_out = {
-        "case_id": "case_missing_output",
-        "analysis_status": "CALIBRATED",
-        "status": "SUCCESS",
-        "sites": [
-            {"roi_id": "roi_1", "is_labeled": False, "predicted_status": "DETECTED", "output_present": False},
-        ],
-    }
-    cat6, rat6 = classify_case_finding(c_missing_out)
-    assert cat6 == "DEMONSTRATED_DEFECT"
-    assert "Output omitted for site(s): roi_1" in rat6
-
-    # 7. Execution failure -> DEMONSTRATED_DEFECT
-    c_failed = {
-        "case_id": "case_execution_fail",
-        "analysis_status": None,
-        "status": "ERROR",
-        "error": "Memory allocation failure in CV pipeline",
-        "sites": [],
-    }
-    cat7, rat7 = classify_case_finding(c_failed)
-    assert cat7 == "DEMONSTRATED_DEFECT"
-    assert "Memory allocation failure" in rat7
+    cat_lc, rat_lc = classify_case_finding(c_low_contrast)
+    assert cat_lc == "MEASURED_BASELINE"
+    assert "UNASSESSED" in rat_lc
 
 
 def test_summary_with_failed_case(tmp_path: Path) -> None:
-    """Verifies summary reflects actual failed cases rather than claiming 0 execution errors."""
+    """Verifies summary reflects actual failed cases under Execution and Input Failures."""
     manifest_path = generate_robustness_dataset(tmp_path)
     manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     report = evaluate_dataset(manifest, tmp_path)
 
-    # Inject an execution failure into case 0
-    report["cases"][0]["status"] = "ERROR"
-    report["cases"][0]["error"] = "Synthetic segmentation crash"
-    report["cases"][0]["analysis_status"] = None
-    report["cases"][0]["sites"] = []
-    report["summary"]["case_counts"]["successful_cases"] = 13
-    report["summary"]["case_counts"]["failed_cases"] = 1
+    # Inject an execution failure into case 0 with matching site records
+    c0 = report["cases"][0]
+    c0["status"] = "ERROR"
+    c0["error"] = {
+        "category": "EXECUTION_ERROR",
+        "type": "RuntimeError",
+        "message": "Synthetic segmentation crash",
+    }
+    c0["analysis_status"] = None
+    for s in c0["sites"]:
+        s["case_failed"] = True
+        s["output_present"] = False
+        s["predicted_status"] = None
+        s["status_match"] = False if s.get("is_labeled") else None
 
+    # Recompute summary to match modified cases
+    report["summary"] = compute_dataset_metrics(report["cases"])
+
+    validate_identities(manifest, report)
     md = generate_markdown_summary(manifest, report)
 
     assert "1 case(s) failed with execution error" in md
-    assert "**FAILED CASE**: Synthetic segmentation crash" in md
-    assert "DEMONSTRATED_DEFECT" in md
-    assert "All 14 cases completed without execution error" not in md
+    assert "**FAILED CASE (EXECUTION_ERROR)**: Synthetic segmentation crash" in md
+    assert "Execution and Input Failures (1)" in md
+    assert "EXECUTION_FAILURE" in md
+    assert "Demonstrated Inspection Defects (0)" in md
+
+
+def test_summary_with_filesystem_access_and_image_validation_failures(tmp_path: Path) -> None:
+    """Verifies FILESYSTEM_ACCESS and IMAGE_VALIDATION errors are categorized as INPUT_FAILURE."""
+    manifest_path = generate_robustness_dataset(tmp_path)
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path)
+
+    # Case 1: FILESYSTEM_ACCESS
+    c1 = report["cases"][1]
+    c1["status"] = "ERROR"
+    c1["error"] = {
+        "category": "FILESYSTEM_ACCESS",
+        "type": "FileNotFoundError",
+        "message": "Image file not found on disk for case 'case_02_blur_mild'.",
+    }
+    c1["analysis_status"] = None
+    for s in c1["sites"]:
+        s["case_failed"] = True
+        s["output_present"] = False
+        s["predicted_status"] = None
+
+    # Case 2: IMAGE_VALIDATION
+    c2 = report["cases"][2]
+    c2["status"] = "ERROR"
+    c2["error"] = {
+        "category": "IMAGE_VALIDATION",
+        "type": "ImageDecodeError",
+        "message": "Image format unsupported, damaged, or unreadable.",
+    }
+    c2["analysis_status"] = None
+    for s in c2["sites"]:
+        s["case_failed"] = True
+        s["output_present"] = False
+        s["predicted_status"] = None
+
+    # Recompute summary to match
+    report["summary"] = compute_dataset_metrics(report["cases"])
+
+    validate_identities(manifest, report)
+    md = generate_markdown_summary(manifest, report)
+
+    assert "2 case(s) failed with execution error" in md
+    assert "Input failure (FILESYSTEM_ACCESS)" in md
+    assert "Input failure (IMAGE_VALIDATION)" in md
+    assert "Execution and Input Failures (2)" in md
+    assert "Demonstrated Inspection Defects (0)" in md
 
 
 def test_summary_with_wrong_control(tmp_path: Path) -> None:
-    """Verifies summary reflects ground-truth control mismatches rather than claiming 100% agreement."""
+    """Verifies summary reflects ground-truth control mismatches under Demonstrated Inspection Defects."""
     manifest_path = generate_robustness_dataset(tmp_path)
     manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     report = evaluate_dataset(manifest, tmp_path)
@@ -427,16 +541,15 @@ def test_summary_with_wrong_control(tmp_path: Path) -> None:
     site_0 = report["cases"][0]["sites"][0]
     site_0["predicted_status"] = "MISSING"
     site_0["status_match"] = False
-    report["summary"]["status_accuracy"]["numerator"] = 5
-    report["summary"]["status_accuracy"]["rate"] = 5 / 6
+    report["summary"] = compute_dataset_metrics(report["cases"])
 
+    validate_identities(manifest, report)
     md = generate_markdown_summary(manifest, report)
 
     assert "1 labeled control site(s) mismatched ground truth" in md
     assert "Control status mismatch on site(s): roi_1 (expected DETECTED, got MISSING)" in md
-    assert "DEMONSTRATED_DEFECT" in md
+    assert "Demonstrated Inspection Defects (1)" in md
     assert "All 6 labeled control sites matched ground truth" not in md
-    assert "100% agreement on construction-grounded baseline controls" not in md
 
 
 def test_summary_with_omitted_output(tmp_path: Path) -> None:
@@ -445,15 +558,17 @@ def test_summary_with_omitted_output(tmp_path: Path) -> None:
     manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     report = evaluate_dataset(manifest, tmp_path)
 
-    # Site 1 omitted from output
+    # Site 1 omitted from output on case 1
     report["cases"][1]["sites"][0]["output_present"] = False
     report["cases"][1]["sites"][0]["predicted_status"] = None
+    report["summary"] = compute_dataset_metrics(report["cases"])
 
+    validate_identities(manifest, report)
     md = generate_markdown_summary(manifest, report)
 
     assert "OMITTED OUTPUT" in md
     assert "Output omitted for site(s): roi_1" in md
-    assert "DEMONSTRATED_DEFECT" in md
+    assert "Demonstrated Inspection Defects (1)" in md
 
 
 def test_summary_with_warning_bearing_detected_site(tmp_path: Path) -> None:
@@ -465,6 +580,7 @@ def test_summary_with_warning_bearing_detected_site(tmp_path: Path) -> None:
     # Add warning to case 1 (blur mild)
     report["cases"][1]["sites"][0]["warnings"] = ["Boundary contrast is borderline."]
 
+    validate_identities(manifest, report)
     md = generate_markdown_summary(manifest, report)
 
     assert "Boundary contrast is borderline" in md
@@ -502,11 +618,18 @@ def test_summary_with_all_unlabeled_data() -> None:
         "description": "Dataset without labels",
         "run_provenance": {},
         "summary": {
-            "case_counts": {"total_cases": 1, "successful_cases": 1, "failed_cases": 0},
-            "site_counts": {"total_sites": 1, "eligible_labeled_sites": 0, "unlabeled_sites": 1},
+            "case_counts": {"total_cases": 1, "successful_cases": 1, "failed_cases": 0, "unreviewed_labeled_cases": 0},
+            "site_counts": {
+                "total_sites": 1,
+                "eligible_labeled_sites": 0,
+                "unlabeled_sites": 1,
+                "emitted_predictions": 1,
+                "correct_labeled_sites": 0,
+                "incorrect_labeled_sites": 0,
+            },
             "status_accuracy": None,
             "abstention_rate": {"numerator": 0, "denominator": 1, "rate": 0.0},
-            "false_missing_rate": None,
+            "false_missing_rate": {"numerator": 0, "denominator": 0, "rate": 0.0},
         },
         "cases": [
             {
@@ -527,6 +650,7 @@ def test_summary_with_all_unlabeled_data() -> None:
                         "predicted_status": "DETECTED",
                         "status_match": None,
                         "output_present": True,
+                        "case_failed": False,
                         "warnings": [],
                     }
                 ],
@@ -540,7 +664,6 @@ def test_summary_with_all_unlabeled_data() -> None:
 
     assert "null (no labels)" in md
     assert "No labeled control sites present in dataset" in md
-    assert "null (no non-missing controls)" in md
     assert "POTENTIAL_RISK" in md
     assert "100% agreement" not in md
 
@@ -561,13 +684,15 @@ def test_summary_with_changed_blur_outcomes(tmp_path: Path) -> None:
         s["predicted_status"] = "UNASSESSED"
         s["warnings"] = ["Laplacian variance below sharpness threshold."]
 
+    report["summary"] = compute_dataset_metrics(report["cases"])
+
+    validate_identities(manifest, report)
     cat, rat = classify_case_finding(c2)
     assert cat == "MEASURED_BASELINE"
     assert "UNASSESSED" in rat
 
     md = generate_markdown_summary(manifest, report)
     assert "Laplacian variance below sharpness threshold" in md
-    # Ensure no hardcoded conclusions survive
     assert "Optical Defocus / Blur Blindspot (Cases 02 & 03)" not in md
 
 
@@ -583,7 +708,6 @@ def test_summary_safe_publication_sentinel_race(tmp_path: Path, monkeypatch: pyt
     out_file = tmp_path / "out_summary.md"
     sentinel_content = "SENTINEL CONTENT THAT MUST NOT BE OVERWRITTEN"
 
-    # Simulate sentinel file appearing right before write
     out_file.write_text(sentinel_content, encoding="utf-8")
 
     monkeypatch.setattr(
@@ -596,7 +720,6 @@ def test_summary_safe_publication_sentinel_race(tmp_path: Path, monkeypatch: pyt
             str(report_path),
             "-o",
             str(out_file),
-            # Note: --overwrite is intentionally omitted
         ],
     )
 
@@ -607,6 +730,207 @@ def test_summary_safe_publication_sentinel_race(tmp_path: Path, monkeypatch: pyt
     # Verify no temporary files remain
     tmp_files = list(tmp_path.glob(".tmp_*"))
     assert len(tmp_files) == 0
+
+
+def test_summary_cli_rejects_removed_sites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with missing site records without traceback or creating output."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    # Remove one site from case 0
+    report["cases"][0]["sites"] = [report["cases"][0]["sites"][0]]
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert "C:\\" not in captured.err and "/Users/" not in captured.err
+
+
+def test_summary_cli_rejects_duplicate_sites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with duplicate site IDs without traceback or creating output."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    # Duplicate site in case 0
+    report["cases"][0]["sites"] = [report["cases"][0]["sites"][0], report["cases"][0]["sites"][0]]
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_summary_cli_rejects_unknown_sites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with unknown site IDs not in configured profile ROIs."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    # Rename site 0 to unknown ROI ID
+    report["cases"][0]["sites"][0]["roi_id"] = "unknown_phantom_site"
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_summary_cli_rejects_sites_null(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with sites=null."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    report["cases"][0]["sites"] = None
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_summary_cli_rejects_non_object_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with non-object site entries."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    report["cases"][0]["sites"] = ["string_instead_of_dict", 42]
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_summary_cli_rejects_non_string_image_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports with non-string image path without AttributeError traceback."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    report["cases"][0]["current_image_path"] = 12345
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_summary_cli_rejects_contradictory_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies CLI rejects reports where summary metrics contradict individual case and site records."""
+    manifest_path = generate_robustness_dataset(tmp_path / "dataset")
+    manifest = DatasetManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    report = evaluate_dataset(manifest, tmp_path / "dataset")
+
+    # Contradictory summary: claim 999 successful cases
+    report["summary"]["case_counts"]["successful_cases"] = 999
+
+    report_path = tmp_path / "bad_report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    out_file = tmp_path / "should_not_exist.md"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["inspection_robustness_summary", "-m", str(manifest_path), "-r", str(report_path), "-o", str(out_file)],
+    )
+
+    rc = summary_main()
+    assert rc == 1
+    assert not out_file.exists()
+
+    captured = capsys.readouterr()
+    assert "Fatal error: Report validation failed:" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_summary_cli_end_to_end(
@@ -648,6 +972,8 @@ def test_summary_cli_end_to_end(
     assert "Ref Cov" in md_content
     assert "Site Statuses & Warnings" in md_content
     assert "Emitted Observations" in md_content
+    assert "Demonstrated Inspection Defects (0)" in md_content
+    assert "Execution and Input Failures (0)" in md_content
     assert "Absence of diagnostic defect observations is NOT an automatic pass" in md_content
 
     # Verify absence of static scenario text

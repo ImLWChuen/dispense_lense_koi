@@ -6,7 +6,8 @@ consistency, enforces input/output file safety, and generates a structured Markd
 summary report distinguishing:
 - Measured behavior (reproducible pipeline outputs)
 - Potential risks requiring engineering review (e.g. degraded inputs classified DETECTED)
-- Demonstrated defects and execution failures
+- Demonstrated inspection defects (control mismatches, omitted site outputs)
+- Input and execution failures (filesystem access, image decode/validation, execution error)
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from tests.vision_inspection_dataset import (
     DatasetManifest,
+    compute_dataset_metrics,
     format_safe_schema_error,
     publish_report_file,
 )
@@ -39,7 +41,7 @@ class SummarySafetyError(Exception):
 
 
 class IdentityMismatchError(ValueError):
-    """Raised when manifest and evaluation report identities do not match."""
+    """Raised when manifest and evaluation report identities or structures do not match."""
     pass
 
 
@@ -50,13 +52,15 @@ def validate_identities(
     """Validate that the JSON report corresponds exactly to the supplied manifest.
 
     Verifies schema version, dataset_id, origin, case counts, case_ids,
-    image paths, analysis profiles, and ground-truth label specifications.
+    image paths, analysis profiles, complete site membership, structural types,
+    and checks metric consistency between summary and case records.
     """
     if not isinstance(report, dict):
         raise IdentityMismatchError("Evaluation report root must be a JSON object.")
 
+    # 1. Report version / schema
     report_version = report.get("report_version")
-    if report_version != "v1":
+    if not isinstance(report_version, str) or report_version != "v1":
         raise IdentityMismatchError(
             f"Unsupported report version: '{report_version}' (expected 'v1')."
         )
@@ -65,93 +69,198 @@ def validate_identities(
     if not isinstance(summary, dict):
         raise IdentityMismatchError("Evaluation report is missing 'summary' section.")
 
+    # 2. Dataset ID & Origin
     report_dataset_id = report.get("dataset_id") or summary.get("dataset_id")
-    if report_dataset_id != manifest.dataset_id:
-        raise IdentityMismatchError(
-            f"Dataset ID mismatch: manifest has '{manifest.dataset_id}', "
-            f"but report has '{report_dataset_id}'."
-        )
+    if not isinstance(report_dataset_id, str) or report_dataset_id != manifest.dataset_id:
+        raise IdentityMismatchError("Dataset ID mismatch between manifest and report.")
 
     report_origin = report.get("origin")
-    if report_origin != manifest.origin.value:
-        raise IdentityMismatchError(
-            f"Origin mismatch: manifest has '{manifest.origin.value}', "
-            f"but report has '{report_origin}'."
-        )
+    if not isinstance(report_origin, str) or report_origin != manifest.origin.value:
+        raise IdentityMismatchError("Dataset origin mismatch between manifest and report.")
 
+    # 3. Case count
     report_cases = report.get("cases")
     if not isinstance(report_cases, list):
-        raise IdentityMismatchError("Evaluation report is missing 'cases' list.")
+        raise IdentityMismatchError("Evaluation report 'cases' must be a list.")
 
     if len(report_cases) != len(manifest.cases):
-        raise IdentityMismatchError(
-            f"Case count mismatch: manifest contains {len(manifest.cases)} cases, "
-            f"but report contains {len(report_cases)} cases."
-        )
+        raise IdentityMismatchError("Case count mismatch between manifest and report.")
 
+    # 4. Per-case identity, paths, profile, and complete site records
     for idx, (m_case, r_case) in enumerate(zip(manifest.cases, report_cases)):
         if not isinstance(r_case, dict):
-            raise IdentityMismatchError(f"Report case at index {idx} is not a JSON object.")
+            raise IdentityMismatchError(f"Report case at index {idx} must be a JSON object.")
 
         r_id = r_case.get("case_id")
-        if m_case.case_id != r_id:
+        if not isinstance(r_id, str) or m_case.case_id != r_id:
+            raise IdentityMismatchError(f"Case ID mismatch at index {idx}.")
+
+        # Image path validation
+        r_curr = r_case.get("current_image_path")
+        if not isinstance(r_curr, str):
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' current_image_path must be a string.")
+        if m_case.current_image_path.strip() != r_curr.strip():
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' current_image_path mismatch.")
+
+        r_ref = r_case.get("reference_image_path")
+        if r_ref is not None and not isinstance(r_ref, str):
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' reference_image_path must be a string or null.")
+        m_ref_str = (m_case.reference_image_path or "").strip()
+        r_ref_str = (r_ref or "").strip()
+        if m_ref_str != r_ref_str:
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' reference_image_path mismatch.")
+
+        # Profile specification
+        r_profile = r_case.get("profile")
+        if not isinstance(r_profile, dict):
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' profile must be a JSON object.")
+        if m_case.profile.model_dump(mode="json") != r_profile:
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' profile specification mismatch.")
+
+        # Configured ROIs from manifest profile
+        configured_roi_ids = [roi.roi_id for roi in m_case.profile.rois]
+        configured_roi_set = set(configured_roi_ids)
+
+        # Validate sites list
+        r_sites = r_case.get("sites")
+        if not isinstance(r_sites, list):
+            raise IdentityMismatchError(f"Case '{m_case.case_id}' sites must be a list.")
+
+        if len(r_sites) != len(configured_roi_ids):
             raise IdentityMismatchError(
-                f"Case ID mismatch at index {idx}: manifest has '{m_case.case_id}', "
-                f"but report has '{r_id}'."
+                f"Case '{m_case.case_id}' site count mismatch: "
+                f"expected {len(configured_roi_ids)} configured ROIs, got {len(r_sites)}."
             )
 
-        m_curr = m_case.current_image_path.strip()
-        r_curr = (r_case.get("current_image_path") or "").strip()
-        if m_curr != r_curr:
-            raise IdentityMismatchError(
-                f"Current image path mismatch in case '{m_case.case_id}': "
-                f"manifest has '{m_curr}', but report has '{r_curr}'."
-            )
+        # Validate each site structure and exact/unique ROI membership
+        seen_roi_ids: set[str] = set()
+        for site_idx, s in enumerate(r_sites):
+            if not isinstance(s, dict):
+                raise IdentityMismatchError(
+                    f"Case '{m_case.case_id}' site at index {site_idx} must be a JSON object."
+                )
 
-        m_ref = (m_case.reference_image_path or "").strip()
-        r_ref = (r_case.get("reference_image_path") or "").strip()
-        if m_ref != r_ref:
-            raise IdentityMismatchError(
-                f"Reference image path mismatch in case '{m_case.case_id}': "
-                f"manifest has '{m_ref}', but report has '{r_ref}'."
-            )
+            roi_id = s.get("roi_id")
+            if not isinstance(roi_id, str):
+                raise IdentityMismatchError(
+                    f"Case '{m_case.case_id}' site at index {site_idx} missing valid roi_id."
+                )
 
-        m_profile_dict = m_case.profile.model_dump(mode="json")
-        r_profile_dict = r_case.get("profile")
-        if m_profile_dict != r_profile_dict:
-            raise IdentityMismatchError(
-                f"Profile specification mismatch in case '{m_case.case_id}'."
-            )
+            if roi_id in seen_roi_ids:
+                raise IdentityMismatchError(
+                    f"Case '{m_case.case_id}' contains duplicate site ID: '{roi_id}'."
+                )
+            seen_roi_ids.add(roi_id)
 
-        r_sites = r_case.get("sites", [])
-        if m_case.expected_statuses is not None:
-            for s in r_sites:
-                roi_id = s.get("roi_id")
-                if roi_id in m_case.expected_statuses:
-                    expected_val = m_case.expected_statuses[roi_id].value
-                    if not s.get("is_labeled"):
-                        raise IdentityMismatchError(
-                            f"Label status mismatch in case '{m_case.case_id}', site '{roi_id}': "
-                            "manifest has ground truth but report site is not labeled."
-                        )
-                    if s.get("expected_status") != expected_val:
-                        raise IdentityMismatchError(
-                            f"Expected status mismatch in case '{m_case.case_id}', site '{roi_id}': "
-                            f"manifest has '{expected_val}', report has '{s.get('expected_status')}'."
-                        )
-                else:
-                    if s.get("is_labeled"):
-                        raise IdentityMismatchError(
-                            f"Unexpected labeled site in case '{m_case.case_id}', site '{roi_id}': "
-                            "manifest does not define expected status for this ROI."
-                        )
-        else:
-            for s in r_sites:
-                if s.get("is_labeled") or s.get("expected_status") is not None:
+            if roi_id not in configured_roi_set:
+                raise IdentityMismatchError(
+                    f"Case '{m_case.case_id}' contains unknown site ID '{roi_id}' not in profile ROIs."
+                )
+
+            # Validate boolean site flags
+            is_labeled = s.get("is_labeled")
+            output_present = s.get("output_present")
+            case_failed = s.get("case_failed")
+
+            if not isinstance(is_labeled, bool):
+                raise IdentityMismatchError(f"Site '{roi_id}' in case '{m_case.case_id}' is_labeled must be a boolean.")
+            if not isinstance(output_present, bool):
+                raise IdentityMismatchError(f"Site '{roi_id}' in case '{m_case.case_id}' output_present must be a boolean.")
+            if not isinstance(case_failed, bool):
+                raise IdentityMismatchError(f"Site '{roi_id}' in case '{m_case.case_id}' case_failed must be a boolean.")
+
+            # Ground truth alignment
+            if m_case.expected_statuses and roi_id in m_case.expected_statuses:
+                expected_val = m_case.expected_statuses[roi_id].value
+                if not is_labeled:
                     raise IdentityMismatchError(
-                        f"Label mismatch in case '{m_case.case_id}': "
-                        "manifest defines no expected statuses, but report site is marked labeled."
+                        f"Site '{roi_id}' in case '{m_case.case_id}' should be labeled according to manifest."
                     )
+                if s.get("expected_status") != expected_val:
+                    raise IdentityMismatchError(
+                        f"Site '{roi_id}' in case '{m_case.case_id}' expected_status mismatch."
+                    )
+
+                # Validate status_match consistency
+                pred_status = s.get("predicted_status")
+                expected_match = (output_present and (pred_status == expected_val))
+                if s.get("status_match") != expected_match:
+                    raise IdentityMismatchError(
+                        f"Site '{roi_id}' in case '{m_case.case_id}' status_match contradicts expected/predicted states."
+                    )
+            else:
+                if is_labeled or s.get("expected_status") is not None:
+                    raise IdentityMismatchError(
+                        f"Site '{roi_id}' in case '{m_case.case_id}' is unexpectedly marked labeled."
+                    )
+                if s.get("status_match") is not None:
+                    raise IdentityMismatchError(
+                        f"Site '{roi_id}' in case '{m_case.case_id}' status_match should be null for unlabeled site."
+                    )
+
+        if seen_roi_ids != configured_roi_set:
+            raise IdentityMismatchError(
+                f"Case '{m_case.case_id}' does not cover all configured ROIs exactly."
+            )
+
+    # 5. Recompute dataset metrics using compute_dataset_metrics and verify consistency
+    recomputed = compute_dataset_metrics(report_cases)
+
+    # Check case counts
+    r_cc = summary.get("case_counts")
+    e_cc = recomputed["case_counts"]
+    if not isinstance(r_cc, dict) or r_cc != e_cc:
+        raise IdentityMismatchError("Report case_counts contradicts individual case records.")
+
+    # Check site counts
+    r_sc = summary.get("site_counts")
+    e_sc = recomputed["site_counts"]
+    if not isinstance(r_sc, dict):
+        raise IdentityMismatchError("Report site_counts must be a JSON object.")
+    for k in (
+        "total_sites",
+        "eligible_labeled_sites",
+        "unlabeled_sites",
+        "emitted_predictions",
+        "correct_labeled_sites",
+        "incorrect_labeled_sites",
+    ):
+        if r_sc.get(k) != e_sc.get(k):
+            raise IdentityMismatchError(f"Report site_counts '{k}' contradicts individual site records.")
+
+    # Check status accuracy
+    r_acc = summary.get("status_accuracy")
+    e_acc = recomputed["status_accuracy"]
+    if e_acc is None:
+        if r_acc is not None:
+            raise IdentityMismatchError("Report status_accuracy must be null when there are no eligible labeled sites.")
+    else:
+        if (
+            not isinstance(r_acc, dict)
+            or r_acc.get("numerator") != e_acc["numerator"]
+            or r_acc.get("denominator") != e_acc["denominator"]
+        ):
+            raise IdentityMismatchError("Report status_accuracy contradicts labeled site records.")
+
+    # Check abstention rate
+    r_abs = summary.get("abstention_rate")
+    e_abs = recomputed["abstention_rate"]
+    if (
+        not isinstance(r_abs, dict)
+        or r_abs.get("numerator") != e_abs["numerator"]
+        or r_abs.get("denominator") != e_abs["denominator"]
+    ):
+        raise IdentityMismatchError("Report abstention_rate contradicts site prediction records.")
+
+    # Check false missing rate
+    r_fm = summary.get("false_missing_rate")
+    e_fm = recomputed["false_missing_rate"]
+    if (
+        not isinstance(r_fm, dict)
+        or r_fm.get("numerator") != e_fm["numerator"]
+        or r_fm.get("denominator") != e_fm["denominator"]
+    ):
+        raise IdentityMismatchError("Report false_missing_rate contradicts ground-truth label records.")
 
 
 def verify_summary_output_safe(
@@ -202,26 +311,40 @@ def classify_case_finding(case_res: dict[str, Any]) -> tuple[str, str]:
     """Classify case outcome into a risk category and rationale purely from report data.
 
     Categories:
-    - DEMONSTRATED_DEFECT: execution failure, omitted output site, or labeled control mismatch
-    - POTENTIAL_RISK: unlabeled perturbation resulting in DETECTED (with or without warnings), or unexpected missing site
+    - INPUT_FAILURE: input/environment failure (filesystem access, image decode, path validation)
+    - EXECUTION_FAILURE: unexpected CV/pipeline execution failure
+    - DEMONSTRATED_DEFECT: demonstrated inspection defect (control mismatch or omitted site output)
+    - POTENTIAL_RISK: unlabeled perturbation resulting in DETECTED (with/without warnings) or missing site
     - MEASURED_BASELINE: labeled control matching ground truth, or conservative gating observed
     """
     if case_res.get("status") == "ERROR" or case_res.get("error"):
-        err = case_res.get("error") or "Execution failure"
-        return "DEMONSTRATED_DEFECT", f"Case execution failed: {err}"
+        err = case_res.get("error")
+        if isinstance(err, dict):
+            err_cat = err.get("category", "EXECUTION_ERROR")
+            err_msg = err.get("message", "Pipeline execution error")
+        elif isinstance(err, str):
+            err_cat = "EXECUTION_ERROR"
+            err_msg = err
+        else:
+            err_cat = "EXECUTION_ERROR"
+            err_msg = "Unknown execution error"
+
+        if err_cat in ("FILESYSTEM_ACCESS", "IMAGE_VALIDATION", "PATH_VALIDATION"):
+            return "INPUT_FAILURE", f"Input failure ({err_cat}): {err_msg}"
+        return "EXECUTION_FAILURE", f"Execution failure ({err_cat}): {err_msg}"
 
     sites = case_res.get("sites", [])
     omitted = [s.get("roi_id", "?") for s in sites if not s.get("output_present", True)]
     if omitted:
         return "DEMONSTRATED_DEFECT", f"Output omitted for site(s): {', '.join(omitted)}"
 
-    # Check for labeled sites
+    # Check for labeled sites: compute agreement directly from expected vs predicted states
     labeled_sites = [s for s in sites if s.get("is_labeled")]
     if labeled_sites:
         mismatches = [
             f"{s.get('roi_id')} (expected {s.get('expected_status')}, got {s.get('predicted_status')})"
             for s in labeled_sites
-            if s.get("status_match") is False
+            if s.get("expected_status") != s.get("predicted_status")
         ]
         if mismatches:
             return "DEMONSTRATED_DEFECT", f"Control status mismatch on site(s): {', '.join(mismatches)}"
@@ -389,8 +512,10 @@ def generate_markdown_summary(
 
         site_parts = []
         if is_failed:
-            err_msg = c.get("error") or "Execution failure"
-            site_parts.append(f"**FAILED CASE**: {err_msg}")
+            err_obj = c.get("error")
+            err_cat = err_obj.get("category", "ERROR") if isinstance(err_obj, dict) else "ERROR"
+            err_msg = err_obj.get("message", str(err_obj)) if isinstance(err_obj, dict) else str(err_obj or "Execution failure")
+            site_parts.append(f"**FAILED CASE ({err_cat})**: {err_msg}")
         else:
             for s in c.get("sites", []):
                 rid = s.get("roi_id", "?")
@@ -425,7 +550,8 @@ def generate_markdown_summary(
         )
 
     # Section 3: Dynamic Breakdown
-    defects = [c for c in cases if classify_case_finding(c)[0] == "DEMONSTRATED_DEFECT"]
+    inspection_defects = [c for c in cases if classify_case_finding(c)[0] == "DEMONSTRATED_DEFECT"]
+    exec_failures = [c for c in cases if classify_case_finding(c)[0] in ("INPUT_FAILURE", "EXECUTION_FAILURE")]
     risks = [c for c in cases if classify_case_finding(c)[0] == "POTENTIAL_RISK"]
     baselines = [c for c in cases if classify_case_finding(c)[0] == "MEASURED_BASELINE"]
 
@@ -433,17 +559,27 @@ def generate_markdown_summary(
         "",
         "## 3. Finding Breakdown & Review Inventory",
         "",
-        f"### A. Demonstrated Defects ({len(defects)})",
+        f"### A. Demonstrated Inspection Defects ({len(inspection_defects)})",
     ])
-    if defects:
-        for c in defects:
+    if inspection_defects:
+        for c in inspection_defects:
             lines.append(f"- **`{c.get('case_id')}`:** {classify_case_finding(c)[1]}")
     else:
         lines.append("- None detected in this evaluation run.")
 
     lines.extend([
         "",
-        f"### B. Potential Risks Requiring Engineering Review ({len(risks)})",
+        f"### B. Execution and Input Failures ({len(exec_failures)})",
+    ])
+    if exec_failures:
+        for c in exec_failures:
+            lines.append(f"- **`{c.get('case_id')}`:** {classify_case_finding(c)[1]}")
+    else:
+        lines.append("- None detected in this evaluation run.")
+
+    lines.extend([
+        "",
+        f"### C. Potential Risks Requiring Engineering Review ({len(risks)})",
     ])
     if risks:
         for c in risks:
@@ -457,7 +593,7 @@ def generate_markdown_summary(
 
     lines.extend([
         "",
-        f"### C. Measured Baseline Outcomes ({len(baselines)})",
+        f"### D. Measured Baseline Outcomes ({len(baselines)})",
     ])
     if baselines:
         for c in baselines:
@@ -585,11 +721,14 @@ def main() -> int:
         sys.stderr.write("Fatal error: Report root must be a JSON object.\n")
         return 1
 
-    # Validate matching identities
+    # Validate matching identities, structural types, and metrics
     try:
         validate_identities(manifest, report)
-    except IdentityMismatchError as exc:
-        sys.stderr.write(f"Fatal error: Manifest and report identities do not match: {exc}\n")
+    except IdentityMismatchError:
+        sys.stderr.write("Fatal error: Report validation failed: identity, structure, or metric discrepancy detected.\n")
+        return 1
+    except Exception:
+        sys.stderr.write("Fatal error: Malformed report JSON or structure.\n")
         return 1
 
     # Preflight output safety if writing to file
@@ -603,7 +742,11 @@ def main() -> int:
             return 1
 
     # Generate Markdown summary
-    summary_md = generate_markdown_summary(manifest, report)
+    try:
+        summary_md = generate_markdown_summary(manifest, report)
+    except Exception:
+        sys.stderr.write("Fatal error: Failed to generate summary from report structure.\n")
+        return 1
 
     # Publish output safely
     if output_path is not None:

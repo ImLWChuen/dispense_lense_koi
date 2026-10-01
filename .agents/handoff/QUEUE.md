@@ -235,12 +235,11 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-045` — Establish a repeatable synthetic inspection robustness checkpoint — **implemented**
-  - reviewed commit: `1f49e9b3bd9ca8629719113c8a24f1d128a11e1f`
-  - review: `.agents/handoff/reviews/DLK-M3-045-review.md`
-  - resolved corrections R1–R3:
-    - R1: generated all measured claims dynamically from report data without hardcoded conclusions or static scenario text; verified control agreement via explicit is_labeled and status_match fields; reported unlabeled cases as observations requiring review without inferring absent sharpness gates;
+  - follow-up reviewed commit: `055e48b3c34dd085a67c63a96715b26255b1b348`
+  - resolved corrections R1–R3 and follow-up findings:
+    - R1 (follow-up): separated execution/input failures (`INPUT_FAILURE` for `FILESYSTEM_ACCESS`, `IMAGE_VALIDATION`, `PATH_VALIDATION`; `EXECUTION_FAILURE` for `EXECUTION_ERROR`) from `DEMONSTRATED_DEFECT` (strictly reserved for labeled control status mismatches and omitted outputs); computed control agreement directly from validated `expected_status == predicted_status` with `output_present`;
     - R2: reconciled all quantitative statements with report fields (baseline diameter 39.94 px, heavy blur 41.38 px [+3.61%], mild blur 39.94 px and circularity 0.9526 identical to control; false-missing 0/4 on labeled controls only); corrected runtime versions (Python 3.14.0, OpenCV 5.0.0, Pydantic 2.13.5); recorded visual inspection of representative images (cases 01, 02, 03, 07, 09); separated synthetic pipeline findings from physical camera hypotheses;
-    - R3: rendered per-site warnings, emitted observations with affected ROI IDs, assessed/expected site counts, and separate current/reference inspection coverage; used UNCALIBRATED for features-only analysis status; verified schema version, dataset ID, origin, case counts, image paths, profiles, and label matching in validate_identities; reused publish_report_file helper with atomic no-clobber protection and temp-file cleanup, preventing sentinel races.
+    - R3 (follow-up): validated exact 1-to-1 site membership per configured profile ROI, unique site IDs, structural types (e.g. string image paths), and `status_match` consistency; recomputed metrics via `compute_dataset_metrics` to reject stale or contradictory summary sections; validated numeric metric structures; caught `IdentityMismatchError` and malformed reports returning fixed, safe CLI error messages with exit code 1, zero tracebacks, and no output file creation; reused `publish_report_file` helper with atomic no-clobber protection and temp-file cleanup.
   - task: `.agents/handoff/tasks/DLK-M3-045-inspection-robustness-checkpoint.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-044 at `54d03538f11efe20eea5f742b79f6f3e3104c963`

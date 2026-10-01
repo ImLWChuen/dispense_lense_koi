@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-045
-reviewed_commit: 1f49e9b3bd9ca8629719113c8a24f1d128a11e1f
+reviewed_commit: 055e48b3c34dd085a67c63a96715b26255b1b348
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -8,6 +8,22 @@ reviewed_by: ChatGPT planner/reviewer
 # Review: DLK-M3-045
 
 ## Decision
+
+Follow-up at 055e48b3c34dd085a67c63a96715b26255b1b348: R2 is resolved with corrected runtime/measurement values, qualified conclusions and recorded fixture inspection. Hardcoded scenario narratives were removed and safe publication is reused. Gemini reports 57 focused tests passing; reviewer inspected code/evidence without rerunning tests. Committed whitespace check passes. Two bounded R1/R3 gaps remain.
+
+### R1 remaining — P2: Do not classify every execution error as an inspection defect
+
+classify_case_finding still maps every ERROR to DEMONSTRATED_DEFECT. A missing file, permission failure or deliberately corrupt image therefore becomes a claimed demonstrated algorithm defect, despite the prior explicit requirement to distinguish execution failures from demonstrated inspection failures. Add a separate execution/input-failure category and inventory with the recorded error category; reserve control mismatch claims for actual supplied labels versus predictions. Test FILESYSTEM_ACCESS and IMAGE_VALIDATION errors separately from a wrong labeled prediction. Do not call incomplete/missing status_match agreement; compute agreement from validated expected/predicted states or reject inconsistent records.
+
+### R3 remaining — P2: Validate complete site records and reject malformed reports cleanly
+
+validate_identities iterates only sites that happen to exist in the report. Deleting one labeled site's record, or setting sites=[], passes validation; summary metrics can still say 100% and complete coverage from the unchanged report summary. Duplicate/unknown site IDs are not rejected. Further, current_image_path=123 causes .strip() AttributeError, sites=null/non-object entries cause iteration/.get errors, and malformed numeric summary fields can crash generate_markdown_summary. main catches only IdentityMismatchError and leaves these exceptions as tracebacks.
+
+Validate one site record per configured ROI (missing predictions must be represented explicitly with output_present=false, as the evaluator already does), unique/exact ROI membership, structural types and label/status consistency. Recompute metrics using the accepted compute_dataset_metrics helper or reject summary discrepancies so a stale success total cannot contradict records. Validate numeric metric structures before formatting. Return fixed, safe CLI errors for malformed reports; do not echo raw report paths/values from identity exceptions. Add CLI tests for removed/duplicate/unknown sites, sites=null, non-object site, non-string image path and contradictory summary; require nonzero exit, no traceback/private marker and no output file. Keep valid evaluator outputs working.
+
+Continue DLK-M3-045 only; no production changes or new task packet. Rerun focused checks and update the report. Completion remains manual prototype 90–95%, full roadmap 65–75%; no accuracy claim.
+
+## Historical initial findings
 
 Changes requested. The deterministic scenario matrix and clean-control/unlabeled separation are useful. Gemini reports 49 focused tests passing. Reviewer inspected code, test coverage and scratch/robustness_checkpoint/report.json without rerunning tests. Committed whitespace check passes. No production changes or remote Git operations performed.
 
