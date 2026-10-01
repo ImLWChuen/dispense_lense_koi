@@ -167,12 +167,12 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-041` — Show selectable region inspection results and deposit outlines — **implemented**
-  - reviewed commit: `a72b1a28ecce5bd8acbdb796a2cfb67108b14e28`
+  - reviewed commit: `5af203cd59e462a1a9ed7fafe24d079ba0497051`
   - review: `.agents/handoff/reviews/DLK-M3-041-review.md`
   - resolved corrections:
     - R1: honored explicit `region_evidence_scope` (`"comparison_group"` vs `"individual_regions"`); canonical D03 comparison group finding uses deposit_size/inconsistent pair only when scope is absent; abnormal/tailing deposit_shape findings are never labeled as group findings; added realistic unit tests for individual shape, explicit group, and canonical legacy D03; verified in-browser explanations for shape and D03
     - R2: added explicit Draw vs Inspect interaction mode (`RoiInteractionMode = "inspect" | "draw"`) with accessible segmented toggle; Inspect mode selects regions and empty clicks deselect without drawing; Draw mode allows starting drags inside existing or full-frame ROIs by routing pointer events to the container; actual ROI additions or deletions invalidate prior evidence and clear results; keyboard navigation and reset preserved
-    - R3: completed full 12-scenario browser verification suite including (a)-(i), R1, R2, and real backend analyze request; tested portrait (1:2) and landscape (2:1) overlays, narrow (768px) and wide (1440px) viewports, browser zoom (scale factor 2), in-flight late-response rejection, and multi-upload selection isolation with zero console errors; corrected PDF limitation statement in task report
+    - R3: completed full 12-scenario browser verification suite including (a)-(i), R1, R2, and real backend analyze request; verified actual browser page zoom (150% and 200% via CDP `Emulation.setPageScaleFactor`) and HiDPI scale factor (DPR 2) with zero letterbox drift; recorded measured client bounding rects for portrait (1:2) and landscape (2:1) images across narrow (768px) and wide (1440px) viewports in both inline and studio views; captured 10 empirical screenshot files on disk; explained case-sensitive Tailwind `uppercase` CSS text transform in Chromium `innerText` for `hasTargetSites` (where `aria-label="Expected Target Sites"` and tab button `dot-1 Material detected` were verified present); corrected PDF limitation statement in task report
     - scope note: reverted unrelated 3-line reference tolerance default in `ImageCalibrationPanel.tsx` and restored `referenceLimits: null` default in `ImageUpload.tsx`
   - task: `.agents/handoff/tasks/DLK-M3-041-region-inspection-workbench.md`
   - branch: `backend-database`
@@ -181,6 +181,6 @@ Do not implement inside DLK-M3-031:
   - outcome: aligned current-image outlines, selectable expected sites, trustworthy statuses/details and separate coverage in inline upload and expanded studio
   - preserve: manual ROI editing, stale-request guards, diagnostic intake and backend scoring
   - deferred: templates/alignment, automatic site detection, partial evidence, saved-case page redesign, real-image evaluation
-  - include pending accepted DLK-M3-040 review in the local implementation commit
+  - include pending review record `.agents/handoff/reviews/DLK-M3-041-review.md` in the local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.
