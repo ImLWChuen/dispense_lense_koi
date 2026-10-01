@@ -104,16 +104,17 @@ Proposed commit message: `test(vision): verify integrated region inspection work
   - **Scenario B:** Mixed detected/unassessed input verifying `PARTIAL` coverage with explicit counts (`expected_roi_count=2, assessed_roi_count=1`), per-site statuses (`DETECTED` vs `UNASSESSED`) and inspection warnings, top-level `UNRELIABLE`, and zero emitted observations.
   - **Scenario C:** Confirmed missing expected site with synthetic fiducial context verifying `MISSING` differs from `UNASSESSED` (assessed outcome, `COMPLETE` coverage), and emitted missing evidence is controlled by explicit limits (emitted on `min_presence_ratio`, suppressed on `max_size_cv`).
   - **Scenario D:** Reference mode with current/reference coverage kept separate, including unassessed reference reporting `UNRELIABLE` with zero score-bearing observations while preserving `COMPLETE` current coverage and separate `NONE` reference coverage.
-- Created `docs/demo/region-inspection-acceptance.md` containing a repeatable competition demonstration guide using rendered UI controls and `[SYNTHETIC DEMO]` prefixes, a scoped readiness matrix separating manual workflow readiness from deferred roadmap features, and documented operational limitations.
-- Executed and recorded a real browser walkthrough on port 3001 with running backend on port 8000 using Chrome DevTools Protocol (CDP) through image upload/Analyze, region inspection workbench display, case creation via Start Diagnosis, saved case reload (`case_id: ee5d0200-270c-4fbe-b1e8-5b5182af089a`), and PDF report download.
-- Recorded observed findings and known presentation limitations (such as `ImageAnalysis.tsx` on the saved case page rendering legacy first-site metadata) without modifying production code.
-- Updated progress checkpoint wording in `docs/architecture/region-inspection-improvement-plan.md`.
+- Created and validated `docs/demo/region-inspection-acceptance.md` containing a self-contained sample generation command, exact dimensions/radii, two-ROI setup instructions, explicit limits, observed multi-site browser results, a scoped readiness matrix, and documented operational limitations.
+- Resolved review findings R1 and R2 from `.agents/handoff/reviews/DLK-M3-042-review.md`:
+  - **R1 (Reproducible Multi-Site Browser Rehearsal):** Documented the self-contained sample generation command using `create_multi_roi_image(400, 200, [(100, 100, 10), (300, 100, 15)])`. Explained ROI invalidation behavior (resetting or editing ROIs resets analysis status to `ready`). Executed the complete two-site browser rehearsal via CDP on port 3001 and port 8000: reset ROIs $\rightarrow$ drew left `dot-1` and right `dot-2` $\rightarrow$ set `min_coverage_ratio = 0.10` $\rightarrow$ analyzed both sites $\rightarrow$ verified workbench displayed tabs and distinct measurements for both sites (`dot-1`: coverage ~0.89%, diam ~19.96 px, area 313 px²; `dot-2`: coverage ~2.00%, diam ~29.96 px, area 705 px²) $\rightarrow$ clicked Start Diagnosis $\rightarrow$ verified durable case `e1d8db2d-fdce-4edf-974c-97ce671f0792` in PostgreSQL and JSON report preserved both affected IDs and snapshots $\rightarrow$ downloaded Revision 1 PDF report and verified with `pypdf` that Section 8 lists both sites with distinct measurements.
+  - **R2 (Truthful Persistence and PDF Verification Claims):** Clarified that raw images and polygon deposit outlines are transient and **not** persisted into durable cases or reports. Stored metadata comprises only `affected_roi_ids`, `applied_limits`, `region_evidence_scope`, and `region_evidence` (15 scalar measurements per site). Clarified that legacy fields represent the first triggering/affected site's metadata. Disclosed that visual PDF layout inspection is unverified by CI (text and table structure verified via `pypdf`; visual rasterizers unavailable on host).
+- Updated queue state and roadmap documentation without modifying production code.
 
 ### Files changed
 
 - `backend/tests/integration/test_region_inspection_acceptance.py` (new) — Integration acceptance tests for Scenarios A–D.
-- `docs/demo/region-inspection-acceptance.md` (new) — Rehearsal guide, scoped readiness matrix, and limitation notes.
-- `docs/architecture/region-inspection-improvement-plan.md` — Progress checkpoint wording updated for DLK-M3-042.
+- `docs/demo/region-inspection-acceptance.md` (new) — Rehearsal guide, reproducible sample generation, two-site rehearsal record, scoped readiness matrix, and limitation notes.
+- `docs/architecture/region-inspection-improvement-plan.md` — Progress checkpoint wording aligned for DLK-M3-042.
 - `.agents/handoff/tasks/DLK-M3-042-region-inspection-acceptance.md` — Task packet updated to `implemented` with implementation report.
 - `.agents/handoff/QUEUE.md` — Queue state updated to `implemented`.
 - `.agents/handoff/reviews/DLK-M3-041-review.md` — Accepted review record included unchanged.
@@ -123,7 +124,7 @@ Proposed commit message: `test(vision): verify integrated region inspection work
 - Isolated all automated integration tests to disposable `TEST_DATABASE_URL` (`dispenselens_test`) with automatic teardown in `cleanup_cases` fixture, preserving development records.
 - Stored browser rehearsal scratch scripts, synthetic images, and screenshots outside the repository under the agent scratch directory (`C:\Users\Kee Chun Shang\.gemini\antigravity\brain\370fd0d2-fa15-4789-8553-059d74d93e3d\scratch\`), keeping the working tree clean of binary artifacts.
 - Maintained existing conservative quality gates (zero score-bearing observations emitted on unassessed regions or unassessed reference) without attempting unauthorized partial evidence scoring.
-- Kept the known saved-case first-site display limitation documented rather than expanding into frontend refactoring.
+- Accurately documented persisted scalar snapshots vs transient polygon outlines and raw images, avoiding overstated reconstruction claims.
 - Recorded that visual PDF rasterizer tools (`pdftoppm`, `mutool`) are unavailable on the Windows host as an explicit tooling limitation while verifying parsed PDF text and structure with `pypdf`.
 
 ### Verification results
@@ -131,19 +132,31 @@ Proposed commit message: `test(vision): verify integrated region inspection work
 1. **Focused Acceptance Tests (`pytest backend/tests/integration/test_region_inspection_acceptance.py`):**
    - Output: `4 passed, 11 warnings in 4.19s` against disposable test database.
 2. **Full Backend Test Suite (`pytest backend/tests`):**
-   - Output: `605 passed, 42 warnings in 64.11s` against disposable test database.
+   - Output: `605 passed, 42 warnings in 64.11s` against disposable test database (run during initial implementation; documentation/rehearsal updates did not alter test code).
 3. **Synthetic Vision Inspection Baseline (`python backend/tests/vision_inspection_baseline.py`):**
    - Output: `6 cases, 9 expected sites, status_accuracy=1.0, outline_availability_rate=1.0, mean_outline_iou=0.997 in 0.0214s`.
-4. **Real End-to-End Browser Rehearsal Walkthrough (CDP on port 3001 & 8000):**
+4. **Real End-to-End Two-Site Browser Rehearsal Walkthrough (CDP on port 3001 & 8000):**
    - Executed against live running services on `http://localhost:3001` and `http://127.0.0.1:8000`:
      - Navigated to `/diagnosis/new`.
      - Filled Problem Form with `[SYNTHETIC DEMO]` description, material, line, and defect `D01_TOO_LITTLE`.
-     - Uploaded synthetic multi-site test image (`acceptance_sample.png`).
-     - Observed workbench rendering `CALIBRATED` status, deposit outlines (`hasPolygons: 1`), and target site tabs.
-     - Clicked `Start Diagnosis`; case created via backend `POST /api/v1/cases`; navigated to `/diagnosis/ee5d0200-270c-4fbe-b1e8-5b5182af089a`.
+     - Uploaded synthetic test image (`acceptance_sample.png`, 400x200, deposits at (100,100, r=10) and (300,100, r=15)).
+     - Clicked `Reset ROIs` to clear single default ROI; drew left ROI `dot-1` and right ROI `dot-2`.
+     - Set `min_coverage_ratio = 0.10` under Process Thresholds.
+     - Clicked `Analyze`: verified status `CALIBRATED`, both `dot-1` and `dot-2` tabs rendered with 2 SVG polygon outlines.
+     - Inspected workbench tabs:
+       - `dot-1`: `Status: DETECTED`, `Coverage Ratio: 0.89%`, `Equivalent Diameter: 19.96 px`, `Deposit Area: 313 px²`.
+       - `dot-2`: `Status: DETECTED`, `Coverage Ratio: 2.00%`, `Equivalent Diameter: 29.96 px`, `Deposit Area: 705 px²`.
+       - Outlines: 40-vertex SVG outlines aligned with respective deposit boundaries.
+     - Clicked `Start Diagnosis`; case created via backend `POST /api/v1/cases`; navigated to `/diagnosis/e1d8db2d-fdce-4edf-974c-97ce671f0792`.
      - Loaded saved case at Revision 1 with ranked candidate causes (`Nozzle Restriction` at 62.0).
-     - Inspected `/diagnosis/ee5d0200-270c-4fbe-b1e8-5b5182af089a/analysis`; verified `ImageAnalysis` component rendered persisted observations and confirmed known limitation (first-site metadata display).
-     - Downloaded PDF report: `GET /api/v1/cases/ee5d0200-270c-4fbe-b1e8-5b5182af089a/report.pdf` (10,657 bytes, starts with `%PDF`, Section 8 Image Inspection Evidence verified with `pypdf`).
+     - Inspected `/diagnosis/e1d8db2d-fdce-4edf-974c-97ce671f0792/analysis`; verified `ImageAnalysis` component rendered persisted observations and confirmed known limitation (first-site metadata display: `dot-1`).
+     - Verified backend case `GET /api/v1/cases/e1d8db2d-fdce-4edf-974c-97ce671f0792`:
+       - `affected_roi_ids`: `["dot-1", "dot-2"]`.
+       - `region_evidence`: 2 distinct snapshots with `dot-1` and `dot-2` scalar measurements.
+     - Verified JSON report `GET /api/v1/cases/e1d8db2d-fdce-4edf-974c-97ce671f0792/report`:
+       - `image_observations[0].metadata.affected_roi_ids`: `["dot-1", "dot-2"]`.
+       - `image_observations[0].metadata.region_evidence`: 2 distinct snapshots.
+     - Downloaded PDF report: `GET /api/v1/cases/e1d8db2d-fdce-4edf-974c-97ce671f0792/report.pdf` (10,655 bytes, Section 8 verified with `pypdf` displaying `Affected Sites: dot-1, dot-2` and distinct measurement rows for both sites).
      - Checked rasterizer tools: `pdftoppm=false, mutool=false` (recorded as tooling limitation).
 5. **Frontend Provenance:**
    - Carried forward from accepted DLK-M3-041 commit `938e99d` (0 errors, 140 warnings lint; 20/20 routes compiled cleanly; zero frontend code changes).
@@ -154,7 +167,7 @@ Proposed commit message: `test(vision): verify integrated region inspection work
 
 ### Limitations and follow-up
 
-- **Manual-ROI Workflow Readiness:** Fully verified across API, durable PostgreSQL persistence, check execution revision progression, JSON/PDF export, and frontend upload workbench.
+- **Manual-ROI Workflow Readiness:** Fully verified across API, durable PostgreSQL persistence, check execution revision progression, JSON/PDF export, and frontend upload workbench with two distinct ROIs.
 - **Saved-Case Frontend Display:** `ImageAnalysis.tsx` on the saved case page renders legacy first-site metadata; multi-site tabbed presentation on saved cases is deferred to Phase 4.
 - **Partial Evidence Gating:** Partially unassessed calibrated images emit zero score-bearing observations by design.
 - **Reusable Profiles & Auto-Alignment:** Deferred to Phase 3.
@@ -162,4 +175,4 @@ Proposed commit message: `test(vision): verify integrated region inspection work
 
 ### Proposed commit message
 
-`test(vision): verify integrated region inspection workflow`
+`test(vision): demonstrate multi-site rehearsal and correct persistence claims`

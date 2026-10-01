@@ -186,10 +186,15 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-042` — Verify integrated region inspection workflow and record readiness — **implemented**
+  - reviewed commit: `bc83079767925dc390e0e706cd4ab56077b9306c`
+  - review: `.agents/handoff/reviews/DLK-M3-042-review.md`
+  - resolved corrections R1–R2:
+    - R1: documented reproducible synthetic image generation (`create_multi_roi_image(400, 200, [(100, 100, 10), (300, 100, 15)])`), two-ROI setup instructions, explicit limits (`min_coverage_ratio = 0.10`), and ROI invalidation behavior; executed real browser walkthrough with CDP verifying two distinct sites (`dot-1` coverage ~0.89%, diam ~19.96 px; `dot-2` coverage ~2.00%, diam ~29.96 px) both surviving case creation (`case_id: e1d8db2d-fdce-4edf-974c-97ce671f0792`), reload, JSON export, and PDF Section 8 report verified via `pypdf`; recorded screenshots, case ID, environment, and artifact paths;
+    - R2: corrected persistence documentation (PostgreSQL case observations persist 15 scalar measurements per site in `metadata.region_evidence`, `affected_roi_ids`, `applied_limits`, and `region_evidence_scope`; raw images and polygon deposit outlines are transient and not persisted; saved-image reconstruction is unavailable); clarified legacy fields represent first triggering/affected site's metadata; explicitly stated visual PDF layout inspection is unverified by CI (text and tabular structure verified via `pypdf`; visual rasterizers unavailable on host).
   - task: `.agents/handoff/tasks/DLK-M3-042-region-inspection-acceptance.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-041 at `938e99de0825167b7dadc5a72bbce2d684e93448`
-  - outcome: public-API acceptance scenarios, real browser rehearsal and honest scoped readiness matrix
+  - outcome: public-API acceptance scenarios, real two-site browser rehearsal and honest scoped readiness matrix
   - preserve: current production behavior, conservative gates and existing records
   - deferred: saved-case frontend enhancement, profiles/alignment, partial evidence and representative real-image evaluation
   - include pending accepted DLK-M3-041 review in the local implementation commit

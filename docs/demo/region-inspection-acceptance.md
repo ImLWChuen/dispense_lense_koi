@@ -52,62 +52,106 @@ curl.exe -s http://127.0.0.1:8000/api/v1/health
 
 Follow this sequence to rehearse the integrated region inspection workflow using rendered UI controls and explicit synthetic identifiers.
 
-### Step 1: Navigate to New Diagnosis (`/diagnosis/new`)
+### Step 1: Generate Deterministic Multi-Site Test Image
+
+Generate a reproducible synthetic test image containing two distinct deposits using the checked-in test fixtures from PowerShell:
+
+```powershell
+& .\backend\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'backend'); from tests.fixtures.synthetic_images import create_multi_roi_image; img = create_multi_roi_image(400, 200, [(100, 100, 10), (300, 100, 15)]); open('acceptance_sample.png', 'wb').write(img)"
+```
+
+**Image Specifications:**
+- **Dimensions:** 400 × 200 pixels (PNG format, 1.3 KB).
+- **Deposit 1 (Left):** Center `(100, 100)`, radius 10 px (theoretical area $\approx 314\text{ px}^2$, expected diameter $\approx 20\text{ px}$).
+- **Deposit 2 (Right):** Center `(300, 100)`, radius 15 px (theoretical area $\approx 707\text{ px}^2$, expected diameter $\approx 30\text{ px}$).
+
+### Step 2: Navigate to New Diagnosis (`/diagnosis/new`) & Enter Context
+
 - Open `http://localhost:3001/diagnosis/new` in Google Chrome.
 - Confirm the sidebar navigation highlights **New Diagnosis**.
 - Note the two-column layout: Problem Description & Defect Taxonomy on the left, Image Upload on the right.
+- Use standard synthetic demo prefixes:
+  - **Symptom Description** (textarea):
+    `[SYNTHETIC DEMO] Acceptance Rehearsal: Two distinct dispensed adhesive deposits undersized under process limits.`
+  - **Equipment / Line** (dropdown):
+    Select `Dispensing Line A` *(or any available line A–D)*.
+  - **Material Type** (text input):
+    `[SYNTHETIC DEMO] Synthetic Epoxy Adhesive Lot-A1`
+  - **Observed Defect Taxonomy** (clickable card):
+    Click **Too Little Material** (`D01_TOO_LITTLE`).
+  - **Manual Observations** (optional dropdowns):
+    - Deposit Size: `Undersized (smaller than target)`
+    - Defect Frequency: `Consistent (occurs steadily / every shot)`
+    - Defect Location: `All dispensing points (systemic)`
 
-### Step 2: Enter Process Context & Defect Type
-Use the standard synthetic demo prefixes:
-- **Symptom Description** (textarea):
-  `[SYNTHETIC DEMO] Acceptance Rehearsal: Dispensed adhesive deposits are visibly smaller than target after continuous operation.`
-- **Equipment / Line** (dropdown):
-  Select `Dispensing Line A` *(or any available line A–D)*.
-- **Material Type** (text input):
-  `[SYNTHETIC DEMO] Synthetic Epoxy Adhesive Lot-A1`
-- **Observed Defect Taxonomy** (clickable card):
-  Click **Too Little Material** (`D01_TOO_LITTLE`).
-- **Manual Observations** (optional dropdowns):
-  - Deposit Size: `Undersized (smaller than target)`
-  - Frequency Pattern: `Consistent (occurs steadily / every shot)`
-  - Defect Location: `All dispensing points (systemic)`
+### Step 3: Upload Image & Configure Two ROIs in Workbench
 
-### Step 3: Upload Image & Exercise Inspection Workbench
-- **Upload Image:** Drop or browse a multi-deposit test image (e.g. 400x200 PNG with deposits at 100,100 and 300,100).
-- **Configure Analysis Mode & Calibration:**
-  - Select mode: `Process Limits`.
-  - Ensure process thresholds are configured: e.g. Min Coverage Ratio `0.15`, Max Coverage Ratio `0.45`.
-  - Click `Analyze` *(analysis runs automatically on initial drop)*.
-- **Inspect Rendered Workbench:**
-  - **Status Badge:** Verify status is `CALIBRATED` (green badge).
-  - **Inspection Mode Toggle:** Test switching between `[ Inspect ]` and `[ Draw ROI ]`. Confirm that clicks in Inspect mode select regions without drawing new rectangles, while Draw mode allows adding ROIs.
-  - **Expected Target Sites:** Observe the tab bar displaying expected sites (e.g. `dot-1`). Click each tab to inspect detailed geometric measurements (Coverage Ratio, Diameter, Segmentation Quality).
-  - **Deposit Outlines:** Confirm the SVG polygon overlay aligns with the detected deposit boundary with zero letterbox drift.
-  - **Coverage Card:** Confirm "Current Image Inspection Coverage: COMPLETE" is displayed.
+1. **Upload File:** Drop or browse `acceptance_sample.png` into the upload dropzone.
+2. **Initial Auto-Analysis State:**
+   - On initial file selection, `ImageUpload.tsx` automatically creates a single centered default ROI (`dot-1`) and runs analysis.
+   - The upload card expands automatically, showing the image preview and ROI editor.
+3. **Configure Two Distinct ROIs (`dot-1` and `dot-2`):**
+   - > [!IMPORTANT]
+     > **ROI Invalidation Rule:** Adding, deleting, or resetting ROIs immediately invalidates prior analysis results, bumps `configRevision`, and resets upload status to `ready`. Both ROIs must be configured before running analysis and clicking Start Diagnosis.
+   - Click the **Reset ROIs** button (counter-clockwise arrow icon in the ROI editor toolbar) to clear the default single ROI.
+   - Notice that clearing ROIs automatically switches the interaction toggle to **[ Draw ROI ]**.
+   - **Draw Left ROI (`dot-1`):** Click and drag across the left half of the image from approximately normalized `(0.02, 0.02)` to `(0.48, 0.98)`. Confirm `dot-1` appears in the target regions list.
+   - **Draw Right ROI (`dot-2`):** Click and drag across the right half of the image from approximately normalized `(0.52, 0.02)` to `(0.98, 0.98)`. Confirm `dot-2` appears and the header displays `2 defined`.
+4. **Configure Calibration Limits:**
+   - Under **Analysis Mode & Calibration**, ensure Mode is set to **Process Limits** (`PROCESS_LIMITS`).
+   - Under **Process Thresholds**, set **Min Coverage Ratio** to `0.10` (matching Scenario A).
+5. **Run Analysis:**
+   - Click the **Analyze** button (with Play icon) in the image summary bar.
+   - Wait for the status badge to display **CALIBRATED** (green badge).
+6. **Inspect Rendered Multi-Site Workbench:**
+   - **Expected Target Sites:** Observe the tab bar displaying both `dot-1` and `dot-2`.
+   - **Inspect `dot-1`:** Click the `dot-1` tab. Confirm status is `DETECTED`. Observed measurements:
+     - Coverage Ratio: `~0.89%` (under the 0.10 process threshold $\rightarrow$ undersized).
+     - Equivalent Diameter: `~19.96 px` (calibrated physical: `~0.399 mm`).
+     - Deposit Area: `~313 px²` (within target area `~35,328 px²`).
+     - Outline Overlay: Confirm the 40-vertex SVG polygon aligns with the left deposit boundary.
+   - **Inspect `dot-2`:** Click the `dot-2` tab. Confirm status is `DETECTED`. Observed measurements:
+     - Coverage Ratio: `~2.00%` (under the 0.10 process threshold $\rightarrow$ undersized).
+     - Equivalent Diameter: `~29.96 px` (calibrated physical: `~0.599 mm`).
+     - Deposit Area: `~705 px²` (within target area `~35,328 px²`).
+     - Outline Overlay: Confirm the 40-vertex SVG polygon aligns with the right deposit boundary.
+   - Confirm both sites exhibit distinguishable empirical measurements ($0.89\% \neq 2.00\%$, $20\text{ px} \neq 30\text{ px}$).
+   - **Coverage Card:** Confirm "Current Image Inspection Coverage: COMPLETE (Expected: 2, Assessed: 2)" is displayed.
 
 ### Step 4: Create Case & Evaluate Deterministic Diagnosis
-- Click the **Start Diagnosis** button at the bottom right.
-- **Outcome:** The case is persisted to PostgreSQL at **Revision 1**, and the browser navigates to `/diagnosis/{case_id}` (e.g. `/diagnosis/ee5d0200-270c-4fbe-b1e8-5b5182af089a`).
-- **Verify Overview:**
-  - Point out the `REVISION 1` badge.
-  - Point out the top-ranked cause (`Nozzle Restriction`) with deterministic score (e.g. `62.0 / 100`).
-  - Emphasize that scores are deterministic evidence-support metrics, not statistical probabilities.
+
+1. Click the **Start Diagnosis** button at the bottom right.
+2. The frontend packages both affected site IDs (`dot-1` and `dot-2`) along with per-region measurement snapshots into the case payload submitted to `POST /api/v1/cases`.
+3. **Outcome:** The case is persisted to PostgreSQL at **Revision 1**, and the browser navigates to `/diagnosis/{case_id}` (e.g. `/diagnosis/e1d8db2d-fdce-4edf-974c-97ce671f0792`).
+4. **Verify Saved Overview:**
+   - Confirm the `REVISION 1` badge is rendered.
+   - Note top candidate cause (`Nozzle Restriction`) with deterministic evidence support score (e.g. `62.0 / 100`).
+   - Emphasize that scores are deterministic evidence-support metrics, not statistical probabilities or guaranteed fixed rankings across different input combinations.
 
 ### Step 5: Inspect Saved Evidence & Note Known Presentation Limitations
-- Navigate to the **Analysis Detail** subpage: Click `Analysis Detail` in the workflow stepper or visit `/diagnosis/{case_id}/analysis`.
-- Locate the **Image Analysis Evidence** card:
-  - Confirm the card displays `Persisted calibrated visual defect observations`.
-  - Verify stored measurements: `Status: CALIBRATED`, `Mode: PROCESS_LIMITS`, `Coverage Ratio`, `Equiv Diameter`, `Physical Diameter`.
-- **Known Saved-Case Presentation Limitation:**
-  Observe that `frontend/components/diagnosis/ImageAnalysis.tsx` currently renders the legacy top-level fields (representing the first configured ROI) rather than iterating through the full `region_evidence` array. This is a known, documented presentation limitation of the saved-case page; the underlying PostgreSQL database and case report preserve all affected sites losslessly.
 
-### Step 6: Download & Inspect PDF Case Report
-- Navigate to `/reports` or fetch the report endpoint directly:
-  `GET http://127.0.0.1:8000/api/v1/cases/{case_id}/report.pdf`
-- **Verify PDF Headers & Content:**
-  - Content-Type: `application/pdf`.
-  - Content-Disposition: `attachment; filename="dispenselens-case-{case_id}-r1.pdf"`.
-  - Section **8. Image Inspection Evidence**: Lists observation count, affected site IDs (`dot-1`), applied limit configuration snapshot, and per-region measurements table.
+1. Navigate to the **Analysis Detail** subpage: Click `Analysis Detail` in the workflow stepper or visit `/diagnosis/{case_id}/analysis`.
+2. Locate the **Image Analysis Evidence** card:
+   - Confirm the card displays `Persisted calibrated visual defect observations`.
+   - Verify stored measurements: `Status: CALIBRATED`, `Mode: PROCESS_LIMITS`, `Coverage Ratio`, `Equiv Diameter`, `Physical Diameter`.
+3. **Known Saved-Case Presentation Limitation:**
+   Observe that `frontend/components/diagnosis/ImageAnalysis.tsx` currently renders the legacy top-level fields (representing the **first triggering/affected site's metadata**, in this case `dot-1`) rather than iterating through the full `region_evidence` array. This is a known, documented presentation limitation of the saved-case page; the underlying PostgreSQL database and case reports preserve all affected sites losslessly.
+
+### Step 6: Verify Case Records and Download PDF Case Report
+
+1. **Verify Backend Case API (`GET /api/v1/cases/{case_id}`):**
+   - Confirm `observations[0].metadata.affected_roi_ids` contains `["dot-1", "dot-2"]`.
+   - Confirm `observations[0].metadata.region_evidence` contains 2 distinct snapshots with distinct scalar measurements.
+2. **Verify JSON Report API (`GET /api/v1/cases/{case_id}/report`):**
+   - Confirm `image_observations[0].metadata.affected_roi_ids` is `["dot-1", "dot-2"]`.
+   - Confirm `image_observations[0].metadata.region_evidence` has length 2.
+3. **Download PDF Report (`GET /api/v1/cases/{case_id}/report.pdf`):**
+   - Content-Type: `application/pdf`.
+   - Content-Disposition: `attachment; filename="dispenselens-case-{case_id}-r1.pdf"`.
+   - Section **8. Image Inspection Evidence**:
+     - Lists observation count and `Affected Sites: dot-1, dot-2`.
+     - Displays Applied Limits configuration snapshot (`min_coverage_ratio: 0.1`, etc.).
+     - Tabular per-region measurements table renders distinct rows for both `dot-1` and `dot-2` (e.g. `Coverage: 0.0089`, `Diam: 19.96 px` for `dot-1`; `Coverage: 0.02`, `Diam: 29.96 px` for `dot-2`).
 
 ---
 
@@ -123,7 +167,7 @@ This matrix separates demonstrated capabilities from deferred roadmap features a
 | **Separate Current/Reference Coverage** | Implemented (DLK-M3-036/037) | Integration suites | Ready for synthetic demos | No automatic physical alignment between current and reference substrates. |
 | **Per-Region Evidence Snapshots** | Implemented (DLK-M3-039) | Lifecycle round-trip tests | Ready for synthetic demos | 15 scalar metrics captured per site. |
 | **Case Report (JSON & PDF) Integration** | Implemented (DLK-M3-040) | pypdf parsing, revision tracking | Ready for synthetic demos | Extracted text and tables verified; visual aesthetic layout unverified by CI. |
-| **Frontend Upload Workbench** | Implemented (DLK-M3-041) | CDP browser suite (12 scenarios) | Ready for interactive demos | Responsive SVG overlay locked to image content across zoom and aspect ratios. |
+| **Frontend Upload Workbench** | Implemented (DLK-M3-041) | CDP browser rehearsal (two-site verified) | Ready for interactive demos | Responsive SVG overlay locked to image content with measured bounds across zoom and aspect ratios. |
 | **Saved-Case Multi-Site Display** | **Deferred** (Phase 4 gap) | None (legacy single-site fallback) | Limited display on saved case | `ImageAnalysis.tsx` displays legacy first-site metadata; full multi-site card deferred. |
 | **Partial Score-Bearing Evidence** | **Deferred** (Phase 1 gap) | Negative tests (zero obs on partial) | Conservative fail-safe | Partially unassessed calibrated images emit 0 score-bearing observations. |
 | **Reusable Profiles & Auto-Alignment** | **Deferred** (Phase 3) | None | Not implemented | Manual ROI configuration required per upload; no layout library. |
@@ -134,12 +178,12 @@ This matrix separates demonstrated capabilities from deferred roadmap features a
 ## 5. Documented Limitations and Operational Notes
 
 1. **Saved-Case Frontend Display Limitation:**
-   The upload and studio workbench (`ImageUpload.tsx`) provides full multi-site interactive inspection. However, the saved case page (`/diagnosis/[id]/analysis` via `ImageAnalysis.tsx`) currently renders the legacy top-level metadata fields. Full multi-site card presentation on the saved-case page is deferred to Phase 4.
+   The upload and studio workbench (`ImageUpload.tsx`) provides full multi-site interactive inspection with selectable tabs and outline overlays. However, the saved case page (`/diagnosis/[id]/analysis` via `ImageAnalysis.tsx`) currently renders the legacy top-level metadata fields, representing the **first triggering/affected site's metadata**. Full multi-site card presentation on the saved-case page is deferred to Phase 4.
 2. **Conservative Quality Gating (No Partial Evidence):**
    If any expected ROI is UNASSESSED in a calibrated image, the system marks the analysis `UNRELIABLE` and emits exactly **zero** score-bearing observations. While per-region measurements are shown in the workbench for technician visibility, the diagnostic engine conservatively refuses to score incomplete evidence.
-3. **No Original Image Retention:**
-   The platform intentionally does **not** persist raw image files to disk or database. Only resolution-independent normalized geometries, contours, and scalar measurements are stored.
-4. **Visual PDF Inspection Tooling:**
-   Automated integration tests and scripts parse PDF structure and text using `pypdf`. Headless rasterizers (`pdftoppm`, `mutool`) were not installed in the Windows environment, so visual layout/rendering checks rely on manual browser inspection.
+3. **No Original Image Retention & Transient Outlines:**
+   The platform intentionally does **not** persist raw image files or polygon deposit outlines into the database. PostgreSQL case observations persist only `affected_roi_ids`, `applied_limits`, `region_evidence_scope`, and `metadata.region_evidence` (a list of 15 scalar measurements per site). Deposit outlines (`deposit_outline_normalized`) are transient analysis-response data used solely for real-time overlay visualization in the frontend upload workbench; they are not saved in PostgreSQL cases or reports. Saved-image reconstruction from database state alone is completely unavailable.
+4. **Visual PDF Layout Inspection Tooling:**
+   Automated CI and test scripts parse and verify PDF document structure, headers, affected site IDs, and tabular scalar measurements using `pypdf`. Visual aesthetic layout inspection (margins, line wrapping, pagination, and font rendering) is **unverified** by CI because headless PDF rasterization tools (`pdftoppm`, `mutool`) are not installed on the Windows environment. Full visual layout verification requires manual operator inspection in a desktop PDF viewer.
 5. **Synthetic vs. Industrial Data:**
    The offline benchmark (`backend/tests/vision_inspection_baseline.py`) verifies algorithmic repeatability against labeled synthetic fixtures. Field deployment requires team decisions regarding labeled factory image capture, optical lighting controls, and target accuracy thresholds.
