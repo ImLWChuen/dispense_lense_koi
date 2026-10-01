@@ -14,7 +14,7 @@ Accepted increments DLK-M3-033–041 establish manual expected-site inspection, 
 | 2: Workbench | Scoped manual-ROI workbench accepted | Integrated rehearsal and any gaps found there; automatic site proposals are outside this slice |
 | 3: Profiles/alignment | Not implemented | Layout priority, storage choice and alignment approach require decisions |
 | 4: Assistant/reports | Persistence and JSON/PDF integration delivered | Saved-case frontend still reads legacy first-site metadata; full coverage/uncertainty history is not persisted as an inspection session |
-| 5: Evaluation/rehearsal | Synthetic baseline, component browser checks, and integrated acceptance (DLK-M3-042) delivered | Representative labeled images, held-out evaluation, and agreed targets |
+| 5: Evaluation/rehearsal | Synthetic baseline, component browser checks, integrated acceptance (DLK-M3-042), and offline local dataset runner (DLK-M3-044) delivered | Representative labeled images, held-out evaluation, and agreed targets |
 
 Delivered slice: DLK-M3-042 verifies the integrated existing workflow (public multipart analysis, durable case lifecycle, revision progression, JSON/PDF export, and real browser rehearsal) without new product behavior. Full roadmap completion must not be inferred from the implemented increment notes below.
 
@@ -112,6 +112,7 @@ Measure boundary agreement, per-defect precision/recall where labels exist, miss
 Acceptance: repeatable end-to-end demonstration including a normal image, mixed defects, and an unassessed region; recorded measured results and limitations; affected backend tests and frontend lint/build pass.
 
 - **Increment DLK-M3-038 Status (Implemented):** Established offline synthetic baseline runner and evaluation report (`docs/evaluation/region-inspection-synthetic-baseline.md`) measuring status confusion, abstention, outline availability, and polygon-mask IoU before tuning segmentation on production data.
+- **Increment DLK-M3-044 Status (Implemented):** Delivered offline local image evaluation runner CLI (`backend/tests/vision_inspection_dataset.py`), Manifest v1 specification, synthetic fixture generator (`backend/tests/fixtures/generate_local_image_evaluation.py`), and evaluation runbook and worksheet (`docs/evaluation/local-image-evaluation.md`). Enforces honest un-inflated metric denominators (including failed cases and missing pipeline output in eligible totals, null accuracy for unlabeled datasets, distinct abstention and false-missing rates), strict path containment security, and strict JSON output reports without altering production CV services, database schemas, or manufacturing accuracy claims.
 
 ## Implementation ownership and sequence
 

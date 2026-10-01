@@ -1,13 +1,19 @@
 ---
 task_id: DLK-M3-043
-reviewed_commit: fa81f024fe394b233a47cd3d6cfe2406a4f07d41
-decision: changes_requested
+reviewed_commit: 41d7351d7e4165fc95b17de707fe22887c654aa7
+decision: accepted
 reviewed_by: ChatGPT planner/reviewer
 ---
 
 # Review: DLK-M3-043
 
 ## Decision and verification
+
+Accepted at 41d7351d7e4165fc95b17de707fe22887c654aa7. R1–R3 were resolved in fa81f02; the documentation-only follow-up resolves R4. The report now explicitly labels mocked API boundary tests, retains the historical live rehearsal, and records unmocked load/site switching/reload on the corrected frontend with both sites' distinct measurements, stored limits, service identity and console diagnostics (zero reported severe errors or runtime exceptions).
+
+Reviewer inspected the final diff and the local verify-unmocked-live-reload.mjs script: it creates a browser target, verifies backend identity, navigates and reloads without Fetch interception, and collects console/runtime events. This supports the stated distinction from the mocked suite. Browser outcomes remain Gemini-reported; reviewer did not rerun tests/browser. Prior 8+6+7 focused checks and lint/build evidence apply because this follow-up changes only handoff documentation. Committed whitespace check passes. No further blocking findings. Acceptance covers saved-case scalar evidence presentation, not image replay, complete inspection-session history, alignment, partial scoring or industrial accuracy.
+
+## Historical follow-up (R4 resolved in 41d7351)
 
 Follow-up at fa81f024fe394b233a47cd3d6cfe2406a4f07d41: R1–R3 code corrections are resolved on inspection. The component now moves focus with selection, namespaces DOM IDs using useId, clamps collapsed selection, shares complete current/reference scalar rendering and restores legacy fields. Projection distinguishes malformed/empty data and strict absent-scope canonical fallback, retaining full IDs for matching. Gemini reports 8+6+7 focused checks, lint/build and browser boundary checks passing. Committed whitespace check now passes. Reviewer did not rerun execution.
 

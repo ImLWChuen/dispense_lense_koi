@@ -183,7 +183,7 @@ Do not implement inside DLK-M3-031:
   - deferred: templates/alignment, automatic site detection, partial evidence, saved-case page redesign, real-image evaluation
   - include pending review record `.agents/handoff/reviews/DLK-M3-041-review.md` in the local implementation commit
 
-## Accepted verification task
+## Accepted verification tasks
 
 - `DLK-M3-042` — Verify integrated region inspection workflow and record readiness — **accepted**
   - reviewed commit: `a9803d01db253437c564ddea2dac743995957a6a`
@@ -199,11 +199,9 @@ Do not implement inside DLK-M3-031:
   - deferred: saved-case frontend enhancement, profiles/alignment, partial evidence and representative real-image evaluation
   - include pending accepted DLK-M3-041 review in the local implementation commit
 
-## Active task
-
-- `DLK-M3-043` — Display persisted multi-site image evidence on saved cases — **implemented**
-  - follow-up reviewed commit: `fa81f024fe394b233a47cd3d6cfe2406a4f07d41`
-  - reviewed commit: `4fb539c16895b92e3a3135d883ca683eff3e1f72`
+- `DLK-M3-043` — Display persisted multi-site image evidence on saved cases — **accepted**
+  - reviewed commit: `41d7351d7e4165fc95b17de707fe22887c654aa7`
+  - implementation corrections: `fa81f024fe394b233a47cd3d6cfe2406a4f07d41`
   - review: `.agents/handoff/reviews/DLK-M3-043-review.md`
   - resolved corrections R1–R4:
     - R1: implemented roving tab stop (`tabIndex={isSelected ? 0 : -1}`) and actual DOM focus movement via `tabRefs.current[idx]?.focus()`; verified 3 consecutive arrow presses, Home/End, recording actual `document.activeElement.id`; isolated instance-unique DOM IDs preventing collisions across repeated site IDs; enforced tab collapse clamping to tab 11 with panel update and focus transfer;
@@ -217,5 +215,16 @@ Do not implement inside DLK-M3-031:
   - preserve: existing API/storage, scoring, raw-image retention policy and upload workbench
   - deferred: complete inspection-session history, profiles/alignment, partial evidence and real-image accuracy evaluation
   - include pending accepted DLK-M3-042 review in local implementation commit
+
+## Active task
+
+- `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **implemented**
+  - task: `.agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md`
+  - branch: `backend-database`
+  - depends on: accepted DLK-M3-043 at `41d7351d7e4165fc95b17de707fe22887c654aa7`
+  - outcome: offline manifest-driven evaluation of local images with honest labeled/unlabeled/error accounting, synthetic example and team evaluation runbook
+  - preserve: production CV/API, database, scoring, frontend and existing synthetic baseline
+  - deferred: actual representative-image evaluation until supplied, accuracy targets, profiles/alignment and partial scoring
+  - include pending accepted DLK-M3-043 review in local implementation commit
 
 Earlier milestone completion statements describe the previous submission scope. Remote Git operations still require explicit user instruction.

@@ -1,0 +1,147 @@
+{
+  "manifest_version": "v1",
+  "dataset_id": "synthetic_example_v1",
+  "origin": "synthetic",
+  "description": "Example Manifest v1 illustrating schema, profiles, process limits, and optional ground-truth labels for offline evaluation.",
+  "label_provenance": "Constructed from deterministic synthetic fixtures; ground truth established by geometric construction.",
+  "cases": [
+    {
+      "case_id": "case_01_detected_dot",
+      "description": "Single-ROI clean deposit centered in target area with minimum coverage limit.",
+      "current_image_path": "images/case_01_detected.png",
+      "reference_image_path": null,
+      "profile": {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+          {
+            "roi_id": "dot-1",
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          }
+        ],
+        "process_limits": {
+          "min_coverage_ratio": 0.05,
+          "max_overflow_ratio": 0.05
+        }
+      },
+      "expected_statuses": {
+        "dot-1": "DETECTED"
+      },
+      "label_provenance": "Known synthetic circular deposit with radius 25px in 200x200 canvas.",
+      "notes": "Expects normal detection within calibrated process limits."
+    },
+    {
+      "case_id": "case_02_confirmed_missing",
+      "description": "Single-ROI confirmed missing deposit with visible background context.",
+      "current_image_path": "images/case_02_missing.png",
+      "reference_image_path": null,
+      "profile": {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+          {
+            "roi_id": "dot-1",
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          }
+        ],
+        "process_limits": {
+          "min_coverage_ratio": 0.05
+        }
+      },
+      "expected_statuses": {
+        "dot-1": "MISSING"
+      },
+      "label_provenance": "Synthetic empty image with fiducials; verified absence of deposit.",
+      "notes": "Must classify as MISSING without triggering unassessed abstention."
+    },
+    {
+      "case_id": "case_03_uniform_unassessed",
+      "description": "Uniform low-contrast image without background basis triggering abstention.",
+      "current_image_path": "images/case_03_unassessed.png",
+      "reference_image_path": null,
+      "profile": {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+          {
+            "roi_id": "dot-1",
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          }
+        ],
+        "process_limits": {
+          "min_coverage_ratio": 0.05
+        }
+      },
+      "expected_statuses": {
+        "dot-1": "UNASSESSED"
+      },
+      "label_provenance": "Uniform gray field without contrast or reference.",
+      "notes": "Abstains safely with UNASSESSED status."
+    },
+    {
+      "case_id": "case_04_mixed_two_site",
+      "description": "Two-site dispensing image demonstrating partial labeling (dot-1 labeled, dot-2 unlabeled).",
+      "current_image_path": "images/case_04_mixed.png",
+      "reference_image_path": null,
+      "profile": {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+          {
+            "roi_id": "dot-1",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 1.0
+          },
+          {
+            "roi_id": "dot-2",
+            "x": 0.5,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 1.0
+          }
+        ],
+        "process_limits": {
+          "min_coverage_ratio": 0.01
+        }
+      },
+      "expected_statuses": {
+        "dot-1": "DETECTED"
+      },
+      "label_provenance": "dot-1 has synthetic ground-truth; dot-2 intentionally unlabeled.",
+      "notes": "Demonstrates honest accounting: unlabeled dot-2 is omitted from accuracy calculations."
+    },
+    {
+      "case_id": "case_05_reference_comparison",
+      "description": "Two-image comparison mode evaluating current against reference template.",
+      "current_image_path": "images/case_05_reference_current.png",
+      "reference_image_path": "images/case_05_reference_ref.png",
+      "profile": {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [
+          {
+            "roi_id": "ref-dot",
+            "x": 0.25,
+            "y": 0.25,
+            "width": 0.5,
+            "height": 0.5
+          }
+        ],
+        "reference_limits": {
+          "tolerance_ratio": 0.20
+        }
+      },
+      "expected_statuses": {
+        "ref-dot": "DETECTED"
+      },
+      "label_provenance": "Identical paired synthetic images evaluated for match tolerance.",
+      "notes": "Exercises dual-image loading and REFERENCE_IMAGE mode."
+    }
+  ]
+}
