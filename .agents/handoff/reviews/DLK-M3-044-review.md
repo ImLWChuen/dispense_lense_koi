@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-044
-reviewed_commit: d1f66de2e1cb821614a306a3f159f840fe8d5af9
+reviewed_commit: 2f27c1922cff29485f87be4b0166f66de7cf6ae5
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -8,6 +8,15 @@ reviewed_by: ChatGPT planner/reviewer
 # Review: DLK-M3-044
 
 ## Decision
+
+Follow-up at 2f27c1922cff29485f87be4b0166f66de7cf6ae5: Windows no-replace publication and fixed per-case filesystem/execution messages are corrected. R2 remains resolved. Gemini reports 36 focused tests passing and the existing sample runs; reviewer inspected code and did not rerun tests. Committed whitespace check passes. Two remaining code paths prevent acceptance:
+
+- **R1 remaining (P2):** publish_report_file's POSIX branch catches OSError/NotImplementedError from os.link and falls back to exists() followed by shutil.move(). This recreates the no-overwrite race when hardlinks are unsupported: a destination appearing after the check can be replaced by move. The temp file is already in the destination directory, so no cross-device fallback is needed. Fail closed with a safe unsupported-publication diagnostic rather than falling back to an overwriting primitive. Test simulated link failure and prove a destination sentinel remains unchanged; retain the Windows behavior.
+- **R3 remaining (P2):** format_safe_schema_error still emits err['msg'] and raw string location components. Existing validators interpolate unknown ROI IDs, configured IDs, case IDs and duplicate IDs into their messages. An invalid expected_statuses key such as C:/private/customer/file, or a duplicate case ID with that value, therefore still appears in stderr; removing err['input'] does not sanitize custom messages. Dict keys/extra fields also enter Pydantic error locations. Render only allowlisted schema-field segments plus numeric indices, safe placeholders for dynamic keys, and a fixed explanation based on error type. Do not echo arbitrary validator messages. Add captured-CLI regressions for unknown ROI labels, duplicate case IDs and extra-field/dict keys containing private path markers. Preserve actionable schema locations without exposing values.
+
+These are the only requested follow-up changes. Continue DLK-M3-044, rerun focused tests, validate and update the report, then commit locally without push/PR/merge.
+
+## Previous follow-up at d1f66de
 
 Follow-up at d1f66de2e1cb821614a306a3f159f840fe8d5af9: R2 is resolved; R1 direct/alias input protection and generator default collisions are fixed; exit documentation and whitespace are corrected. Gemini reports 26 focused tests passing and repeated sample CLI runs. Reviewer inspected changes without rerunning tests. Two bounded corrections remain before acceptance.
 

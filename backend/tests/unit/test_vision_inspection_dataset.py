@@ -279,7 +279,7 @@ def test_manifest_validation_invalid_label_roi() -> None:
         rois=[NormalizedROI(roi_id="r1", x=0.2, y=0.2, width=0.5, height=0.5)],
         process_limits=ProcessLimits(min_coverage_ratio=0.05),
     )
-    with pytest.raises(ValueError, match="unknown ROI ID 'r_nonexistent'"):
+    with pytest.raises(ValueError, match="expected_statuses contains unknown ROI ID"):
         ManifestCase(
             case_id="case_invalid_roi",
             current_image_path="img1.png",
@@ -295,7 +295,7 @@ def test_manifest_validation_reference_mode_requires_reference_path() -> None:
         rois=[NormalizedROI(roi_id="r1", x=0.2, y=0.2, width=0.5, height=0.5)],
         reference_limits=ReferenceLimits(tolerance_ratio=0.2),
     )
-    with pytest.raises(ValueError, match="REFERENCE_IMAGE mode but provides no reference_image_path"):
+    with pytest.raises(ValueError, match="Case in REFERENCE_IMAGE mode requires reference_image_path"):
         ManifestCase(
             case_id="case_missing_ref_path",
             current_image_path="img1.png",
@@ -889,3 +889,205 @@ def test_per_case_oserror_suppresses_private_paths_in_report_and_diagnostics(
     captured = capsys.readouterr()
     assert private_path not in captured.out
     assert private_path not in captured.err
+
+
+def test_publish_report_file_posix_link_failure_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that POSIX os.link failure fails closed without replacing destination sentinel or leaking temp files."""
+    from tests.vision_inspection_dataset import main, publish_report_file
+    from tests.fixtures.generate_local_image_evaluation import generate_synthetic_dataset
+
+    # 1. Direct unit test of publish_report_file
+    temp_file = tmp_path / "temp_report.json"
+    temp_file.write_text('{"status": "new"}', encoding="utf-8")
+    dest_path = tmp_path / "final_report.json"
+    sentinel_bytes = b"ORIGINAL_SENTINEL_CONTENT_DO_NOT_OVERWRITE"
+
+    monkeypatch.setattr("sys.platform", "linux")
+
+    def mock_link_unit(src, dst):
+        # Simulate race where destination sentinel appears right as link fails
+        dest_path.write_bytes(sentinel_bytes)
+        raise OSError(95, "Operation not supported")
+
+    monkeypatch.setattr("os.link", mock_link_unit)
+
+    with pytest.raises(OSError, match="Atomic no-clobber publication unsupported"):
+        publish_report_file(temp_file, dest_path, overwrite=False)
+
+    assert dest_path.read_bytes() == sentinel_bytes, "Sentinel must remain unmodified on link failure"
+    assert temp_file.exists(), "Caller cleans up temp file on failure"
+
+    # 2. CLI integration test with sentinel created during link attempt
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path / "dataset")
+    out_dir = tmp_path / "reports"
+    out_dir.mkdir(parents=True)
+    cli_dest = out_dir / "report.json"
+
+    def mock_link_cli(src, dst):
+        cli_dest.write_bytes(sentinel_bytes)
+        raise OSError(95, "Operation not supported")
+
+    monkeypatch.setattr("os.link", mock_link_cli)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(cli_dest)],
+    )
+
+    rc = main()
+    assert rc == 1
+    assert cli_dest.read_bytes() == sentinel_bytes, "Sentinel must remain unmodified in CLI run"
+    captured = capsys.readouterr()
+    assert "Atomic no-clobber publication unsupported or failed on host filesystem" in captured.err
+    # Temp file must be cleaned up
+    tmp_files = list(out_dir.glob(".tmp_*"))
+    assert tmp_files == []
+
+
+def test_schema_rejection_unknown_roi_labels_suppresses_private_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that manifests with unknown ROI IDs or invalid enum statuses in expected_statuses suppress private keys."""
+    from tests.vision_inspection_dataset import main
+
+    private_key = "C:/private/customer/secret_roi_marker.png"
+    manifest_data = {
+        "manifest_version": "v1",
+        "dataset_id": "test_private_roi",
+        "origin": "synthetic",
+        "cases": [
+            {
+                "case_id": "case_01",
+                "current_image_path": "img.png",
+                "profile": {
+                    "mode": "FEATURES_ONLY",
+                    "rois": [{"roi_id": "site_1", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2}],
+                },
+                "expected_statuses": {private_key: "DETECTED"},
+            }
+        ],
+    }
+    mpath = tmp_path / "manifest_unknown_roi.json"
+    mpath.write_text(json.dumps(manifest_data), encoding="utf-8")
+    rpath = tmp_path / "report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(mpath), "-o", str(rpath)],
+    )
+    rc = main()
+    assert rc == 1
+    assert not rpath.exists()
+    captured = capsys.readouterr()
+    assert "Manifest schema validation failed" in captured.err
+    assert "expected_statuses contains unknown ROI ID" in captured.err
+    assert "C:/private" not in captured.err
+    assert "customer" not in captured.err
+    assert "secret_roi_marker" not in captured.err
+
+    # Test also with invalid enum under dynamic dict key
+    manifest_data["cases"][0]["expected_statuses"] = {private_key: "INVALID_STATUS_ENUM"}
+    mpath.write_text(json.dumps(manifest_data), encoding="utf-8")
+    rc = main()
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Manifest schema validation failed" in captured.err
+    assert "<dynamic_key>" in captured.err
+    assert "C:/private" not in captured.err
+    assert "customer" not in captured.err
+    assert "secret_roi_marker" not in captured.err
+
+
+def test_schema_rejection_duplicate_case_ids_suppresses_private_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that duplicate case IDs containing private path markers are rejected without leaking the key/ID."""
+    from tests.vision_inspection_dataset import main
+
+    private_case_id = "C:/private/customer/top_secret_case_id"
+    manifest_data = {
+        "manifest_version": "v1",
+        "dataset_id": "test_private_dup",
+        "origin": "synthetic",
+        "cases": [
+            {
+                "case_id": private_case_id,
+                "current_image_path": "img1.png",
+                "profile": {
+                    "mode": "FEATURES_ONLY",
+                    "rois": [{"roi_id": "site_1", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2}],
+                },
+            },
+            {
+                "case_id": private_case_id,
+                "current_image_path": "img2.png",
+                "profile": {
+                    "mode": "FEATURES_ONLY",
+                    "rois": [{"roi_id": "site_1", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2}],
+                },
+            },
+        ],
+    }
+    mpath = tmp_path / "manifest_dup.json"
+    mpath.write_text(json.dumps(manifest_data), encoding="utf-8")
+    rpath = tmp_path / "report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(mpath), "-o", str(rpath)],
+    )
+    rc = main()
+    assert rc == 1
+    assert not rpath.exists()
+    captured = capsys.readouterr()
+    assert "Manifest schema validation failed" in captured.err
+    assert "Duplicate case_id values detected in manifest" in captured.err
+    assert "C:/private" not in captured.err
+    assert "customer" not in captured.err
+    assert "top_secret_case_id" not in captured.err
+
+
+def test_schema_rejection_extra_fields_suppresses_private_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """Verifies that extra/unknown fields containing private keys/values are rejected and replaced by <dynamic_key>."""
+    from tests.vision_inspection_dataset import main
+
+    private_extra_key = "C:/private/customer/forbidden_extra_field"
+    private_extra_val = "SECRET_PAYLOAD_VALUE_999"
+    manifest_data = {
+        "manifest_version": "v1",
+        "dataset_id": "test_private_extra",
+        "origin": "synthetic",
+        private_extra_key: private_extra_val,
+        "cases": [
+            {
+                "case_id": "case_01",
+                "current_image_path": "img1.png",
+                "profile": {
+                    "mode": "FEATURES_ONLY",
+                    "rois": [{"roi_id": "site_1", "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2}],
+                },
+            },
+        ],
+    }
+    mpath = tmp_path / "manifest_extra.json"
+    mpath.write_text(json.dumps(manifest_data), encoding="utf-8")
+    rpath = tmp_path / "report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(mpath), "-o", str(rpath)],
+    )
+    rc = main()
+    assert rc == 1
+    assert not rpath.exists()
+    captured = capsys.readouterr()
+    assert "Manifest schema validation failed" in captured.err
+    assert "<dynamic_key>" in captured.err
+    assert "Extra field is not permitted" in captured.err
+    assert "C:/private" not in captured.err
+    assert "customer" not in captured.err
+    assert "forbidden_extra_field" not in captured.err
+    assert "SECRET_PAYLOAD_VALUE_999" not in captured.err

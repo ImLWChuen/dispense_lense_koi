@@ -97,19 +97,14 @@ class ManifestCase(BaseModel):
         # 1. Enforce REFERENCE_IMAGE mode requires reference_image_path
         if self.profile.mode == ImageAnalysisMode.REFERENCE_IMAGE:
             if not self.reference_image_path:
-                raise ValueError(
-                    f"Case '{self.case_id}' uses REFERENCE_IMAGE mode but provides no reference_image_path."
-                )
+                raise ValueError("Case in REFERENCE_IMAGE mode requires reference_image_path.")
 
         # 2. Enforce expected_statuses keys must belong to profile.rois
         if self.expected_statuses:
             valid_roi_ids = {r.roi_id for r in self.profile.rois}
             for roi_id in self.expected_statuses:
                 if roi_id not in valid_roi_ids:
-                    raise ValueError(
-                        f"Case '{self.case_id}' specifies expected status for unknown ROI ID '{roi_id}'. "
-                        f"Configured ROI IDs: {sorted(valid_roi_ids)}"
-                    )
+                    raise ValueError("expected_statuses contains unknown ROI ID not present in profile.")
 
         return self
 
@@ -138,13 +133,10 @@ class DatasetManifest(BaseModel):
     @model_validator(mode="after")
     def validate_unique_case_ids(self) -> DatasetManifest:
         seen: set[str] = set()
-        duplicates: list[str] = []
         for case in self.cases:
             if case.case_id in seen:
-                duplicates.append(case.case_id)
+                raise ValueError("Duplicate case_id values detected in manifest.")
             seen.add(case.case_id)
-        if duplicates:
-            raise ValueError(f"Duplicate case_id values detected in manifest: {sorted(set(duplicates))}")
         return self
 
 
@@ -153,17 +145,124 @@ class PathValidationError(ValueError):
     pass
 
 
+_SCHEMA_ALLOWLISTED_FIELDS: set[str] = {
+    # Top-level manifest fields
+    "manifest_version",
+    "dataset_id",
+    "origin",
+    "description",
+    "created_at",
+    "label_provenance",
+    "cases",
+    # Case fields
+    "case_id",
+    "current_image_path",
+    "reference_image_path",
+    "profile",
+    "expected_statuses",
+    "notes",
+    # Profile fields
+    "mode",
+    "rois",
+    "process_limits",
+    "reference_limits",
+    # ROI fields
+    "roi_id",
+    "x",
+    "y",
+    "width",
+    "height",
+    "scale",
+    "mm_per_pixel",
+    # Known limit fields
+    "min_coverage_ratio",
+    "max_coverage_ratio",
+    "min_deposit_area_px",
+    "max_deposit_area_px",
+    "min_target_area_px",
+    "max_target_area_px",
+    "max_overflow_ratio",
+    "min_diameter_mm",
+    "max_diameter_mm",
+    "min_diameter_px",
+    "max_diameter_px",
+    "max_position_offset_mm",
+    "max_position_offset_px",
+    "min_circularity",
+    "max_circularity",
+    "min_aspect_ratio",
+    "max_aspect_ratio",
+    "min_solidity",
+    "max_solidity",
+    "allow_bubbles",
+    "require_deposit",
+}
+
+_FIXED_EXPLANATIONS_BY_TYPE: dict[str, str] = {
+    "extra_forbidden": "Extra field is not permitted in schema.",
+    "missing": "Required field is missing.",
+    "string_type": "Value must be a valid string.",
+    "int_type": "Value must be a valid integer.",
+    "int_parsing": "Value must be a valid integer.",
+    "float_type": "Value must be a valid number.",
+    "float_parsing": "Value must be a valid number.",
+    "bool_type": "Value must be a valid boolean.",
+    "bool_parsing": "Value must be a valid boolean.",
+    "enum": "Value is not a recognized enum option.",
+    "literal_error": "Value does not match permitted schema literal.",
+    "list_type": "Value must be an array.",
+    "dict_type": "Value must be an object/dictionary.",
+    "string_too_short": "Value string is shorter than required minimum length.",
+    "too_short": "Collection or string must not be empty.",
+    "value_error": "Field value failed schema validation rules.",
+}
+
+
 def format_safe_schema_error(exc: ValidationError) -> str:
-    """Format Pydantic ValidationError without leaking raw input values or private strings."""
+    """Format Pydantic ValidationError using only allowlisted field locations and fixed messages."""
     lines: list[str] = []
     for err in exc.errors():
-        loc_parts = [str(p) for p in err.get("loc", ())]
-        loc_str = " -> ".join(loc_parts) if loc_parts else "root"
-        err_type = err.get("type", "validation_error")
-        msg = err.get("msg", "Invalid value")
-        if msg.startswith("Value error, "):
-            msg = msg[len("Value error, "):]
-        lines.append(f"  - Field '{loc_str}': {msg} (type: {err_type})")
+        # 1. Format safe location using allowlisted segments, numeric indices, or <dynamic_key>
+        loc_raw = err.get("loc", ())
+        if not loc_raw:
+            loc_str = "root"
+        else:
+            parts: list[str] = []
+            for item in loc_raw:
+                if isinstance(item, int) or (isinstance(item, str) and item.isdigit()):
+                    parts.append(f"[{item}]")
+                elif isinstance(item, str) and item in _SCHEMA_ALLOWLISTED_FIELDS:
+                    parts.append(item)
+                else:
+                    parts.append("<dynamic_key>")
+            loc_str = " -> ".join(parts)
+
+        # 2. Select fixed explanation based on error type and known rule categories
+        err_type = str(err.get("type", "validation_error"))
+        raw_msg = str(err.get("msg", ""))
+
+        if "relative path" in raw_msg:
+            if "current_image_path" in loc_str:
+                explanation = "current_image_path must be a relative path."
+            elif "reference_image_path" in loc_str:
+                explanation = "reference_image_path must be a relative path."
+            else:
+                explanation = "Path must be a relative file path without leading drive letter or slashes."
+        elif "unknown ROI ID" in raw_msg:
+            explanation = "expected_statuses contains unknown ROI ID not configured in profile."
+            if "expected_statuses" not in loc_str:
+                loc_str = f"{loc_str} -> expected_statuses"
+        elif "Duplicate case_id" in raw_msg:
+            explanation = "Duplicate case_id values detected in manifest."
+        elif "REFERENCE_IMAGE mode requires" in raw_msg:
+            explanation = "Case in REFERENCE_IMAGE mode requires reference_image_path."
+        else:
+            explanation = _FIXED_EXPLANATIONS_BY_TYPE.get(
+                err_type,
+                "Field value failed schema validation rules."
+            )
+
+        lines.append(f"  - Field '{loc_str}': {explanation} (type: {err_type})")
     return "\n".join(lines)
 
 
@@ -857,6 +956,7 @@ def publish_report_file(temp_path: Path, output_path: Path, overwrite: bool) -> 
     If overwrite is False:
         Enforces strict no-clobber behavior. If output_path exists before or during
         the move, raises FileExistsError without modifying output_path.
+        Fails closed on platforms/filesystems where atomic no-clobber publication is unsupported.
     """
     if overwrite:
         temp_path.replace(output_path)
@@ -877,13 +977,15 @@ def publish_report_file(temp_path: Path, output_path: Path, overwrite: bool) -> 
         try:
             os.link(temp_path, output_path)
             temp_path.unlink()
-        except (OSError, NotImplementedError):
-            # Fallback for filesystems that do not support hardlinks across devices
-            if output_path.exists():
-                raise FileExistsError(
-                    f"Output report '{output_path.name}' already exists. Use --overwrite to replace it."
-                )
-            shutil.move(str(temp_path), str(output_path))
+        except FileExistsError:
+            raise FileExistsError(
+                f"Output report '{output_path.name}' already exists. Use --overwrite to replace it."
+            )
+        except (OSError, NotImplementedError) as exc:
+            # Fail closed: never fall back to an overwriting primitive (e.g. shutil.move)
+            raise OSError(
+                "Atomic no-clobber publication unsupported or failed on host filesystem."
+            ) from exc
 
 
 def main() -> int:
@@ -987,7 +1089,13 @@ def main() -> int:
             f"Fatal error: Output report '{output_path.name}' already exists. Use --overwrite to replace it.\n"
         )
         return 1
-    except (OSError, RuntimeError):
+    except OSError as exc:
+        if "Atomic no-clobber publication unsupported" in str(exc):
+            sys.stderr.write(f"Fatal error: {exc}\n")
+        else:
+            sys.stderr.write(f"Fatal error: Filesystem access error while writing report file '{output_path.name}'\n")
+        return 1
+    except RuntimeError:
         sys.stderr.write(f"Fatal error: Filesystem access error while writing report file '{output_path.name}'\n")
         return 1
     finally:

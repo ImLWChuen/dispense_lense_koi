@@ -219,12 +219,12 @@ Do not implement inside DLK-M3-031:
 ## Active task
 
 - `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **implemented**
-  - reviewed commit: `d1f66de2e1cb821614a306a3f159f840fe8d5af9`
+  - reviewed commit: `2f27c1922cff29485f87be4b0166f66de7cf6ae5`
   - review: `.agents/handoff/reviews/DLK-M3-044-review.md`
   - resolved corrections R1–R3 and follow-up findings:
-    - R1: enforced input protection rejecting manifest and source image overwrite (direct and samefile aliases) regardless of --overwrite; added preflight generator target collision checks with --overwrite; implemented publish_report_file with atomic no-clobber publication when --overwrite is omitted (failing with FileExistsError / exit 1 if target appears during evaluation, leaving destination byte-identical and unlinking temp files);
+    - R1: enforced input protection rejecting manifest and source image overwrite (direct and samefile aliases) regardless of --overwrite; added preflight generator target collision checks with --overwrite; implemented publish_report_file with atomic no-clobber publication when --overwrite is omitted; removed unsafe POSIX shutil.move fallback, failing closed with safe diagnostic if atomic no-clobber publication is unsupported or fails, preserving destination sentinel byte-identical;
     - R2: preserved full AnalysisProfile, case notes, safe relative image paths, and provenance status (provided, inherited, unreviewed, unlabeled) across success and error records, with explicit current and reference inspection coverage summaries separate from material coverage ratios;
-    - R3: replaced raw exception outputs with fixed public messages and safe error categories (IMAGE_VALIDATION, PATH_VALIDATION, FILESYSTEM_ACCESS, EXECUTION_ERROR) without echoing str(exc); formatted Pydantic schema validation errors without raw input values; guarded CLI preflight filesystem operations against OSError/RuntimeError returning sanitized exit-1 diagnostics without tracebacks or host paths; updated sanitize_error_message regexes to cover Windows slash/backslash paths with spaces, UNC, and /mnt paths.
+    - R3: replaced raw exception outputs with fixed public messages and safe error categories (IMAGE_VALIDATION, PATH_VALIDATION, FILESYSTEM_ACCESS, EXECUTION_ERROR) without echoing str(exc); formatted Pydantic schema validation diagnostics using allowlisted schema fields, numeric indices, and <dynamic_key> placeholders with fixed explanation mappings, eliminating raw validator string interpolation (ROI IDs, case IDs, duplicate IDs); guarded CLI preflight filesystem operations against OSError/RuntimeError returning sanitized exit-1 diagnostics without tracebacks or host paths.
   - task: `.agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-043 at `41d7351d7e4165fc95b17de707fe22887c654aa7`
