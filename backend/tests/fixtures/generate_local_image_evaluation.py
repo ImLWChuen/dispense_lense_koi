@@ -48,13 +48,41 @@ def generate_synthetic_dataset(
     output_dir: Path,
     all_unlabeled: bool = False,
     include_corrupt: bool = False,
+    overwrite: bool = False,
 ) -> Path:
     """Generate sample images and write a corresponding manifest.json into output_dir.
 
+    Preflights all target file paths and refuses to overwrite existing files unless
+    overwrite=True is specified.
+
     Returns the path to the written manifest JSON file.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_filename = "manifest_unlabeled.json" if all_unlabeled else "manifest.json"
+    manifest_path = output_dir / manifest_filename
     images_dir = output_dir / "images"
+
+    # Preflight collision check before any disk mutations
+    target_files = [
+        manifest_path,
+        images_dir / "case_01_detected.png",
+        images_dir / "case_02_missing.png",
+        images_dir / "case_03_unassessed.png",
+        images_dir / "case_04_mixed.png",
+        images_dir / "case_05_reference_current.png",
+        images_dir / "case_05_reference_ref.png",
+    ]
+    if include_corrupt:
+        target_files.append(images_dir / "case_06_corrupt.png")
+
+    if not overwrite:
+        existing = [p for p in target_files if p.exists()]
+        if existing:
+            raise FileExistsError(
+                f"Target file already exists: '{existing[0].name}'. "
+                f"Use --overwrite to authorize replacing existing files."
+            )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
     images_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Case 01: Clean centered deposit
@@ -248,6 +276,12 @@ def main() -> int:
         default=False,
         help="Include an intentionally corrupt image case to test partial-run error containment.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        default=False,
+        help="Authorize overwriting existing files in the output directory.",
+    )
 
     args = parser.parse_args()
     try:
@@ -255,6 +289,7 @@ def main() -> int:
             output_dir=args.output_dir.resolve(),
             all_unlabeled=args.all_unlabeled,
             include_corrupt=args.include_corrupt,
+            overwrite=args.overwrite,
         )
         sys.stdout.write(
             f"Successfully generated synthetic dataset:\n"

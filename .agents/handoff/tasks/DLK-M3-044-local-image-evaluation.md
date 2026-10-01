@@ -102,62 +102,69 @@ Proposed commit message: `test(vision): add local image dataset evaluation runne
 
 Delivered a standalone, offline, manifest-driven local image dataset evaluation runner and reporting CLI (`backend/tests/vision_inspection_dataset.py`), Manifest v1 specification (`DatasetManifest`), synthetic sample fixture generator (`backend/tests/fixtures/generate_local_image_evaluation.py`), static template fixture (`backend/tests/fixtures/local_image_evaluation_example.json`), and comprehensive team evaluation runbook and worksheet (`docs/evaluation/local-image-evaluation.md`).
 
-The evaluator executes against the existing synchronous vision inspection pipeline (`_sync_analyze_image`) using standard `AnalysisProfile` specifications, without requiring a running web server, active database session, network access, or LLM services. It enforces path containment security, honest un-inflated metric denominators (including failed cases and missing pipeline output in eligible totals, null accuracy for unlabeled datasets, distinct abstention and false-missing rates), strict JSON serialization with `allow_nan=False`, and default report overwrite protection. Production CV services, database schemas, scoring logic, and UI code remain completely untouched. No representative real-world dataset or manufacturing accuracy claims are made.
+Following review `DLK-M3-044-review.md`, resolved corrections R1–R3:
+- **R1 (Input Protection & Collision Prevention):** Enforced strict input protection rejecting output paths that resolve to the manifest or any current/reference source image (direct path equality and filesystem alias/samefile checks) regardless of `--overwrite`. Added atomic report replacement via temporary file swap. Added generator target collision preflighting before disk writes, refusing to overwrite existing files unless authorized with `--overwrite`.
+- **R2 (Profile & Provenance Preservation):** Persisted the complete `AnalysisProfile` (mode, ROI coordinates, scale, limits), case `notes`, safe relative image paths, and `label_provenance` / `label_provenance_status` (`provided`, `inherited`, `unreviewed`, `unlabeled`) across both success and error records. When labels lack case or dataset provenance, visibly flagged as unreviewed and tracked in summary. Structured explicit `current_inspection_coverage` and `reference_inspection_coverage` summaries (status, expected/assessed counts, unassessed/missing ROI IDs), separate from material coverage ratios.
+- **R3 (Error Sanitization & Semantic Alignment):** Sanitized error messages across evaluator and CLI diagnostics to strip host absolute paths and private paths (`<redacted_path>`). Aligned CLI help and documentation to distinguish fatal manifest/traversal/input-collision errors (Exit code 1, no report written) from per-case image decode/analysis errors (Exit code 0, recorded in report with runner continuation). Removed trailing whitespace from runbook documentation.
+
+The evaluator executes against the existing synchronous vision inspection pipeline (`_sync_analyze_image`) using standard `AnalysisProfile` specifications, without requiring a running web server, active database session, network access, or LLM services. Production CV services, database schemas, scoring logic, and UI code remain completely untouched. No representative real-world dataset or manufacturing accuracy claims are made.
 
 ### Files changed
 
-- `backend/tests/vision_inspection_dataset.py` (new): Standalone CLI and reusable evaluation runner supporting Manifest v1, strict path containment, per-case timing/continuation, honest metrics computation, and strict JSON output formatting.
-- `backend/tests/unit/test_vision_inspection_dataset.py` (new): 11 unit tests covering hand-calculated metrics accounting, null unlabeled accuracy, duplicate case ID rejection, unknown label ROI rejection, missing reference path rejection, path traversal rejection, end-to-end synthetic evaluation, corrupt-image error containment, CLI overwrite protection, and fatal schema error handling.
-- `backend/tests/fixtures/generate_local_image_evaluation.py` (new): Synthetic image and manifest generator producing multi-scenario fixtures (clean detected, confirmed missing, uniform unassessed, mixed two-site with unlabeled ROI, dual-image reference comparison, and optional corrupt image).
-- `backend/tests/fixtures/local_image_evaluation_example.json` (new): Static template manifest demonstrating Manifest v1 schema, fields, profiles, limits, and label provenance.
-- `docs/evaluation/local-image-evaluation.md` (new): Runbook and worksheet covering manifest specifications, path containment rules, CLI usage, PowerShell commands, exit codes, blind labeling guidelines, adjudication workflow, evaluation worksheet template, and unresolved roadmap decisions.
-- `docs/architecture/region-inspection-improvement-plan.md` (modified): Updated progress checkpoint table and added Phase 5 Increment DLK-M3-044 status record.
-- `.agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md` (modified): Updated task status to implemented and recorded verification evidence.
-- `.agents/handoff/QUEUE.md` (modified): Updated task queue to record accepted DLK-M3-043 and active DLK-M3-044 in_progress/implemented.
-- `.agents/handoff/reviews/DLK-M3-043-review.md` (unchanged): Retained pending accepted planner review record for local commit inclusion.
+- `backend/tests/vision_inspection_dataset.py` (modified): Standalone CLI and reusable evaluation runner supporting Manifest v1, input protection against manifest/image overwrite (direct and alias/samefile), atomic report replacement, preflight path traversal checks, sanitized error messages, full AnalysisProfile preservation, separate current/reference inspection coverage summaries, and honest denominator metrics.
+- `backend/tests/unit/test_vision_inspection_dataset.py` (modified): 19 unit tests (26 total across module) covering input overwrite rejection for manifest/images/aliases, generator collision preflighting, full profile and provenance preservation in success/error cases, separate inspection coverage summaries, unreviewed provenance flagging, error path sanitization, traversal preflight, hand-calculated metrics accounting, null unlabeled accuracy, and schema validation.
+- `backend/tests/fixtures/generate_local_image_evaluation.py` (modified): Added preflight target collision checks before disk writes and added `--overwrite` CLI flag.
+- `backend/tests/fixtures/local_image_evaluation_example.json` (created): Static template manifest demonstrating Manifest v1 schema, fields, profiles, limits, and label provenance.
+- `docs/evaluation/local-image-evaluation.md` (modified): Updated runbook and worksheet covering protected input guarantees, atomic report replacement, complete report schema with profile and separate coverage summaries, sanitized path privacy, exact exit codes, and removed trailing whitespace.
+- `docs/architecture/region-inspection-improvement-plan.md` (modified): Updated progress checkpoint table and Phase 5 Increment DLK-M3-044 status record.
+- `.agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md` (modified): Updated implementation report with R1–R3 resolutions and verification evidence.
+- `.agents/handoff/QUEUE.md` (modified): Updated task queue to record accepted DLK-M3-043 and implemented DLK-M3-044 with R1–R3 resolution notes.
+- `.agents/handoff/reviews/DLK-M3-044-review.md` (included): Maintained reviewer review record for local commit inclusion.
 
 ### Decisions made
 
-- **Manifest v1 Schema & Semantics:** Built using Pydantic v2 models (`DatasetManifest`, `ManifestCase`). Validates unique case IDs, relative image paths, required reference paths in `REFERENCE_IMAGE` mode, and restricts label keys strictly to configured `roi_id` values in `profile.rois`. Accepts missing ROI keys as unlabeled without fabricating expectations or using predictions as ground truth.
-- **Path Containment & Security:** Enforced strict relative paths and containment under `--dataset-root` (or manifest directory). Rejects leading slashes, drive letters, and directory traversal (`..`) using `target.resolve().relative_to(root.resolve())`. Rejects missing files, non-files, and files exceeding the 10 MB payload ceiling. Suppresses private host filesystem paths in error messages and output reports.
-- **Honest Denominators & Failure Accounting:** The eligible labeled sites total includes all sites with ground-truth labels across all cases, regardless of whether a case experienced an execution/decode error or the pipeline omitted measurements. Failed cases and omitted measurements are counted as incorrect in status accuracy, preventing accuracy inflation. When 0 eligible labeled sites exist, status accuracy is explicitly `null` (None), never 0% or 100%.
-- **Abstention & False-Missing Rates:** Abstention rate is computed strictly among emitted predictions (`predicted_status == "UNASSESSED"`). False-missing rate is evaluated over known non-`MISSING` ground truth (`expected_status in ["DETECTED", "UNASSESSED"]` where `predicted_status == "MISSING"`), providing an explicit safety metric.
-- **External Boundary Benchmark Label:** Explicitly recorded in reports and runbook as `{"status": "not_evaluated", "reason": "External ground-truth masks or contours are not part of manifest v1."}`, preserving the separate synthetic outline benchmark unchanged.
-- **Report Overwrite Protection:** The runner refuses to overwrite an existing report by default (exit code 1), requiring an explicit `--overwrite` flag.
-- **Strict JSON Serialization:** Uses `json.dumps(..., allow_nan=False)` to guarantee valid standard JSON without `NaN` or `Infinity`.
+- **Input Overwrite Protection (R1):** The runner preflights the output report path against the manifest and all case current/reference image paths using resolved path equality and `os.path.samefile` alias checks. Target collision with any evaluation input is rejected with exit code 1, regardless of whether `--overwrite` was specified. `--overwrite` only authorizes replacing existing evaluation reports.
+- **Atomic Report Replacement (R1):** Output reports are serialized and written to a hidden temporary file in the target directory (`.tmp_<name>_<uuid>`), then atomically replaced via `temp_path.replace(output_path)` to prevent partial or corrupted report writes.
+- **Generator Target Collision Preflight (R1):** The synthetic fixture generator checks if target image files or manifest exist in `output_dir` before initiating generation. Refuses execution by default (raising `FileExistsError` / exit code 1) unless authorized via `--overwrite`.
+- **Full Profile & Context Preservation (R2):** Persisted the complete validated `AnalysisProfile` (including ROI coordinates, dimensions, mode, `mm_per_pixel`, and process/reference limits) in every case record (both `SUCCESS` and `ERROR`). Preserved case `notes`, safe relative image paths, and `label_provenance`.
+- **Label Provenance Status Tracking (R2):** If labels are provided, tracks provenance as `provided` (from case), `inherited` (from dataset), or `unreviewed` (when neither is provided). Unreviewed cases are visibly flagged in `label_provenance`, tracked in `summary.case_counts.unreviewed_labeled_cases`, and appended to `case_warnings` to prevent silent implication of independent validation.
+- **Separate Current and Reference Inspection Coverage (R2):** Replaced scalar-only coverage summaries with distinct `current_coverage_ratio` / `reference_coverage_ratio` (material coverage floats) and `current_inspection_coverage` / `reference_inspection_coverage` (objects containing status, expected_roi_count, assessed_roi_count, unassessed_roi_ids, and missing_roi_ids).
+- **Filesystem Error Sanitization (R3):** Standardized error handling into safe categories (`IMAGE_VALIDATION`, `PATH_VALIDATION`, `FILESYSTEM_ACCESS`, `EXECUTION_ERROR`). Sanitized all exception text written to reports and diagnostics via regex redaction of host Windows drive paths (`[a-zA-Z]:\...`) and Unix paths (`/(?:Users|home|...)/...`), preventing host absolute path leakage.
+- **Fatal vs Per-Case Error Semantics (R3):** Manifest syntax, schema validation, path traversal escape (`..`), and protected input collisions are fatal preflight failures (Exit code 1, no report written). Image decode/validation failures within valid paths are caught per case, allowing partial run completion with explicit case error records (Exit code 0).
 
 ### Verification results
 
 1. **Unit Test Suite:**
    - Command: `& .\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/test_vision_inspection_dataset.py backend/tests/unit/test_vision_inspection_baseline.py -q`
-   - Output: `18 passed in 0.93s` (11 new dataset evaluation tests + 7 existing baseline tests).
+   - Output: `26 passed in 1.10s` (19 dataset evaluation tests + 7 baseline tests).
 2. **Existing Baseline Runner:**
    - Command: `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_baseline.py`
-   - Output: Exit code 0, 6 cases, 9 sites, 100% status accuracy, 0.9970 mean IoU, 0.0167s elapsed, unchanged output structure.
+   - Output: Exit code 0, 6 cases, 9 sites, 100% status accuracy, 0.9970 mean IoU, 0.0192s elapsed, unchanged output structure.
 3. **Generator and CLI Verification in Scratch Locations:**
-   - Standard Labeled Dataset:
-     - Invocations:
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/fixtures/generate_local_image_evaluation.py -o scratch/local_eval_demo/labeled` (Exit code 0)
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_dataset.py -m scratch/local_eval_demo/labeled/manifest.json -o scratch/local_eval_demo/labeled/report.json` (Exit code 0)
-     - Results: 5 total cases (5 success, 0 failed), 6 total sites (5 labeled, 1 unlabeled), Status Accuracy: 100.0% (5/5), Report: `scratch/local_eval_demo/labeled/report.json`.
-   - Overwrite Protection Check:
-     - Re-run without `--overwrite`: `Fatal error: Output report '...' already exists. Use --overwrite to replace it.` (Exit code 1).
-     - Re-run with `--overwrite`: Exit code 0, replaced report cleanly.
-   - All-Unlabeled Dataset:
-     - Invocations:
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/fixtures/generate_local_image_evaluation.py -o scratch/local_eval_demo/unlabeled --all-unlabeled` (Exit code 0)
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_dataset.py -m scratch/local_eval_demo/unlabeled/manifest_unlabeled.json -o scratch/local_eval_demo/unlabeled/report.json` (Exit code 0)
+   - **Standard Labeled Dataset (`scratch/local_eval_demo/labeled`):**
+     - Generator: `backend/tests/fixtures/generate_local_image_evaluation.py -o scratch/local_eval_demo/labeled --overwrite` (Exit code 0).
+     - Generator Collision Check without `--overwrite`: `Error generating synthetic dataset: Target file already exists: 'manifest.json'. Use --overwrite to authorize replacing existing files.` (Exit code 1).
+     - Runner: `backend/tests/vision_inspection_dataset.py -m scratch/local_eval_demo/labeled/manifest.json -o scratch/local_eval_demo/labeled/report.json --overwrite` (Exit code 0).
+     - Results: 5 total cases (5 success, 0 failed), 6 total sites (5 labeled, 1 unlabeled), Status Accuracy: 100.0% (5/5). Report includes full profiles, notes, provenance, and separate coverage summaries.
+   - **Input Overwrite Protection Check (R1):**
+     - Targeting manifest with `--overwrite`: `Fatal error: Output path cannot overwrite evaluation inputs (manifest or source images). Target path matches a protected evaluation input: 'manifest.json'` (Exit code 1).
+     - Targeting source image with `--overwrite`: `Fatal error: Output path cannot overwrite evaluation inputs (manifest or source images). Target path matches a protected evaluation input: 'case_01_detected.png'` (Exit code 1).
+     - Both input files remained byte-identical.
+   - **All-Unlabeled Dataset (`scratch/local_eval_demo/unlabeled`):**
+     - Generator: Exit code 0 with `--all-unlabeled --overwrite`.
+     - Runner: Exit code 0 with `--overwrite`.
      - Results: 5 total cases (5 success, 0 failed), 6 total sites (0 labeled, 6 unlabeled), Status Accuracy: `null` (no labels).
-   - Corrupt Image Dataset (Error Containment):
-     - Invocations:
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/fixtures/generate_local_image_evaluation.py -o scratch/local_eval_demo/corrupt --include-corrupt` (Exit code 0)
-       - `& .\backend\.venv\Scripts\python.exe backend/tests/vision_inspection_dataset.py -m scratch/local_eval_demo/corrupt/manifest.json -o scratch/local_eval_demo/corrupt/report.json` (Exit code 0)
-     - Results: 6 total cases (5 success, 1 failed with `ImageValidationError`), 7 total sites (6 labeled, 1 unlabeled), Status Accuracy: 83.3% (5/6). Corrupt case properly penalized without crashing runner or dropping from denominator.
+   - **Corrupt Image Dataset (`scratch/local_eval_demo/corrupt`):**
+     - Generator: Exit code 0 with `--include-corrupt --overwrite`.
+     - Runner: Exit code 0 with `--overwrite`.
+     - Results: 6 total cases (5 success, 1 failed with `ImageValidationError`), 7 total sites (6 labeled, 1 unlabeled), Status Accuracy: 83.3% (5/6). Corrupt case preserved full profile, notes, and provenance with sanitized error category `IMAGE_VALIDATION`.
 4. **Task Validation:**
    - Command: `& .\backend\.venv\Scripts\python.exe .agents/skills/implementation-handoff/scripts/validate_task.py .agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md`
    - Output: `VALID: .agents\handoff\tasks\DLK-M3-044-local-image-evaluation.md`.
 5. **Git Whitespace Hygiene:**
    - Command: `git diff --check`
+   - Output: 0 errors / 0 trailing whitespace issues.
+   - Command: `git diff --check HEAD~1 docs/evaluation/local-image-evaluation.md`
    - Output: 0 errors / 0 trailing whitespace issues.
 
 ### Limitations and follow-up
@@ -168,4 +175,4 @@ The evaluator executes against the existing synchronous vision inspection pipeli
 
 ### Proposed commit message
 
-`test(vision): add local image dataset evaluation runner`
+`test(vision): resolve DLK-M3-044 review findings for local image evaluation runner`

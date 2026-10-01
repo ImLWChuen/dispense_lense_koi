@@ -489,3 +489,221 @@ def test_cli_fatal_validation_prevents_partial_success_report(
     rc = main()
     assert rc == 1
     assert not report_path.exists(), "Fatal schema failure must write no output report."
+
+
+def test_cli_rejects_overwriting_manifest_and_source_images(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies that --output pointing to manifest or any source image is rejected regardless of --overwrite."""
+    from tests.vision_inspection_dataset import main
+
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    manifest_bytes_orig = manifest_path.read_bytes()
+    img_path = tmp_path / "images" / "case_01_detected.png"
+    img_bytes_orig = img_path.read_bytes()
+    ref_img_path = tmp_path / "images" / "case_05_reference_ref.png"
+    ref_img_bytes_orig = ref_img_path.read_bytes()
+
+    # 1. Output targets manifest with --overwrite -> MUST FAIL (Exit 1)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(manifest_path), "--overwrite"],
+    )
+    rc_manifest = main()
+    assert rc_manifest == 1
+    assert manifest_path.read_bytes() == manifest_bytes_orig, "Manifest must remain byte-identical."
+
+    # 2. Output targets source current image with --overwrite -> MUST FAIL (Exit 1)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(img_path), "--overwrite"],
+    )
+    rc_img = main()
+    assert rc_img == 1
+    assert img_path.read_bytes() == img_bytes_orig, "Source image must remain byte-identical."
+
+    # 3. Output targets source reference image with --overwrite -> MUST FAIL (Exit 1)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(ref_img_path), "--overwrite"],
+    )
+    rc_ref = main()
+    assert rc_ref == 1
+    assert ref_img_path.read_bytes() == ref_img_bytes_orig, "Reference image must remain byte-identical."
+
+
+def test_cli_rejects_filesystem_alias_of_protected_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies that hardlinks / aliases of protected input files are rejected via samefile checks."""
+    import os
+    from tests.vision_inspection_dataset import main
+
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    manifest_bytes_orig = manifest_path.read_bytes()
+
+    # Create hardlink alias to manifest
+    alias_path = tmp_path / "manifest_alias.json"
+    try:
+        os.link(manifest_path, alias_path)
+    except (OSError, NotImplementedError):
+        # On filesystems without hardlink support, copy file and test direct resolved equivalence
+        pytest.skip("Hardlinks not supported on current filesystem")
+
+    assert alias_path.exists()
+    assert os.path.samefile(manifest_path, alias_path)
+
+    # Output targets alias with --overwrite -> MUST FAIL (Exit 1)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(manifest_path), "-o", str(alias_path), "--overwrite"],
+    )
+    rc = main()
+    assert rc == 1
+    assert manifest_path.read_bytes() == manifest_bytes_orig, "Manifest must remain unmodified."
+
+
+def test_generator_collision_preflight_and_overwrite(tmp_path: Path) -> None:
+    """Verifies generator preflight collision check and --overwrite authorization."""
+    # First generation succeeds
+    p1 = generate_synthetic_dataset(output_dir=tmp_path)
+    assert p1.exists()
+
+    # Second generation without overwrite must raise FileExistsError
+    with pytest.raises(FileExistsError, match="Target file already exists"):
+        generate_synthetic_dataset(output_dir=tmp_path, overwrite=False)
+
+    # Third generation with overwrite=True succeeds
+    p3 = generate_synthetic_dataset(output_dir=tmp_path, overwrite=True)
+    assert p3.exists()
+
+
+def test_report_preserves_full_profile_and_case_provenance(tmp_path: Path) -> None:
+    """Verifies report persists full profile (rois, scale, limits), notes, and provenance in success & error records."""
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path, include_corrupt=True)
+    raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = DatasetManifest.model_validate(raw_manifest)
+
+    report = evaluate_dataset(manifest, tmp_path)
+
+    for case_res in report["cases"]:
+        # Profile must be a complete dictionary containing mode, rois, etc.
+        prof = case_res["profile"]
+        assert isinstance(prof, dict)
+        assert "mode" in prof
+        assert "rois" in prof
+        assert len(prof["rois"]) >= 1
+        assert "x" in prof["rois"][0]
+        assert "y" in prof["rois"][0]
+        assert "width" in prof["rois"][0]
+        assert "height" in prof["rois"][0]
+
+        # Case notes and image paths must survive
+        assert case_res["current_image_path"].startswith("images/")
+        assert case_res["notes"] is not None
+
+        # Provenance must survive
+        assert case_res["label_provenance"] is not None
+        assert case_res["label_provenance_status"] in ("provided", "inherited")
+
+
+def test_reference_inspection_coverage_distinct_from_material_coverage(tmp_path: Path) -> None:
+    """Verifies explicit current and reference inspection coverage summaries separate from coverage ratios."""
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = DatasetManifest.model_validate(raw_manifest)
+
+    report = evaluate_dataset(manifest, tmp_path)
+
+    ref_case = next(c for c in report["cases"] if c["case_id"] == "case_05_reference_comparison")
+    assert ref_case["status"] == "SUCCESS"
+
+    # Material coverage ratios are separate floats
+    assert isinstance(ref_case["current_coverage_ratio"], float)
+    assert isinstance(ref_case["reference_coverage_ratio"], float)
+
+    # Current inspection coverage summary
+    curr_cov = ref_case["current_inspection_coverage"]
+    assert curr_cov["status"] == "COMPLETE"
+    assert curr_cov["expected_roi_count"] == 1
+    assert curr_cov["assessed_roi_count"] == 1
+    assert curr_cov["unassessed_roi_ids"] == []
+    assert curr_cov["missing_roi_ids"] == []
+
+    # Reference inspection coverage summary
+    ref_cov = ref_case["reference_inspection_coverage"]
+    assert ref_cov is not None
+    assert ref_cov["status"] == "COMPLETE"
+    assert ref_cov["expected_roi_count"] == 1
+    assert ref_cov["assessed_roi_count"] == 1
+    assert ref_cov["unassessed_roi_ids"] == []
+    assert ref_cov["missing_roi_ids"] == []
+
+
+def test_unreviewed_provenance_flagging(tmp_path: Path) -> None:
+    """Verifies that cases with labels but no case or dataset provenance are visibly flagged as unreviewed."""
+    manifest_path = generate_synthetic_dataset(output_dir=tmp_path)
+    raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    # Strip dataset provenance
+    raw_manifest["label_provenance"] = None
+    # Strip case 1 provenance
+    raw_manifest["cases"][0]["label_provenance"] = None
+
+    manifest = DatasetManifest.model_validate(raw_manifest)
+    report = evaluate_dataset(manifest, tmp_path)
+
+    c1 = report["cases"][0]
+    assert c1["label_provenance_status"] == "unreviewed"
+    assert "UNREVIEWED_PROVENANCE" in str(c1["label_provenance"])
+    assert any("lacks documented provenance" in w for w in c1["case_warnings"])
+    assert report["summary"]["case_counts"]["unreviewed_labeled_cases"] >= 1
+
+
+def test_error_message_sanitizer_suppresses_private_paths(tmp_path: Path) -> None:
+    """Verifies that sanitize_error_message redacts absolute Windows and Unix paths."""
+    from tests.vision_inspection_dataset import sanitize_error_message
+
+    fake_win_path = r"C:\Users\SecretAdmin\ConfidentialProject\dataset\images\test.png"
+    fake_unix_path = "/home/secret_engineer/private_data/images/test.png"
+
+    raw_err = f"Permission denied accessing '{fake_win_path}' and '{fake_unix_path}'"
+    clean_err = sanitize_error_message(raw_err, tmp_path)
+
+    assert fake_win_path not in clean_err
+    assert fake_unix_path not in clean_err
+    assert "<redacted_path>" in clean_err
+
+
+def test_fatal_path_traversal_manifest_preflight(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that path traversal in manifest image paths fails during preflight with exit code 1."""
+    from tests.vision_inspection_dataset import main
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.05},
+    }
+    traversal_manifest = {
+        "manifest_version": "v1",
+        "dataset_id": "traversal_test",
+        "origin": "synthetic",
+        "cases": [
+            {
+                "case_id": "c_escape",
+                "current_image_path": "../../secret.png",
+                "profile": profile,
+            }
+        ],
+    }
+    mpath = tmp_path / "traversal_manifest.json"
+    mpath.write_text(json.dumps(traversal_manifest), encoding="utf-8")
+    rpath = tmp_path / "report.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["vision_inspection_dataset", "-m", str(mpath), "-o", str(rpath)],
+    )
+    rc = main()
+    assert rc == 1
+    assert not rpath.exists(), "Fatal traversal preflight must prevent writing report."

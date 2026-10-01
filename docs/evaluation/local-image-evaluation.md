@@ -1,8 +1,8 @@
 # Local Image Dataset Evaluation Runbook and Worksheet
 
-Date: 2026-10-01  
-Task: `DLK-M3-044`  
-Feature Branch: `backend-database`  
+Date: 2026-10-01<br>
+Task: `DLK-M3-044`<br>
+Feature Branch: `backend-database`<br>
 Scope: Offline, manifest-driven evaluation of team-supplied local image datasets using the Dispense Lens region inspection pipeline.
 
 ---
@@ -14,7 +14,7 @@ This runbook establishes a repeatable, offline, and secure procedure for evaluat
 It allows engineering and QA teams to inspect per-site results, measure status accuracy against caller-provided ground truth, track abstention and false-missing rates, and identify pipeline failures without running web servers, databases, or network connections.
 
 > [!WARNING]
-> **No Representative Dataset or Manufacturing Accuracy Claim:**  
+> **No Representative Dataset or Manufacturing Accuracy Claim:**
 > The runner and synthetic examples provided in this milestone demonstrate **evaluation tooling and reporting integrity only**. No curated representative factory dataset or independently reviewed real-world ground-truth labels are provided in the repository. Synthetic benchmark results **do not** prove factory-line accuracy, sub-millimeter precision, or defect recall under variable industrial lighting, board warping, or translucent adhesives. Real-image accuracy benchmarks remain pending until a representative dataset with independent domain-expert adjudication is supplied.
 
 ---
@@ -51,9 +51,10 @@ Each entry in `cases` contains:
 
 To protect host environments from arbitrary file access:
 1. **Relative Paths Only:** `current_image_path` and `reference_image_path` must be strictly relative paths (no leading `/`, `\`, or drive letters).
-2. **Directory Containment:** All image paths are resolved against `--dataset-root` (or the manifest's parent directory). Any attempt to escape the dataset root via traversal (`..`) is caught and triggers a fatal error (exit code 1).
+2. **Directory Containment:** All image paths are resolved against `--dataset-root` (or the manifest's parent directory). Any attempt to escape the dataset root via traversal (`..`) is caught during preflight and triggers a fatal error (exit code 1).
 3. **Payload Limits:** Decoded images must exist, be regular files, and not exceed the existing `MAX_FILE_SIZE_BYTES` (10 MB).
-4. **Data Privacy:** Output reports record relative image paths only; private host absolute paths, environment variables, and image byte streams are never printed or written to reports.
+4. **Data Privacy & Path Sanitization:** Output reports record relative image paths only; host absolute paths, private directory identifiers, environment variables, and raw exception paths are suppressed and redacted (`<redacted_path>`).
+5. **Protected Inputs & Atomic Replacement:** The output report path can never target the manifest or any current/reference source image (directly or via filesystem links/aliases), regardless of `--overwrite`. Reports are serialized and written atomically to a temporary file before replacement.
 
 ### 2.3 Output Report Schema v1
 
@@ -63,7 +64,7 @@ The runner outputs a single self-contained JSON report:
 - `origin`: `"synthetic"` or `"real"`.
 - `run_provenance`: Source commit hash (via `git rev-parse HEAD`), Python version, OpenCV version, Pydantic version, and UTC ISO timestamp.
 - `summary`:
-  - `case_counts`: Total, successful, and failed cases.
+  - `case_counts`: Total, successful, failed cases, and unreviewed labeled cases count.
   - `site_counts`: Total sites, eligible labeled sites, unlabeled sites, emitted predictions, correct labeled sites, incorrect labeled sites.
   - `failure_accounting`: Failed cases count, failed-case sites count, failed-case labeled sites count, missing-output sites count, unlabeled sites count.
   - `status_accuracy`: Null if 0 labeled sites. If labeled sites exist: `{numerator, denominator, rate}` where denominator is all eligible labeled sites (failures are **not** dropped).
@@ -71,7 +72,7 @@ The runner outputs a single self-contained JSON report:
   - `false_missing_rate`: `{numerator, denominator, rate}` computed over known non-`MISSING` labels (`expected_status in ["DETECTED", "UNASSESSED"]` but `predicted_status == "MISSING"`).
   - `confusion_matrix`: 3x3 matrix across `DETECTED`, `MISSING`, and `UNASSESSED` for emitted labeled predictions.
   - `boundary_accuracy`: Explicitly recorded as `{"status": "not_evaluated", "reason": "External ground-truth masks or contours are not part of manifest v1."}`.
-- `cases`: Detailed per-case execution records with elapsed execution time, analysis status, aggregate coverages, per-site scalar measurements, and warnings.
+- `cases`: Detailed per-case execution records with elapsed execution time, analysis status, full `profile` (mode, ROI coordinates, scale, process/reference limits), case `notes`, safe relative image paths, `label_provenance` and `label_provenance_status` (`provided`, `inherited`, `unreviewed`, `unlabeled`), separate `current_coverage_ratio` and `current_inspection_coverage` (status, expected/assessed counts, unassessed/missing ROI IDs), separate `reference_coverage_ratio` and `reference_inspection_coverage`, per-site scalar measurements, and sanitized warnings/errors without host absolute paths.
 
 ---
 
@@ -97,8 +98,8 @@ The runner outputs a single self-contained JSON report:
 ```
 
 #### Exit Codes
-- `0`: Evaluation completed successfully. The report was written to `--output` (even if individual cases experienced analysis errors).
-- `1`: Fatal error. Manifest not found, invalid JSON, Pydantic schema validation failure, path traversal escape, missing image file, or output file already exists without `--overwrite`. No output report is written.
+- `0`: Evaluation completed successfully. The report was written to `--output` (including runs where individual cases experienced image decode/analysis errors).
+- `1`: Fatal error. Manifest syntax/validation error, path traversal escape in manifest, protected input collision (manifest or source images), or report file already exists without `--overwrite`. No report is written.
 
 ### 3.2 Synthetic Dataset Generator (`backend/tests/fixtures/generate_local_image_evaluation.py`)
 

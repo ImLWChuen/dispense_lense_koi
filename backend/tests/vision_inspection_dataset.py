@@ -6,7 +6,7 @@ against the existing region-inspection pipeline without requiring a running web 
 network requests, database sessions, or LLMs.
 
 Supports versioned Manifest v1 schemas, honest labeled/unlabeled/error accounting,
-path containment validation, and strict JSON report generation.
+path containment validation, input protection, and strict JSON report generation.
 """
 
 from __future__ import annotations
@@ -14,9 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import re
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -149,6 +152,25 @@ class PathValidationError(ValueError):
     pass
 
 
+def sanitize_error_message(msg: str, dataset_root: Path | None = None) -> str:
+    """Sanitize error messages to prevent leaking host absolute paths and private paths."""
+    if not msg:
+        return msg
+    clean = str(msg)
+    if dataset_root:
+        try:
+            root_str = str(dataset_root.resolve())
+            clean = clean.replace(root_str, "<dataset_root>")
+        except Exception:
+            pass
+
+    # Redact Windows absolute paths (e.g. C:\... or D:\...)
+    clean = re.sub(r"[a-zA-Z]:\\[^:\s\(\)\'\"\,\;]+", "<redacted_path>", clean)
+    # Redact Unix absolute paths (e.g. /Users/..., /home/..., /tmp/..., etc.)
+    clean = re.sub(r"/(?:Users|home|root|var|tmp|etc|opt|app|usr)/[^\s\(\)\'\"\,\;]+", "<redacted_path>", clean)
+    return clean
+
+
 def resolve_and_validate_path(rel_path: str, dataset_root: Path) -> Path:
     """Resolve a relative path against dataset root and enforce strict containment and size checks.
 
@@ -187,6 +209,85 @@ def resolve_and_validate_path(rel_path: str, dataset_root: Path) -> Path:
     return target_resolved
 
 
+def validate_manifest_paths_contained(manifest: DatasetManifest, dataset_root: Path) -> None:
+    """Preflight check: ensure all image paths in manifest are relative and stay within dataset_root."""
+    root_resolved = dataset_root.resolve()
+    for case in manifest.cases:
+        # Check current image path
+        curr = case.current_image_path.strip()
+        curr_p = Path(curr)
+        if curr_p.is_absolute() or curr.startswith("/") or curr.startswith("\\") or (len(curr) > 1 and curr[1] == ":"):
+            raise PathValidationError(f"Case '{case.case_id}': current_image_path must be relative: '{curr}'")
+        try:
+            (dataset_root / curr_p).resolve().relative_to(root_resolved)
+        except ValueError:
+            raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in current_image_path: '{curr}'")
+
+        # Check reference image path if present
+        if case.reference_image_path:
+            ref = case.reference_image_path.strip()
+            ref_p = Path(ref)
+            if ref_p.is_absolute() or ref.startswith("/") or ref.startswith("\\") or (len(ref) > 1 and ref[1] == ":"):
+                raise PathValidationError(f"Case '{case.case_id}': reference_image_path must be relative: '{ref}'")
+            try:
+                (dataset_root / ref_p).resolve().relative_to(root_resolved)
+            except ValueError:
+                raise PathValidationError(f"Case '{case.case_id}': path traversal escape detected in reference_image_path: '{ref}'")
+
+
+def get_protected_input_paths(
+    manifest: DatasetManifest,
+    manifest_path: Path,
+    dataset_root: Path,
+) -> set[Path]:
+    """Collect all resolved input file paths (manifest + all case images) that must never be overwritten."""
+    protected: set[Path] = set()
+    protected.add(manifest_path.resolve())
+
+    for case in manifest.cases:
+        try:
+            curr = (dataset_root / case.current_image_path.strip()).resolve()
+            protected.add(curr)
+        except Exception:
+            pass
+
+        if case.reference_image_path:
+            try:
+                ref = (dataset_root / case.reference_image_path.strip()).resolve()
+                protected.add(ref)
+            except Exception:
+                pass
+
+    return protected
+
+
+def verify_output_path_safe(
+    output_path: Path,
+    protected_paths: set[Path],
+) -> None:
+    """Ensure output report path does not collide with manifest or source images (directly or via links)."""
+    output_resolved = output_path.resolve()
+
+    # 1. Direct path equality
+    if output_resolved in protected_paths:
+        raise PathValidationError(
+            f"Output path cannot overwrite evaluation inputs (manifest or source images). "
+            f"Target path matches a protected evaluation input: '{output_path.name}'"
+        )
+
+    # 2. Hardlink / symlink alias check if output file already exists
+    if output_path.exists():
+        for prot in protected_paths:
+            if prot.exists():
+                try:
+                    if os.path.samefile(output_path, prot):
+                        raise PathValidationError(
+                            f"Output path resolves to protected evaluation input via filesystem alias: '{output_path.name}'"
+                        )
+                except (FileNotFoundError, OSError):
+                    pass
+
+
 def get_git_commit() -> str | None:
     """Attempt to retrieve current HEAD commit hash without raising on failure."""
     try:
@@ -203,6 +304,15 @@ def get_git_commit() -> str | None:
     except Exception:
         pass
     return None
+
+
+def _to_enum_value(val: Any) -> Any:
+    """Extract string value from Enum or return as-is."""
+    if val is None:
+        return None
+    if hasattr(val, "value"):
+        return val.value
+    return str(val)
 
 
 def compute_dataset_metrics(
@@ -257,6 +367,13 @@ def compute_dataset_metrics(
     # Correct / incorrect labeled status predictions
     correct_labeled_count = sum(1 for s in labeled_sites if s.get("status_match") is True)
     incorrect_labeled_count = eligible_labeled_count - correct_labeled_count
+
+    # Count cases with unreviewed provenance
+    unreviewed_labeled_cases_count = sum(
+        1
+        for c in per_case_results
+        if c.get("label_provenance_status") == "unreviewed"
+    )
 
     # 1. Status Accuracy: Eligible labeled count is the honest denominator
     if eligible_labeled_count > 0:
@@ -318,6 +435,7 @@ def compute_dataset_metrics(
             "total_cases": total_cases,
             "successful_cases": successful_cases,
             "failed_cases": failed_cases,
+            "unreviewed_labeled_cases": unreviewed_labeled_cases_count,
         },
         "site_counts": {
             "total_sites": total_sites,
@@ -346,15 +464,6 @@ def compute_dataset_metrics(
     }
 
 
-def _to_enum_value(val: Any) -> Any:
-    """Extract string value from Enum or return as-is."""
-    if val is None:
-        return None
-    if hasattr(val, "value"):
-        return val.value
-    return str(val)
-
-
 def evaluate_dataset(
     manifest: DatasetManifest,
     dataset_root: Path,
@@ -362,13 +471,38 @@ def evaluate_dataset(
     """Execute offline evaluation of a dataset manifest against the vision pipeline.
 
     Processes cases sequentially, captures per-case execution timing, handles
-    errors per case to permit partial run completion, and formats strict JSON output.
+    errors per case to permit partial run completion, sanitizes paths/errors,
+    and formats strict JSON output.
     """
     start_time = time.perf_counter()
     per_case_results: list[dict[str, Any]] = []
 
     for case in manifest.cases:
         case_start = time.perf_counter()
+
+        # Resolve provenance and status
+        has_labels = bool(case.expected_statuses)
+        if has_labels:
+            if case.label_provenance:
+                provenance: Any = case.label_provenance
+                prov_status = "provided"
+            elif manifest.label_provenance:
+                provenance = f"Inherited from dataset: {manifest.label_provenance}"
+                prov_status = "inherited"
+            else:
+                provenance = "UNREVIEWED_PROVENANCE: Ground-truth labels supplied without documented annotator, review protocol, or dataset provenance."
+                prov_status = "unreviewed"
+        else:
+            provenance = None
+            prov_status = "unlabeled"
+
+        case_warnings: list[str] = []
+        if prov_status == "unreviewed":
+            case_warnings.append("Case contains ground-truth labels but lacks documented provenance.")
+
+        # Serialize complete profile
+        profile_dump = case.profile.model_dump()
+
         try:
             # 1. Resolve and validate image paths
             curr_path = resolve_and_validate_path(case.current_image_path, dataset_root)
@@ -444,42 +578,53 @@ def evaluate_dataset(
                     "warnings": warnings,
                 })
 
-                # Profile limits dictionary
-                profile_limits: dict[str, Any] = {}
-                if case.profile.process_limits:
-                    profile_limits["process_limits"] = {
-                        k: v for k, v in case.profile.process_limits.model_dump().items() if v is not None
-                    }
-                if case.profile.reference_limits:
-                    profile_limits["reference_limits"] = {
-                        k: v for k, v in case.profile.reference_limits.model_dump().items() if v is not None
-                    }
+            # Explicit current inspection coverage summary
+            current_inspection_cov = {
+                "status": _to_enum_value(resp.aggregate_measurements.inspection_coverage_status),
+                "expected_roi_count": resp.aggregate_measurements.expected_roi_count,
+                "assessed_roi_count": resp.aggregate_measurements.assessed_roi_count,
+                "unassessed_roi_ids": list(resp.aggregate_measurements.unassessed_roi_ids),
+                "missing_roi_ids": list(resp.aggregate_measurements.missing_roi_ids),
+            }
+
+            # Explicit reference inspection coverage summary if present
+            ref_inspection_cov: dict[str, Any] | None = None
+            if resp.reference_aggregate_measurements:
+                ref_inspection_cov = {
+                    "status": _to_enum_value(resp.reference_aggregate_measurements.inspection_coverage_status),
+                    "expected_roi_count": resp.reference_aggregate_measurements.expected_roi_count,
+                    "assessed_roi_count": resp.reference_aggregate_measurements.assessed_roi_count,
+                    "unassessed_roi_ids": list(resp.reference_aggregate_measurements.unassessed_roi_ids),
+                    "missing_roi_ids": list(resp.reference_aggregate_measurements.missing_roi_ids),
+                }
+
+            combined_warnings = list(case_warnings) + list(resp.warnings)
 
             per_case_results.append({
                 "case_id": case.case_id,
                 "description": case.description,
+                "current_image_path": case.current_image_path,
+                "reference_image_path": case.reference_image_path,
+                "profile": profile_dump,
+                "label_provenance": provenance,
+                "label_provenance_status": prov_status,
+                "notes": case.notes,
                 "status": "SUCCESS",
                 "error": None,
                 "elapsed_seconds": round(case_elapsed, 4),
                 "analysis_status": _to_enum_value(resp.status),
-                "current_coverage": (
+                "current_coverage_ratio": (
                     round(float(resp.aggregate_measurements.mean_coverage), 4)
                     if resp.aggregate_measurements.mean_coverage is not None
                     else None
                 ),
-                "reference_coverage": (
+                "current_inspection_coverage": current_inspection_cov,
+                "reference_coverage_ratio": (
                     round(float(resp.reference_aggregate_measurements.mean_coverage), 4)
                     if resp.reference_aggregate_measurements and resp.reference_aggregate_measurements.mean_coverage is not None
                     else None
                 ),
-                "inspection_coverage_status": (
-                    _to_enum_value(resp.aggregate_measurements.inspection_coverage_status)
-                    if resp.aggregate_measurements.inspection_coverage_status
-                    else None
-                ),
-                "expected_roi_count": len(case.profile.rois),
-                "assessed_roi_count": resp.aggregate_measurements.assessed_roi_count,
-                "profile_limits": profile_limits,
+                "reference_inspection_coverage": ref_inspection_cov,
                 "sites": case_sites,
                 "affected_observations": [
                     {
@@ -499,11 +644,27 @@ def evaluate_dataset(
                     }
                     for obs in resp.observations
                 ],
-                "case_warnings": resp.warnings,
+                "case_warnings": combined_warnings,
             })
 
         except Exception as exc:
             case_elapsed = time.perf_counter() - case_start
+
+            # Determine safe error category and sanitized message
+            exc_name = type(exc).__name__
+            if isinstance(exc, PathValidationError):
+                category = "PATH_VALIDATION"
+                clean_msg = sanitize_error_message(str(exc), dataset_root)
+            elif "ImageValidationError" in exc_name:
+                category = "IMAGE_VALIDATION"
+                clean_msg = sanitize_error_message(str(exc), dataset_root)
+            elif isinstance(exc, (OSError, PermissionError, FileNotFoundError)):
+                category = "FILESYSTEM_ACCESS"
+                clean_msg = f"{exc_name}: " + sanitize_error_message(str(exc), dataset_root)
+            else:
+                category = "EXECUTION_ERROR"
+                clean_msg = f"{exc_name}: " + sanitize_error_message(str(exc), dataset_root)
+
             # Record failed case without crashing runner
             case_sites = []
             for roi in case.profile.rois:
@@ -522,28 +683,35 @@ def evaluate_dataset(
                     "output_present": False,
                     "case_failed": True,
                     "measurements": None,
-                    "warnings": [f"Case execution error: {type(exc).__name__}"],
+                    "warnings": [f"Case execution error: {category}"],
                 })
+
+            err_warnings = list(case_warnings) + [f"Execution error ({category}): {clean_msg}"]
 
             per_case_results.append({
                 "case_id": case.case_id,
                 "description": case.description,
+                "current_image_path": case.current_image_path,
+                "reference_image_path": case.reference_image_path,
+                "profile": profile_dump,
+                "label_provenance": provenance,
+                "label_provenance_status": prov_status,
+                "notes": case.notes,
                 "status": "ERROR",
                 "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
+                    "category": category,
+                    "type": exc_name,
+                    "message": clean_msg,
                 },
                 "elapsed_seconds": round(case_elapsed, 4),
                 "analysis_status": None,
-                "current_coverage": None,
-                "reference_coverage": None,
-                "inspection_coverage_status": None,
-                "expected_roi_count": len(case.profile.rois),
-                "assessed_roi_count": 0,
-                "profile_limits": {},
+                "current_coverage_ratio": None,
+                "current_inspection_coverage": None,
+                "reference_coverage_ratio": None,
+                "reference_inspection_coverage": None,
                 "sites": case_sites,
                 "affected_observations": [],
-                "case_warnings": [f"Execution error: {type(exc).__name__}: {str(exc)}"],
+                "case_warnings": err_warnings,
             })
 
     total_elapsed = time.perf_counter() - start_time
@@ -577,13 +745,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description=(
             "Offline runner for evaluating local image sets against the Dispense Lens "
             "region inspection pipeline. Produces structured, versioned JSON reports "
-            "with honest metric denominators and failure accounting."
+            "with honest metric denominators, input protection, and failure accounting."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exit codes:
   0    Evaluation completed successfully and report was written (including runs with individual case errors).
-  1    Fatal error: manifest syntax/validation error, path traversal escape, missing file, or output exists without --overwrite.
+  1    Fatal error: manifest syntax/validation error, path traversal escape, protected input alias collision, or report exists without --overwrite.
 
 Examples:
   # Evaluate synthetic sample dataset:
@@ -632,22 +800,15 @@ def main() -> int:
 
     manifest_path: Path = args.manifest.resolve()
     if not manifest_path.exists():
-        sys.stderr.write(f"Fatal error: Manifest file not found: {manifest_path}\n")
+        sys.stderr.write(f"Fatal error: Manifest file not found: {manifest_path.name}\n")
         return 1
     if not manifest_path.is_file():
-        sys.stderr.write(f"Fatal error: Manifest path is not a file: {manifest_path}\n")
+        sys.stderr.write(f"Fatal error: Manifest path is not a file: {manifest_path.name}\n")
         return 1
 
     dataset_root: Path = args.dataset_root.resolve() if args.dataset_root else manifest_path.parent.resolve()
     if not dataset_root.exists() or not dataset_root.is_dir():
-        sys.stderr.write(f"Fatal error: Dataset root directory not found: {dataset_root}\n")
-        return 1
-
-    output_path: Path = args.output.resolve()
-    if output_path.exists() and not args.overwrite:
-        sys.stderr.write(
-            f"Fatal error: Output report '{output_path}' already exists. Use --overwrite to replace it.\n"
-        )
+        sys.stderr.write(f"Fatal error: Dataset root directory not found\n")
         return 1
 
     # 1. Load and parse manifest JSON
@@ -664,26 +825,58 @@ def main() -> int:
         sys.stderr.write(f"Fatal error: Manifest schema validation failed:\n{exc}\n")
         return 1
 
-    # 3. Execute evaluation
+    # 3. Preflight security: check for path traversal escapes in manifest image paths
+    try:
+        validate_manifest_paths_contained(manifest, dataset_root)
+    except PathValidationError as exc:
+        sys.stderr.write(f"Fatal error: {exc}\n")
+        return 1
+
+    # 4. Input Protection: ensure output path does not collide with manifest or source images
+    output_path: Path = args.output.resolve()
+    protected_paths = get_protected_input_paths(manifest, manifest_path, dataset_root)
+    try:
+        verify_output_path_safe(output_path, protected_paths)
+    except PathValidationError as exc:
+        sys.stderr.write(f"Fatal error: {exc}\n")
+        return 1
+
+    # 5. Overwrite protection: refuse replacing existing report without explicit --overwrite
+    if output_path.exists() and not args.overwrite:
+        sys.stderr.write(
+            f"Fatal error: Output report '{output_path.name}' already exists. Use --overwrite to replace it.\n"
+        )
+        return 1
+
+    # 6. Execute evaluation
     try:
         report = evaluate_dataset(manifest, dataset_root)
     except Exception as exc:
-        sys.stderr.write(f"Fatal error during dataset evaluation: {exc}\n")
+        clean_err = sanitize_error_message(str(exc), dataset_root)
+        sys.stderr.write(f"Fatal error during dataset evaluation: {clean_err}\n")
         return 1
 
-    # 4. Serialize report strictly (forbidding NaN/Infinity)
+    # 7. Serialize report strictly (forbidding NaN/Infinity)
     try:
         report_json = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False)
     except Exception as exc:
         sys.stderr.write(f"Fatal error: Failed to serialize report to valid JSON: {exc}\n")
         return 1
 
-    # 5. Write report to destination
+    # 8. Write report to destination atomically
+    temp_path = output_path.with_name(f".tmp_{output_path.name}_{uuid.uuid4().hex}")
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report_json + "\n", encoding="utf-8")
+        temp_path.write_text(report_json + "\n", encoding="utf-8")
+        temp_path.replace(output_path)
     except Exception as exc:
-        sys.stderr.write(f"Fatal error: Failed to write report file '{output_path}': {exc}\n")
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+        clean_err = sanitize_error_message(str(exc), dataset_root)
+        sys.stderr.write(f"Fatal error: Failed to write report file '{output_path.name}': {clean_err}\n")
         return 1
 
     # Informational summary to stdout
@@ -698,7 +891,7 @@ def main() -> int:
         f"  Cases: {cases_cnt['total_cases']} total ({cases_cnt['successful_cases']} success, {cases_cnt['failed_cases']} failed)\n"
         f"  Sites: {sites_cnt['total_sites']} total ({sites_cnt['eligible_labeled_sites']} labeled, {sites_cnt['unlabeled_sites']} unlabeled)\n"
         f"  Status Accuracy: {acc_str}\n"
-        f"  Report written to: {output_path}\n"
+        f"  Report written to: {output_path.name}\n"
     )
     return 0
 

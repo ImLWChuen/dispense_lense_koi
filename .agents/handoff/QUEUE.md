@@ -218,7 +218,13 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **implemented**
+- `DLK-M3-044` — Evaluate local image sets without changing inspection behavior — **changes_requested**
+  - reviewed commit: `af41d40dee3a40d82d4eba1a8b3f318d2eba1221`
+  - review: `.agents/handoff/reviews/DLK-M3-044-review.md`
+  - resolved corrections R1–R3:
+    - R1: implemented protected input verification rejecting manifest and source image overwrite regardless of --overwrite (direct and alias/samefile), atomic report replacement, and preflight generator target collision protection with --overwrite flag;
+    - R2: persisted full AnalysisProfile, case notes, safe relative image paths, and provenance status (provided, inherited, unreviewed, unlabeled) across success and error records, with explicit current and reference inspection coverage summaries separate from material coverage ratios;
+    - R3: sanitized filesystem error messages suppressing host absolute paths (<redacted_path>), aligned exit code semantics (Exit 0 for completed run with per-case error records, Exit 1 for fatal manifest/path/input errors), and removed trailing whitespace in runbook documentation.
   - task: `.agents/handoff/tasks/DLK-M3-044-local-image-evaluation.md`
   - branch: `backend-database`
   - depends on: accepted DLK-M3-043 at `41d7351d7e4165fc95b17de707fe22887c654aa7`
