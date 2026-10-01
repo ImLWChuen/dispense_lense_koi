@@ -1,6 +1,6 @@
 ---
 task_id: DLK-M3-043
-reviewed_commit: 4fb539c16895b92e3a3135d883ca683eff3e1f72
+reviewed_commit: fa81f024fe394b233a47cd3d6cfe2406a4f07d41
 decision: changes_requested
 reviewed_by: ChatGPT planner/reviewer
 ---
@@ -8,6 +8,16 @@ reviewed_by: ChatGPT planner/reviewer
 # Review: DLK-M3-043
 
 ## Decision and verification
+
+Follow-up at fa81f024fe394b233a47cd3d6cfe2406a4f07d41: R1–R3 code corrections are resolved on inspection. The component now moves focus with selection, namespaces DOM IDs using useId, clamps collapsed selection, shares complete current/reference scalar rendering and restores legacy fields. Projection distinguishes malformed/empty data and strict absent-scope canonical fallback, retaining full IDs for matching. Gemini reports 8+6+7 focused checks, lint/build and browser boundary checks passing. Committed whitespace check now passes. Reviewer did not rerun execution.
+
+### R4 — P2: Label mocked browser evidence and retain an unmocked reload check
+
+The replacement implementation report calls its suite real-browser verification on live services but does not disclose response substitution. The referenced scratch/verify-saved-case-browser-suite.mjs enables Fetch interception for *api/v1/cases/* and fulfills those requests with a synthetic testCase (around lines 306–320). This is useful real-browser, mocked-API coverage of accessibility/reference/malformed cases, not a live saved-case integration check. The current report also replaces the original real-case evidence rather than retaining its provenance, and does not record the required reload/console check against the final implementation.
+
+Correct the report to explicitly distinguish mocked API browser checks from live backend checks. Retain previous live evidence as historical evidence with its original commit. On the corrected frontend perform a short unmocked load and reload of the existing two-site synthetic case, inspect both sites and limits, and record console errors/warnings, tested source commit, service identity and exact artifact paths. No data mutation, new fixtures in the database or full backend suite is needed. If this final unmocked check was already performed, provide its actual evidence rather than rerunning unnecessarily. No further production-code change is requested for R4. Run task validation and whitespace check after documentation updates; rerun code checks only if code changes.
+
+## Historical initial review (R1–R3 resolved in fa81f02)
 
 Changes requested. The normal two-site path is implemented, within the allowed production paths. Gemini reports projection suites passing (7 new, 6 region-view, 7 upload-state), lint/build success and live browser checks. Reviewer inspected code and reported evidence, without rerunning implementation tests/browser. The committed whitespace check reports a new blank line at EOF in the task packet; remove it during correction. No push or merge performed.
 

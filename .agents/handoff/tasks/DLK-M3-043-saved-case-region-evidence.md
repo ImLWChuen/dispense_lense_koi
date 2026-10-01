@@ -147,17 +147,56 @@ Delivered saved-case multi-site image evidence presentation on `/diagnosis/[id]/
    - `npm run lint` from `frontend/`: Exited code 0 (0 errors, 143 pre-existing legacy warnings).
    - `npm run build` from `frontend/`: Compiled successfully in 6.9s; TypeScript finished with 0 errors; all 18 static and dynamic routes generated, including `/diagnosis/[id]/analysis`.
 
-4. **Real Browser CDP Verification Suite (R1–R3 Evidence):**
-   - Script: `scratch/verify-saved-case-browser-suite.mjs` running against live Next.js on `http://localhost:3001` with headless Chrome.
+4. **Historical Live Two-Site Initial Rehearsal Evidence (Commit `4fb539c`):**
+   - Environment: Backend on `http://127.0.0.1:8000` (`dispense-lens-api` v0.1.0), Frontend on `http://localhost:3001` (`DispenseIQ`), PostgreSQL 16 on port 5432.
+   - Target Case: `e1d8db2d-fdce-4edf-974c-97ce671f0792` (accepted DLK-M3-042 rehearsal case with two affected sites).
+   - Analysis Page: `http://localhost:3001/diagnosis/e1d8db2d-fdce-4edf-974c-97ce671f0792/analysis`.
+   - Initial findings verified: Observation header (`deposit presence`, `missing`, `Individual Regions`, `Rev 1`), summary cards (recorded affected sites `dot-1`, `dot-2`; applied limits), tab switching from `dot-1` to `dot-2`, mobile viewport (375x812), and durable retention footer note.
+   - Captured Screenshots:
+     - `scratch/04-saved-case-multi-site-evidence.png` (189 KB, full page screenshot)
+     - `scratch/04-saved-case-card-detail.png` (focused card header screenshot)
+     - `scratch/04-saved-case-tabs-detail.png` (tabs and active snapshot metrics screenshot)
+
+5. **Real-Browser, Mocked-API Accessibility & Boundary Verification (Commit `fa81f02`, R1–R3 Evidence):**
+   - Harness: `scratch/verify-saved-case-browser-suite.mjs` running against live Next.js on `http://localhost:3001` using headless Chrome via CDP.
+   - Interception Disclosure: Uses CDP `Fetch.enable` response substitution for `*api/v1/cases/*` to test synthetic edge-case schemas (14 sites, repeated IDs, reference shape/void metrics, legacy comparisons, malformed/empty metadata) in the real browser DOM.
    - Test 1 (R1 Roving Tab Stop & Focus): Initial tab 0 had `tabIndex=0`, tabs 1-11 had `tabIndex=-1`. Focus tab 0 set `document.activeElement.id` to `_r_0_-tab-0-...`. Three consecutive `ArrowRight` presses updated `document.activeElement.id` to tab 1, tab 2, and tab 3, updating panels and `tabIndex` at each step. `Home` returned focus to tab 0 (`tabIndex=0`). `End` moved focus to tab 11 (`tabIndex=0`).
    - Test 2 (R1 Expand & Collapse Clamping): Expanded 14-site observation to all 14 tabs. Selected site 13 (`tab12Selected="true"`). Clicked collapse: visible tabs clamped to 12, `document.activeElement.id` clamped to tab 11 (site 12) with `tabIndex=0`, panel synchronized to site 12.
    - Test 3 (R1 DOM ID Uniqueness): Evaluated 17 tabs and 4 panels across repeated site IDs within malformed input (`dup-site`) and across observations (`common-site`). Exactly 0 duplicate tab IDs and 0 duplicate panel IDs. All active tabs associated bidirectionally with rendered panels (`aria-controls` / `aria-labelledby`).
    - Test 4 (R2 15-Parameter Scalar Evidence): Confirmed rendered DOM content in current and reference sections: Coverage Ratio, Overflow Ratio, Equivalent Diameter, Physical Diameter, Area (`35328 px²`), Circularity, Aspect Ratio, Solidity, Convexity (`89%` current, `99%` ref), Voids/Bubbles (`void=6.0%, bubbles=3 (bubbles)`), Seg Quality, and Golden Reference Mode (`0.504 mm`).
    - Test 5 (R2 Legacy 12 Fields & Limit Units): Confirmed rendered DOM content for all 12 legacy fields: Status (`CALIBRATED`), ROI Target (`legacy-dot-prime`), Mode (`GOLDEN_TEMPLATE`), Coverage Ratio (`12.5%`), Overflow Ratio (`1.5%`), Current Coverage (`12.5%`), Reference Coverage (`25.0%`), Coverage vs Ref (`0.50`), Equiv Diameter (`24.5 px`), Physical Diameter (`0.490 mm`), Seg Quality (`97%`), Size CV (`7.5%`). Limit units: `target_area_px` formatted as `35328 px²`, boolean in numeric limit rendered as `unavailable`.
    - Test 6 (R3 Malformed & Empty Handling): Rendered explicit "Malformed Region Evidence: Region evidence metadata is not a valid list of site snapshots" banner and "Empty Region Evidence: Region evidence was recorded as an empty list (0 site snapshots)" banner. Legacy fallback fields rendered below banners without masking the malformed state.
-   - Captured Screenshot: `06-comprehensive-browser-suite-full.png` (40 KB).
+   - Captured Screenshot: `scratch/06-comprehensive-browser-suite-full.png` (40 KB).
 
-5. **Task Validation & Git Hygiene:**
+6. **Final Unmocked Live Load, Reload & Console Verification (Commit `fa81f02`, R4 Resolved):**
+   - Execution Script: `scratch/verify-unmocked-live-reload.mjs` executed against the live services with **ZERO API interception**.
+   - Tested Commit: `fa81f024fe394b233a47cd3d6cfe2406a4f07d41` (corrected frontend).
+   - Service Identity:
+     - Backend: `dispense-lens-api` v0.1.0 on `http://127.0.0.1:8000` (verified via `GET /api/v1/health` returning `{"status":"ok","service":"dispense-lens-api","version":"0.1.0"}`).
+     - Frontend: `DispenseIQ` Next.js 16.3.4 (Turbopack) on `http://localhost:3001`.
+     - Database: PostgreSQL 16 on port 5432 (`dispenselens-postgres`).
+   - Target Case: `e1d8db2d-fdce-4edf-974c-97ce671f0792` (existing accepted synthetic case with 2 affected sites).
+   - Initial Load (Site `dot-1` & Limits):
+     - Observation Header: Title `deposit presence`, badge `missing`, Scope badge `Individual Regions`, Revision `Rev 1`.
+     - Stored Limits: Verified limits displayed in mono cards (`dot-1`, `dot-2`, `0.75`, `1.35`, `0`, `0.45`, `0.2`, `0.1`, `0.05`).
+     - Site Tabs: Tab 0 (`_r_0_-tab-0-...`, `dot-1 DETECTED`, selected, `tabIndex=0`), Tab 1 (`_r_0_-tab-1-...`, `dot-2 DETECTED`, unselected, `tabIndex=-1`).
+     - Active Panel (`dot-1`): Site `Site: dot-1 DETECTED`. Coverage `0.9%`, Overflow `0.0%`, Equiv Diam `20.0 px`, Physical Diam `0.399 mm`. Table row: Area `313 px² / 35328 px²`, Circularity `100%`, Aspect Ratio `1.00`, Solidity `100%`, Convexity `98%`, Voids/Bubbles `void=0.0%, bubbles=0(no bubbles)`, Seg Quality `100%`. Reference section: `Reference Measurements: Not recorded (single-image inspection or unmatched reference site)`.
+   - Site Switching (Site `dot-2`):
+     - Clicked tab 1 (`dot-2`): Tab 1 selected (`aria-selected="true"`, `tabIndex=0`), Tab 0 unselected (`aria-selected="false"`, `tabIndex=-1`).
+     - Active Panel (`dot-2`): Site `Site: dot-2 DETECTED`. Coverage `2.0%`, Overflow `0.0%`, Equiv Diam `30.0 px`, Physical Diam `0.599 mm`. Table row: Area `705 px² / 35328 px²`, Circularity `97%`, Aspect Ratio `1.00`, Solidity `100%`, Convexity `97%`, Voids/Bubbles `void=0.0%, bubbles=0(no bubbles)`, Seg Quality `100%`.
+   - Unmocked Page Reload (`Page.reload` via CDP):
+     - Page reloaded and re-rendered in 1s.
+     - Live data re-fetched from PostgreSQL backend without corruption. Tab 0 re-selected on clean reload (`tabIndex=0`). Site `dot-1` metrics verified identical (`Coverage Ratio: 0.9%`, `Physical Diameter: 0.399 mm`, `Convexity: 98%`).
+   - Console Diagnostics:
+     - Captured via CDP `Runtime.consoleAPICalled`, `Runtime.exceptionThrown`, and `Log.entryAdded`.
+     - Total log events captured: 4 (benign React DevTools recommendation and HMR connection messages).
+     - Severe console errors: **0**. Unhandled runtime exceptions: **0**.
+   - Artifact Screenshot Paths:
+     - `C:\Users\Kee Chun Shang\.gemini\antigravity\brain\370fd0d2-fa15-4789-8553-059d74d93e3d\scratch\07-live-unmocked-load-dot1.png` (42 KB)
+     - `C:\Users\Kee Chun Shang\.gemini\antigravity\brain\370fd0d2-fa15-4789-8553-059d74d93e3d\scratch\07-live-unmocked-dot2.png` (25 KB)
+     - `C:\Users\Kee Chun Shang\.gemini\antigravity\brain\370fd0d2-fa15-4789-8553-059d74d93e3d\scratch\07-live-unmocked-reloaded.png` (42 KB)
+
+7. **Task Validation & Git Hygiene:**
    - `validate_task.py`: VALID.
    - `git diff --check`: 0 errors / 0 trailing whitespace issues.
 
@@ -172,4 +211,4 @@ Delivered saved-case multi-site image evidence presentation on `/diagnosis/[id]/
 
 ### Proposed commit message
 
-`feat(vision-ui): correct saved evidence focus, metrics and malformed handling`
+`docs(vision-ui): document unmocked live reload verification and label mocked suite`
