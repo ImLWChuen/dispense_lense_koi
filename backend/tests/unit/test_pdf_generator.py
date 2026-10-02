@@ -668,7 +668,7 @@ def test_render_case_report_pdf_nsw_bonus_challenges_content():
     assert "Dispense Lens Diagnostic Case Report" in full_text
 
     # 2. Bonus Challenge 2: Dispensing Quality Assessment
-    assert "Dispensing Quality Assessment (NSW Bonus Challenge 2)" in full_text
+    assert "Dispensing Quality Assessment" in full_text
     assert "Overall Quality Score: 78 / 100" in full_text
     assert "Shape Consistency" in full_text
     assert "Size Consistency" in full_text

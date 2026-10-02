@@ -374,12 +374,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     story.append(Spacer(1, 8))
 
     # ---------------------------------------------------------
-    # Dispensing Quality Assessment (NSW Bonus Challenge 2)
+    # Dispensing Quality Assessment
     # ---------------------------------------------------------
     quality = calculate_dispensing_quality(report.defect_code, report.defect_name)
     story.append(
         Paragraph(
-            f"Dispensing Quality Assessment (NSW Bonus Challenge 2) &nbsp;&mdash;&nbsp; "
+            f"Dispensing Quality Assessment &nbsp;&mdash;&nbsp; "
             f"<b>Overall Quality Score: {quality.overall_score} / 100</b>",
             section_heading_style,
         )
