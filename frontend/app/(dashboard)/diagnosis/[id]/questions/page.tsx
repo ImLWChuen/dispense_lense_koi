@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use } from "react";
+import { useState, useEffect, useCallback, use, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Keyboard, RefreshCw } from "lucide-react";
 
@@ -45,6 +45,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const [refreshWarningKind, setRefreshWarningKind] = useState<RefreshWarningKind | null>(null);
     const [isRefreshRequired, setIsRefreshRequired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const isSubmittingRef = useRef(false);
 
     const history = caseData?.previous_answers || [];
 
@@ -119,8 +120,16 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
     const isDone = !nextQuestion && !isLoading;
 
     const handleAnswer = useCallback(async (questionId: string, value: string) => {
-        if (!caseData?.diagnosis?.analysis_revision) return;
+        if (!caseData || isSubmittingRef.current || isRefreshRequired) return;
 
+        const targetRevision =
+            caseData.current_revision ??
+            caseData.diagnosis?.analysis_revision?.revision_number ??
+            (caseData.analysis_revisions && caseData.analysis_revisions.length > 0
+                ? caseData.analysis_revisions[caseData.analysis_revisions.length - 1].revision_number
+                : 1);
+
+        isSubmittingRef.current = true;
         setIsSubmitting(true);
         try {
             await coordinateWorkflowMutation({
@@ -131,7 +140,7 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                         caseData.case_id,
                         questionId,
                         value,
-                        caseData.diagnosis!.analysis_revision!.revision_number
+                        targetRevision
                     ),
                 performRefresh: () => casesApi.getCase(caseData.case_id),
                 onStateChange: (state) => {
@@ -143,19 +152,23 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
                 },
             });
         } catch (err: unknown) {
-            console.error("Failed to submit answer", err);
+            console.warn("Failed to submit answer (re-synchronizing state):", err);
         } finally {
+            isSubmittingRef.current = false;
             setIsSubmitting(false);
         }
-    }, [caseData, fetchCase]);
+    }, [caseData, isRefreshRequired]);
 
     // Cleanroom Keyboard Shortcuts: Press 1, 2, 3, etc. to submit answers instantly
     useEffect(() => {
-        if (!nextQuestion || isSubmitting || isLoading) return;
+        if (!nextQuestion || isSubmitting || isLoading || isRefreshRequired) return;
 
         const currentOptions = normalizeOptions(nextQuestion.options);
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.repeat) return;
+            if (isSubmittingRef.current || isSubmitting || isLoading || isRefreshRequired) return;
+
             const targetTag = (e.target as HTMLElement)?.tagName;
             if (["INPUT", "TEXTAREA", "SELECT"].includes(targetTag)) {
                 return;
@@ -178,13 +191,14 @@ export default function QuestionsPage({ params }: { params: Promise<{ id: string
 
             if (optIdx >= 0 && optIdx < currentOptions.length) {
                 e.preventDefault();
+                if (isSubmittingRef.current) return;
                 handleAnswer(nextQuestion.question_id, currentOptions[optIdx].value);
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [nextQuestion, isSubmitting, isLoading, handleAnswer]);
+    }, [nextQuestion, isSubmitting, isLoading, isRefreshRequired, handleAnswer]);
 
 
     const derived = deriveQuestionsView({
