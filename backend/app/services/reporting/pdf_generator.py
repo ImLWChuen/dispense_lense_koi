@@ -667,12 +667,12 @@ def render_case_report_pdf(report: CaseReportResponse) -> bytes:
     story.append(Spacer(1, 8))
 
     # ---------------------------------------------------------
-    # AI Learning Database Insight (NSW Bonus Challenge 3)
+    # AI Learning Database Insight
     # ---------------------------------------------------------
     insight = get_learning_insight_report(report.defect_code, report.defect_name)
     story.append(
         Paragraph(
-            "AI Learning Database Insight (NSW Bonus Challenge 3)",
+            "AI Learning Database Insight",
             section_heading_style,
         )
     )

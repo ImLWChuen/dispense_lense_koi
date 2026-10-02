@@ -676,7 +676,7 @@ def test_render_case_report_pdf_nsw_bonus_challenges_content():
     assert "Defect Risk" in full_text
 
     # 3. Bonus Challenge 3: AI Learning Database Insight
-    assert "AI Learning Database Insight (NSW Bonus Challenge 3)" in full_text
+    assert "AI Learning Database Insight" in full_text
     assert "Similar problems occurred 12 times previously" in full_text
     assert "In 8 cases" in full_text
     assert "air trapped inside the syringe" in full_text
