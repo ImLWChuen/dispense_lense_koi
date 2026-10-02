@@ -191,6 +191,7 @@ class DurableCaseResponse(BaseModel):
     analysis_revisions: list[AnalysisRevision] = Field(default_factory=list)
     initial_diagnosis: DiagnosisResult
     diagnosis: DiagnosisResult
+    current_revision: int | None = None
 
 
 class SubmitAnswerRequest(BaseModel):

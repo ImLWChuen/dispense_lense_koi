@@ -70,13 +70,15 @@ export default function DiagnosticQuestion({
                             return (
                                 <button
                                     key={option.value}
-                                    onClick={() => onAnswer?.(option.value)}
-                                    disabled={isAnswered}
+                                    onClick={() => !isOptionDisabled && onAnswer?.(option.value)}
+                                    disabled={isOptionDisabled}
                                     className={`group inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
                                         isSelected
                                             ? "border-[#6d5dfc] bg-[#6d5dfc] text-white shadow-xs"
                                             : isAnswered
                                             ? "border-gray-200 bg-gray-50 text-gray-400"
+                                            : isOptionDisabled
+                                            ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed opacity-60"
                                             : "border-gray-200 bg-white text-gray-700 hover:border-[#6d5dfc] hover:bg-[#eeebff]/30 hover:text-[#5848e8] shadow-2xs"
                                     }`}
                                 >

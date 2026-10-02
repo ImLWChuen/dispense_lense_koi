@@ -160,6 +160,7 @@ def create_durable_case(
             observations=observations,
             initial_diagnosis=result,
             diagnosis=result,
+            current_revision=1,
         )
     except HTTPException:
         session.rollback()
@@ -255,6 +256,7 @@ def list_durable_cases(
                     observations=observations,
                     initial_diagnosis=initial_diagnosis,
                     diagnosis=latest_diagnosis,
+                    current_revision=latest_rev_num,
                 )
             )
 
@@ -474,6 +476,7 @@ def get_durable_case(
             analysis_revisions=analysis_revisions,
             initial_diagnosis=initial_diagnosis,
             diagnosis=latest_diagnosis,
+            current_revision=latest_rev_num,
         )
     except HTTPException:
         raise
