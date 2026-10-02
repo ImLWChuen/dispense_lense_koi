@@ -141,6 +141,8 @@ export interface UploadItem {
     configRevision: number;
     activeRequestToken: number | null;
     importedLayout?: ImportedLayoutMetadata | null;
+    /** Transient per-upload import identity used for deterministic state commits. */
+    activeLayoutImport?: { token: number; expectedRevision: number } | null;
 }
 
 export type UploadSnapshot = Record<string, UploadItem>;

@@ -1,7 +1,7 @@
 # Region-based dispensing inspection improvement plan
 
 Date: 2026-10-02
-Status: Partially delivered roadmap. Scoped increments through DLK-M3-045 are accepted; DLK-M3-046 implemented pending review. Only the ready packet in QUEUE.md releases implementation.
+Status: Partially delivered roadmap. Scoped increments through DLK-M3-045 are accepted; DLK-M3-046 is in progress and blocked on the required live API verification. Only the ready packet in QUEUE.md releases implementation.
 
 ## Progress checkpoint — 2026-10-02
 
@@ -12,7 +12,7 @@ Accepted increments DLK-M3-033–045 establish manual expected-site inspection, 
 | 0: Fixtures/contract | Synthetic baseline and additive contracts delivered | Representative images, broader capture conditions and final supported scope |
 | 1: Reliable region results | Foundation delivered | Partial score-bearing evidence and per-site reference failure handling remain deferred; whole-image conservative gate remains |
 | 2: Workbench | Scoped manual-ROI workbench accepted | Integrated rehearsal and any gaps found there; automatic site proposals are outside this slice |
-| 3: Profiles/alignment | Increment DLK-M3-046 implemented (pending review): portable geometry-only layout save/load with manual placement confirmation delivered | Shared database storage, automatic alignment, and process-limit export |
+| 3: Profiles/alignment | DLK-M3-046 code and UI checks are implemented locally; task remains blocked pending an unmocked successful image-analysis response | Shared database storage, automatic alignment, and process-limit export |
 | 4: Assistant/reports | Persistence, JSON/PDF report integration (039, 040), and saved-case multi-site evidence presentation (043) delivered | Full coverage/uncertainty history is not persisted as an inspection session |
 | 5: Evaluation/rehearsal | Synthetic baseline (038), integrated acceptance (042), offline local dataset runner (044), and synthetic robustness characterization (045 accepted) delivered | Representative labeled real images, held-out evaluation, and agreed targets |
 

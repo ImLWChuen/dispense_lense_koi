@@ -1,5 +1,9 @@
 # Implementation Queue
 
+## Full remaining improvement plan
+
+Use `.agents/handoff/REGION-INSPECTION-COMPLETION-PLAN.md` for the complete Luna implementation / Astra-or-Sol review sequence through profiles, alignment, partial evidence, inspection history, real-image validation and final acceptance. Only the current ready packet is released; future stages require their explicit contracts and bounded packets. The plan supersedes a takeover-only interpretation of the 2026-10-02 request.
+
 ## Current milestone
 
 Finalist image inspection improvements: trustworthy region-level results
@@ -253,7 +257,13 @@ Do not implement inside DLK-M3-031:
 
 ## Active task
 
-- `DLK-M3-046` — Save and load portable region layouts with manual confirmation — **implemented, pending review**
+- `DLK-M3-046` — Save and load portable region layouts with manual confirmation — **blocked** (implementation corrections and UI verification complete; live API acceptance still unavailable)
+  - assigned implementer: GPT-6 Luna; independent reviewer: GPT-6 Astra or GPT-6 Sol
+  - takeover 2026-10-02: preserved the existing frontend corrections, fixed React updater replay safety, and added actual browser verification. The only uncompleted acceptance check is a successful live backend analysis response.
+  - reviewed commit: `bf72c0a8cf30d694713909f01f85ed3388b63c4b`
+  - implementer follow-up 2026-10-02: R1 now cancels/rejects obsolete async imports at selection and commit boundaries; R2 requires valid decoded dimensions; R3 browser checks use an actual downloaded/reimported file and capture the real `/api/v1/images/analyze` request. The live request was dispatched after confirmation but failed with `net::ERR_CONNECTION_REFUSED` because Docker/PostgreSQL could not be started.
+  - review: `.agents/handoff/reviews/DLK-M3-046-review.md`
+  - remaining acceptance requirement: repeat the confirmed analysis POST and capture its successful HTTP response with the service identity and matching submitted ROI ID after the existing local backend/database service is available. Keep the task blocked until then.
   - task: `.agents/handoff/tasks/DLK-M3-046-portable-region-layouts.md`
   - depends on: accepted DLK-M3-045 at `75e61eac82db04279697856d64aa972c798b7e6d`
   - branch: `backend-database`
@@ -264,8 +274,8 @@ Do not implement inside DLK-M3-031:
     - upload state management (`frontend/lib/image-upload-state.ts`, `frontend/types/image.ts`) strictly gating analysis when an imported layout is pending confirmation, resetting confirmation on ROI edits or reference image change, clearing the gate on manual abandon or region clear, and tracking source vs target dimensions;
     - accessible UI controls (`frontend/components/diagnosis/RegionLayoutControls.tsx`, `ImageRoiEditor.tsx`, `ImageUpload.tsx`) with save layout modal, load layout input, persistent placement confirmation banner with mismatch warning and technician checklist, disabled Analyze button with tooltip, and inline/studio modal synchronization;
     - comprehensive documentation (`docs/vision/portable-region-layouts.md`) and roadmap update (`docs/architecture/region-inspection-improvement-plan.md`);
-  - verification: unit layout tests 9/9 passed, upload state tests 14/14 passed, region view tests 6/6 passed, frontend lint 0 errors (0 added warnings), frontend build clean (20/20 routes), browser rehearsal passed (11/11 steps including save/load, mismatch warning, analysis blocking, abandonment, confirmation, studio parity, and live unmocked backend analysis API round trip to port 8000), task validation VALID, git diff whitespace clean;
-  - completion after implementation: manual-region prototype ~95%; full roadmap ~70–75%; scope estimates, not accuracy;
+  - verification: layout tests 9/9, upload-state tests 20/20, and region-view tests 6/6 passed; frontend build compiled 20 routes; browser verified real download/reimport, invalid-file rejection, mismatch warning, blocked pre-confirmation dispatch, confirmation, Studio parity/edit invalidation and manual abandonment. A confirmed POST to `http://127.0.0.1:8000/api/v1/images/analyze` included the saved ROI ID but failed with `net::ERR_CONNECTION_REFUSED`; health returned HTTP 000/curl exit 7. Docker Engine pipe and PostgreSQL port 5432 were unavailable, and Windows denied opening `com.docker.service`. The browser report is therefore **UI checks passed; live API acceptance blocked**, not a successful round trip. Final lint/build/task-validator/diff results are recorded in the task report;
+  - reviewer completion estimate pending corrections: manual-region prototype 90–95%; full roadmap 65–75%; scope estimates, not accuracy;
   - deferred: full process profiles, shared storage, alignment, real-image validation, partial scoring and inspection-session history;
   - include pending accepted DLK-M3-045 review unchanged in the local implementation commit; no remote Git operations.
 

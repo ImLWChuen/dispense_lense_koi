@@ -366,6 +366,7 @@ export function reconfigureUpload(
             ...current,
             ...updates,
             importedLayout: nextImportedLayout,
+            activeLayoutImport: null,
             status: "ready",
             result: null,
             errorMessage: null,
@@ -383,7 +384,8 @@ export function reconfigureUpload(
 export function importRegionLayout(
     prev: UploadSnapshot,
     uploadId: string,
-    layout: RegionLayoutFile
+    layout: RegionLayoutFile,
+    options: { importedAt?: string } = {}
 ): UploadSnapshot {
     const current = prev[uploadId];
     if (!current) return prev;
@@ -402,7 +404,7 @@ export function importRegionLayout(
             width: layout.source_image.width,
             height: layout.source_image.height,
         },
-        importedAt: new Date().toISOString(),
+        importedAt: options.importedAt ?? new Date().toISOString(),
         confirmed: false,
         confirmedAt: null,
         confirmedRevision: null,
@@ -414,6 +416,7 @@ export function importRegionLayout(
             ...current,
             rois: newRois,
             importedLayout: importedMetadata,
+            activeLayoutImport: null,
             status: "ready",
             result: null,
             errorMessage: null,
@@ -425,26 +428,30 @@ export function importRegionLayout(
 
 /**
  * Confirms the placement of an imported region layout on the target image.
- * Requires valid target image dimensions if provided.
+ * Requires valid positive safe-integer target image dimensions unconditionally.
+ * If targetDimensions is omitted, null, or has invalid width/height (<= 0, non-integer, non-finite),
+ * the snapshot is returned unchanged (confirmed remains false, analysis remains blocked).
  * Does not rerun analysis automatically or bump configRevision.
  */
 export function confirmRegionPlacement(
     prev: UploadSnapshot,
     uploadId: string,
-    targetDimensions?: { width: number; height: number } | null
+    targetDimensions?: { width: number; height: number } | null,
+    confirmedAt = new Date().toISOString()
 ): UploadSnapshot {
     const current = prev[uploadId];
     if (!current || !current.importedLayout) return prev;
 
-    if (targetDimensions !== undefined && targetDimensions !== null) {
-        if (
-            !Number.isSafeInteger(targetDimensions.width) ||
-            !Number.isSafeInteger(targetDimensions.height) ||
-            targetDimensions.width <= 0 ||
-            targetDimensions.height <= 0
-        ) {
-            return prev;
-        }
+    if (
+        !targetDimensions ||
+        typeof targetDimensions.width !== "number" ||
+        typeof targetDimensions.height !== "number" ||
+        !Number.isSafeInteger(targetDimensions.width) ||
+        !Number.isSafeInteger(targetDimensions.height) ||
+        targetDimensions.width <= 0 ||
+        targetDimensions.height <= 0
+    ) {
+        return prev;
     }
 
     return {
@@ -454,12 +461,261 @@ export function confirmRegionPlacement(
             importedLayout: {
                 ...current.importedLayout,
                 confirmed: true,
-                confirmedAt: new Date().toISOString(),
+                confirmedAt,
                 confirmedRevision: current.configRevision,
             },
             errorMessage: null,
         },
     };
+}
+
+export interface InFlightImportSession {
+    uploadId: string;
+    token: number;
+    expectedRevision: number;
+    startedAt: string;
+    aborted: boolean;
+    abort?: () => void;
+}
+
+/**
+ * Coordinates asynchronous layout imports across multiple views (inline card, Studio modal).
+ * Tracks monotonic tokens and captured configRevisions per upload, ensuring that
+ * out-of-order completions, stale reads, late errors, or obsolete sessions cannot mutate state.
+ */
+export class ImportCoordinator {
+    private sessions: Record<string, InFlightImportSession> = {};
+    private nextToken = 1;
+
+    public startImport(
+        uploadId: string,
+        currentRevision: number,
+        abortFn?: () => void
+    ): InFlightImportSession {
+        this.cancelImport(uploadId);
+        const token = this.nextToken++;
+        this.sessions[uploadId] = {
+            uploadId,
+            token,
+            expectedRevision: currentRevision,
+            startedAt: new Date().toISOString(),
+            aborted: false,
+            abort: abortFn,
+        };
+        return { ...this.sessions[uploadId] };
+    }
+
+    public cancelImport(uploadId: string): void {
+        const session = this.sessions[uploadId];
+        if (session) {
+            session.aborted = true;
+            try {
+                session.abort?.();
+            } catch {
+                // Ignore abort errors
+            }
+            delete this.sessions[uploadId];
+        }
+    }
+
+    public cancelAll(): void {
+        for (const uploadId of Object.keys(this.sessions)) {
+            this.cancelImport(uploadId);
+        }
+    }
+
+    public isTokenActive(uploadId: string, token: number): boolean {
+        const session = this.sessions[uploadId];
+        return Boolean(session && !session.aborted && session.token === token);
+    }
+
+    public canCommitImport(
+        currentUpload: UploadItem | null | undefined,
+        token: number
+    ): boolean {
+        if (!currentUpload) return false;
+        const session = this.sessions[currentUpload.id];
+        if (!session || session.aborted || session.token !== token) return false;
+        if (currentUpload.configRevision !== session.expectedRevision) return false;
+        return true;
+    }
+
+    public commitImport(
+        prev: UploadSnapshot,
+        uploadId: string,
+        token: number,
+        layout: RegionLayoutFile,
+        expectedRevision: number,
+        importedAt: string
+    ): { nextState: UploadSnapshot; committed: boolean } {
+        const nextState = commitRegionLayoutImport(prev, uploadId, token, expectedRevision, importedAt, layout);
+        return {
+            nextState,
+            committed: nextState !== prev,
+        };
+    }
+
+    /** Run non-state effects only after React exposes the imported state. */
+    public finalizeCommittedImport(currentUpload: UploadItem | null | undefined): boolean {
+        if (!currentUpload) return false;
+        const session = this.sessions[currentUpload.id];
+        if (
+            !session || session.aborted ||
+            currentUpload.configRevision !== session.expectedRevision + 1 ||
+            currentUpload.importedLayout?.importedAt !== session.startedAt
+        ) {
+            return false;
+        }
+        this.cancelImport(currentUpload.id);
+        return true;
+    }
+
+    /** Cancel sessions whose upload disappeared or configuration revision advanced. */
+    public cancelStaleImports(currentUploads: UploadSnapshot): void {
+        for (const [uploadId, session] of Object.entries(this.sessions)) {
+            const current = currentUploads[uploadId];
+            if (!current || current.configRevision !== session.expectedRevision) {
+                this.cancelImport(uploadId);
+            }
+        }
+    }
+}
+
+/** Record a selected, valid layout read as a pure upload-state transition. */
+export function beginRegionLayoutImport(
+    prev: UploadSnapshot,
+    uploadId: string,
+    token: number,
+    expectedRevision: number
+): UploadSnapshot {
+    const current = prev[uploadId];
+    if (!current || current.configRevision !== expectedRevision) return prev;
+    return {
+        ...prev,
+        [uploadId]: {
+            ...current,
+            activeLayoutImport: { token, expectedRevision },
+        },
+    };
+}
+
+/** Clear only transient in-flight import identity; preserve existing results/layout. */
+export function clearRegionLayoutImport(
+    prev: UploadSnapshot,
+    uploadId: string,
+    token?: number
+): UploadSnapshot {
+    const current = prev[uploadId];
+    if (!current?.activeLayoutImport) return prev;
+    if (token !== undefined && current.activeLayoutImport.token !== token) return prev;
+    return {
+        ...prev,
+        [uploadId]: {
+            ...current,
+            activeLayoutImport: null,
+        },
+    };
+}
+
+/**
+ * Pure, replay-safe layout commit. It validates the request identity and captured
+ * revision against the same snapshot React supplies to the updater.
+ */
+export function commitRegionLayoutImport(
+    prev: UploadSnapshot,
+    uploadId: string,
+    token: number,
+    expectedRevision: number,
+    importedAt: string,
+    layout: RegionLayoutFile
+): UploadSnapshot {
+    const current = prev[uploadId];
+    const activeImport = current?.activeLayoutImport;
+    if (
+        !current || !activeImport || current.configRevision !== expectedRevision ||
+        activeImport.token !== token || activeImport.expectedRevision !== expectedRevision
+    ) {
+        return prev;
+    }
+    return importRegionLayout(prev, uploadId, layout, { importedAt });
+}
+
+/** Supersede a pending read before checking the replacement file's size. */
+export function beginRegionLayoutFileSelection(
+    coordinator: ImportCoordinator,
+    uploadId: string,
+    fileSize: number,
+    maxBytes: number
+): boolean {
+    coordinator.cancelImport(uploadId);
+    return Number.isFinite(fileSize) && fileSize >= 0 && fileSize <= maxBytes;
+}
+
+/**
+ * Executes an asynchronous layout file import through ImportCoordinator.
+ * Protects against:
+ * - A/B out-of-order completion (starting B cancels A; A cannot commit)
+ * - Edits during read (editing bumps revision; older token/revision cannot commit)
+ * - Abandonment during read (abandoning cancels session; read cannot commit)
+ * - Deletion during read (deleting clears upload and cancels session; read cannot commit)
+ * - Cross-view reads (inline and studio share the same coordinator instance)
+ * - Teardown / unmount (cancelAll aborts active readers and cancels sessions)
+ * - Obsolete error callbacks (errors from stale reads are discarded)
+ */
+export function startCoordinatedImport(
+    coordinator: ImportCoordinator,
+    uploadId: string,
+    currentRevision: number,
+    readFn: (
+        onSuccess: (content: string) => void,
+        onError: (err: Error) => void
+    ) => (() => void), // returns abort cleanup function
+    handlers: {
+        getCurrentUpload: () => UploadItem | undefined;
+        onStart?: (token: number, expectedRevision: number, startedAt: string) => void;
+        onCommit: (token: number, layout: RegionLayoutFile, expectedRevision: number, startedAt: string) => void;
+        onError: (errorMessage: string, token: number) => void;
+        parseLayout: (content: string) => { ok: true; layout: RegionLayoutFile } | { ok: false; error: string };
+    }
+): number {
+    let abortFn: (() => void) | null = null;
+    const session = coordinator.startImport(uploadId, currentRevision, () => {
+        abortFn?.();
+    });
+    const { token, expectedRevision, startedAt } = session;
+    handlers.onStart?.(token, expectedRevision, startedAt);
+
+    const cleanup = readFn(
+        (content: string) => {
+            const latestUpload = handlers.getCurrentUpload();
+            if (!coordinator.canCommitImport(latestUpload, token)) {
+                return;
+            }
+
+            const parseRes = handlers.parseLayout(content);
+            if (!parseRes.ok) {
+                if (coordinator.canCommitImport(handlers.getCurrentUpload(), token)) {
+                    coordinator.cancelImport(uploadId);
+                    handlers.onError(parseRes.error, token);
+                }
+                return;
+            }
+
+            handlers.onCommit(token, parseRes.layout, expectedRevision, startedAt);
+        },
+        () => {
+            if (coordinator.isTokenActive(uploadId, token)) {
+                const latestUpload = handlers.getCurrentUpload();
+                if (coordinator.canCommitImport(latestUpload, token)) {
+                    coordinator.cancelImport(uploadId);
+                    handlers.onError("Failed to read the selected file from disk.", token);
+                }
+            }
+        }
+    );
+    abortFn = cleanup;
+
+    return token;
 }
 
 /**
@@ -479,6 +735,7 @@ export function abandonImportedLayout(
             ...current,
             rois: [],
             importedLayout: null,
+            activeLayoutImport: null,
             status: "ready",
             result: null,
             errorMessage: null,

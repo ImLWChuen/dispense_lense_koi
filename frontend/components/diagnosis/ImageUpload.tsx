@@ -8,7 +8,6 @@ import {
     Loader2,
     CheckCircle2,
     AlertCircle,
-    Info,
     ChevronDown,
     ChevronUp,
     Play,
@@ -40,12 +39,16 @@ import {
     reconfigureUpload,
     removeUploadItem,
     cleanupControllerEntry,
-    importRegionLayout,
     confirmRegionPlacement,
     abandonImportedLayout,
+    ImportCoordinator,
+    beginRegionLayoutImport,
+    beginRegionLayoutFileSelection,
+    clearRegionLayoutImport,
+    startCoordinatedImport,
     type InFlightController,
 } from "@/lib/image-upload-state";
-import type { RegionLayoutFile } from "@/lib/region-layout";
+import { MAX_LAYOUT_FILE_BYTES, parseRegionLayout } from "@/lib/region-layout";
 
 export { validateAnalysisConfiguration } from "@/lib/image-upload-state";
 
@@ -79,12 +82,28 @@ export default function ImageUpload({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const controllersRef = useRef<Record<string, InFlightController>>({});
+    const importCoordinatorRef = useRef<ImportCoordinator>(new ImportCoordinator());
     const nextTokenRef = useRef<number>(1);
     const uploadsRef = useRef<UploadSnapshot>({});
 
     // Keep uploadsRef updated outside of render
     useEffect(() => {
         uploadsRef.current = uploads;
+    }, [uploads]);
+
+    // Finalize non-state effects only after React exposes the accepted import state.
+    // State updater callbacks remain pure even when React replays them.
+    useEffect(() => {
+        for (const item of Object.values(uploads)) {
+            if (importCoordinatorRef.current.finalizeCommittedImport(item)) {
+                const pending = controllersRef.current[item.id];
+                if (pending) {
+                    delete controllersRef.current[item.id];
+                    pending.controller.abort();
+                }
+            }
+        }
+        importCoordinatorRef.current.cancelStaleImports(uploads);
     }, [uploads]);
 
     // Sync snapshot to parent whenever uploads change
@@ -106,9 +125,11 @@ export default function ImageUpload({
         }
     }, [uploads, onSnapshotChange, onAnalysisComplete]);
 
-    // Cleanup all object URLs and abort pending requests on unmount
+    // Cleanup all object URLs, abort pending requests, and cancel in-flight imports on unmount
     useEffect(() => {
+        const coordinator = importCoordinatorRef.current;
         return () => {
+            coordinator.cancelAll();
             Object.values(controllersRef.current).forEach((req) => req.controller.abort());
             controllersRef.current = {};
             Object.values(uploadsRef.current).forEach((item) => {
@@ -197,24 +218,96 @@ export default function ImageUpload({
         });
     }, []);
 
-    const handleImportLayout = useCallback((uploadId: string, layout: RegionLayoutFile) => {
-        // Synchronously abort any running request for this upload
-        const pending = controllersRef.current[uploadId];
-        if (pending) {
-            delete controllersRef.current[uploadId];
-            pending.controller.abort();
+    const handleSelectLayoutFile = useCallback((uploadId: string, file: File) => {
+        // Invalidate any pending import session immediately on any new file selection,
+        // before any file validation or early return.
+        const isWithinSizeLimit = beginRegionLayoutFileSelection(
+            importCoordinatorRef.current,
+            uploadId,
+            file.size,
+            MAX_LAYOUT_FILE_BYTES
+        );
+        setUploads((prev) => clearRegionLayoutImport(prev, uploadId));
+        if (!isWithinSizeLimit) {
+            setLayoutErrors((prev) => ({
+                ...prev,
+                [uploadId]: `File "${file.name}" rejected: payload (${(file.size / 1024).toFixed(1)} KiB) exceeds maximum 256 KiB limit.`,
+            }));
+            return;
         }
 
+        const currentItem = uploadsRef.current[uploadId];
+        if (!currentItem) return;
+
         setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
-        setUploads((prev) => importRegionLayout(prev, uploadId, layout));
+
+        startCoordinatedImport(
+            importCoordinatorRef.current,
+            uploadId,
+            currentItem.configRevision,
+            (onSuccess, onError) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target?.result;
+                    if (typeof text === "string") {
+                        onSuccess(text);
+                    } else {
+                        onError(new Error("File content is not text"));
+                    }
+                };
+                reader.onerror = () => onError(new Error("FileReader error"));
+                reader.readAsText(file, "utf-8");
+                return () => {
+                    try {
+                        reader.abort();
+                    } catch {
+                        // Ignore
+                    }
+                };
+            },
+            {
+                getCurrentUpload: () => uploadsRef.current[uploadId],
+                onStart: (token, expectedRevision) => {
+                    setUploads((prev) => beginRegionLayoutImport(prev, uploadId, token, expectedRevision));
+                },
+                onCommit: (token, layout, expectedRevision, startedAt) => {
+                    const latest = uploadsRef.current[uploadId];
+                    if (!importCoordinatorRef.current.canCommitImport(latest, token)) return;
+                    const pending = controllersRef.current[uploadId];
+                    if (pending) {
+                        delete controllersRef.current[uploadId];
+                        pending.controller.abort();
+                    }
+                    setLayoutErrors((errPrev) => ({ ...errPrev, [uploadId]: null }));
+                    setUploads((prev) => {
+                        const res = importCoordinatorRef.current.commitImport(
+                            prev,
+                            uploadId,
+                            token,
+                            layout,
+                            expectedRevision,
+                            startedAt
+                        );
+                        return res.committed ? res.nextState : prev;
+                    });
+                },
+                onError: (msg, token) => {
+                    setUploads((prev) => clearRegionLayoutImport(prev, uploadId, token));
+                    setLayoutErrors((prev) => ({ ...prev, [uploadId]: msg }));
+                },
+                parseLayout: parseRegionLayout,
+            }
+        );
     }, []);
 
     const handleConfirmPlacement = useCallback((uploadId: string) => {
         const dims = previewDimensions[uploadId] || null;
-        setUploads((prev) => confirmRegionPlacement(prev, uploadId, dims));
+        const confirmedAt = new Date().toISOString();
+        setUploads((prev) => confirmRegionPlacement(prev, uploadId, dims, confirmedAt));
     }, [previewDimensions]);
 
     const handleAbandonLayout = useCallback((uploadId: string) => {
+        importCoordinatorRef.current.cancelImport(uploadId);
         setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
         setUploads((prev) => abandonImportedLayout(prev, uploadId));
     }, []);
@@ -336,6 +429,9 @@ export default function ImageUpload({
             pending.controller.abort();
         }
 
+        // Invalidate any pending layout import session and abort its reader
+        importCoordinatorRef.current.cancelImport(uploadId);
+
         const item = uploads[uploadId];
         if (item) {
             if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
@@ -379,6 +475,9 @@ export default function ImageUpload({
                 delete controllersRef.current[uploadId];
                 pending.controller.abort();
             }
+
+            // Invalidate any pending layout import session and abort its reader
+            importCoordinatorRef.current.cancelImport(uploadId);
 
             setUploads((prev) => reconfigureUpload(prev, uploadId, updates));
         },
@@ -624,7 +723,7 @@ export default function ImageUpload({
                                                     uploadItem={item}
                                                     targetDimensions={previewDimensions[item.id] || null}
                                                     isAnalyzing={isAnalyzing}
-                                                    onImportLayout={(layout) => handleImportLayout(item.id, layout)}
+                                                    onSelectFile={(file) => handleSelectLayoutFile(item.id, file)}
                                                     onConfirmPlacement={() => handleConfirmPlacement(item.id)}
                                                     onAbandonLayout={() => handleAbandonLayout(item.id)}
                                                     onLayoutError={(err) => handleLayoutError(item.id, err)}
@@ -775,7 +874,7 @@ export default function ImageUpload({
                                             uploadItem={studioItem}
                                             targetDimensions={previewDimensions[studioItem.id] || null}
                                             isAnalyzing={studioItem.status === "analyzing"}
-                                            onImportLayout={(layout) => handleImportLayout(studioItem.id, layout)}
+                                            onSelectFile={(file) => handleSelectLayoutFile(studioItem.id, file)}
                                             onConfirmPlacement={() => handleConfirmPlacement(studioItem.id)}
                                             onAbandonLayout={() => handleAbandonLayout(studioItem.id)}
                                             onLayoutError={(err) => handleLayoutError(studioItem.id, err)}

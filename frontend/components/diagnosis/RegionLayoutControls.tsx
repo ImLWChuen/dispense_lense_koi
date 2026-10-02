@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
     Download,
     Upload,
@@ -14,11 +14,8 @@ import {
 } from "lucide-react";
 import { UploadItem } from "@/types/image";
 import {
-    RegionLayoutFile,
-    MAX_LAYOUT_FILE_BYTES,
     DEFAULT_LAYOUT_FILENAME,
     createRegionLayout,
-    parseRegionLayout,
     triggerLayoutDownload,
 } from "@/lib/region-layout";
 
@@ -26,7 +23,7 @@ interface RegionLayoutControlsProps {
     uploadItem: UploadItem;
     targetDimensions: { width: number; height: number } | null;
     isAnalyzing: boolean;
-    onImportLayout: (layout: RegionLayoutFile) => void;
+    onSelectFile: (file: File) => void;
     onConfirmPlacement: () => void;
     onAbandonLayout: () => void;
     onLayoutError: (error: string | null) => void;
@@ -37,7 +34,7 @@ export default function RegionLayoutControls({
     uploadItem,
     targetDimensions,
     isAnalyzing,
-    onImportLayout,
+    onSelectFile,
     onConfirmPlacement,
     onAbandonLayout,
     onLayoutError,
@@ -58,6 +55,18 @@ export default function RegionLayoutControls({
         targetDimensions.height > 0;
 
     const canExport = hasRois && hasValidDimensions && !isAnalyzing;
+
+    // Keyboard support: Escape closes the Save Modal
+    useEffect(() => {
+        if (!isSaveModalOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setIsSaveModalOpen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isSaveModalOpen]);
 
     // File export handler
     const handleOpenSaveModal = () => {
@@ -89,52 +98,13 @@ export default function RegionLayoutControls({
         setIsSaveModalOpen(false);
     };
 
-    // File import handler
+    // File import arbitration and parsing are owned by the shared parent coordinator.
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         // Reset file input so re-selecting same file works
         e.target.value = "";
         if (!file) return;
-
-        if (file.size > MAX_LAYOUT_FILE_BYTES) {
-            onLayoutError(
-                `File "${file.name}" rejected: payload (${(file.size / 1024).toFixed(1)} KiB) exceeds maximum 256 KiB limit.`
-            );
-            return;
-        }
-
-        const currentUploadId = uploadItem.id;
-        const currentRevision = uploadItem.configRevision;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const content = event.target?.result;
-            if (typeof content !== "string") {
-                onLayoutError("Failed to read layout file content.");
-                return;
-            }
-
-            // Stale check: verify upload revision still matches
-            if (uploadItem.id !== currentUploadId || uploadItem.configRevision !== currentRevision) {
-                // Obsolete read discarded
-                return;
-            }
-
-            const parseRes = parseRegionLayout(content);
-            if (!parseRes.ok) {
-                onLayoutError(parseRes.error);
-                return;
-            }
-
-            onLayoutError(null);
-            onImportLayout(parseRes.layout);
-        };
-
-        reader.onerror = () => {
-            onLayoutError("Failed to read the selected file from disk.");
-        };
-
-        reader.readAsText(file, "utf-8");
+        onSelectFile(file);
     };
 
     const imported = uploadItem.importedLayout;
@@ -399,6 +369,12 @@ export default function RegionLayoutControls({
                                     onChange={(e) => {
                                         setSaveName(e.target.value);
                                         setSaveValidationError(null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            handleConfirmSave();
+                                        }
                                     }}
                                     placeholder="Enter descriptive layout name"
                                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs text-gray-900 dark:text-gray-100 focus:border-[#6d5dfc] focus:outline-hidden"
