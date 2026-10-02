@@ -171,29 +171,59 @@ export default function NewDiagnosisPage() {
                 </div>
             )}
 
-            {/* Layout Mode 1: Spacious Stacked (Full Width) */}
-            {layoutMode === "stacked" ? (
-                <div className="mt-8 space-y-8">
-                    {/* Visual Defect Evidence */}
-                    <div>
-                        <ImageUpload
-                            onSnapshotChange={setUploadSnapshot}
-                            isFullWidth={true}
-                        />
-                    </div>
+            {/* Unified Adaptive Layout: keeps components mounted so user input, uploads, and annotations are never lost */}
+            <div
+                className={`mt-8 ${
+                    layoutMode === "stacked"
+                        ? "flex flex-col space-y-8"
+                        : "grid grid-cols-1 gap-y-6 gap-x-8 lg:grid-cols-2 items-start"
+                }`}
+            >
+                {/* Visual Defect Evidence */}
+                <div
+                    className={
+                        layoutMode === "stacked"
+                            ? "order-1 w-full"
+                            : "order-2 lg:order-none lg:col-start-2 lg:row-start-1 w-full"
+                    }
+                >
+                    <ImageUpload
+                        onSnapshotChange={setUploadSnapshot}
+                        isFullWidth={layoutMode === "stacked"}
+                    />
+                </div>
 
-                    {/* Defect Taxonomy & Problem Description */}
-                    <div>
-                        <ProblemForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-                    </div>
+                {/* Defect Taxonomy & Problem Description */}
+                <div
+                    className={
+                        layoutMode === "stacked"
+                            ? "order-2 w-full"
+                            : "order-1 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2 w-full"
+                    }
+                >
+                    <ProblemForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+                </div>
 
-                    {/* Full-width Tips Banner */}
+                {/* Tips Banner / Card */}
+                <div
+                    className={
+                        layoutMode === "stacked"
+                            ? "order-3 w-full"
+                            : "order-3 lg:order-none lg:col-start-2 lg:row-start-2 w-full"
+                    }
+                >
                     <div className="rounded-2xl border border-[#ded9ff] dark:border-[#6d5dfc]/30 bg-[#faf9ff] dark:bg-[#161e2e] p-5 sm:p-6 shadow-2xs">
                         <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                             Tips for better diagnosis
                         </p>
 
-                        <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                        <ul
+                            className={`mt-3 ${
+                                layoutMode === "stacked"
+                                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+                                    : "space-y-2.5"
+                            } text-xs leading-5 text-gray-600 dark:text-gray-300`}
+                        >
                             <li className="flex items-start gap-2.5">
                                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
                                 <span>Be specific about when the defect appears (steady vs. occasional)</span>
@@ -216,50 +246,7 @@ export default function NewDiagnosisPage() {
                         </ul>
                     </div>
                 </div>
-            ) : (
-                /* Layout Mode 2: Balanced Split (50/50) */
-                <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2 items-start">
-                    <div>
-                        <ProblemForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-                    </div>
-
-                    <div className="space-y-6">
-                        <ImageUpload
-                            onSnapshotChange={setUploadSnapshot}
-                            isFullWidth={false}
-                        />
-
-                        {/* Tips Card */}
-                        <div className="rounded-2xl border border-[#ded9ff] dark:border-[#6d5dfc]/30 bg-[#faf9ff] dark:bg-[#161e2e] p-5 shadow-2xs">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                Tips for better diagnosis
-                            </p>
-
-                            <ul className="mt-3 space-y-2.5 text-xs leading-5 text-gray-600 dark:text-gray-300">
-                                <li className="flex items-start gap-2">
-                                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
-                                    Be specific about when the defect appears (steady vs. occasional)
-                                </li>
-
-                                <li className="flex items-start gap-2">
-                                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
-                                    Specify whether all nozzles or specific dispensing points are affected
-                                </li>
-
-                                <li className="flex items-start gap-2">
-                                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
-                                    Include material details (epoxy, solder paste, RTV silicone)
-                                </li>
-
-                                <li className="flex items-start gap-2">
-                                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
-                                    Draw precise rectangular target ROIs over uploaded deposit images
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            )}
+            </div>
         </PageContainer>
     );
 }
