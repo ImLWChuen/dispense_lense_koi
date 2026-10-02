@@ -57,6 +57,15 @@ export interface ImageDimensions {
     channels: number;
 }
 
+export type RoiInspectionStatus = "DETECTED" | "MISSING" | "UNASSESSED";
+
+export type InspectionCoverageStatus = "COMPLETE" | "PARTIAL" | "NONE";
+
+export interface NormalizedPoint {
+    x: number;
+    y: number;
+}
+
 export interface RoiMeasurement {
     roi_id: string;
     deposit_area_px: number;
@@ -77,12 +86,19 @@ export interface RoiMeasurement {
     bubble_details?: Array<{ x: number; y: number; radius: number; area: number; method: string }>;
     segmentation_quality: number;
     is_missing: boolean;
+    inspection_status?: RoiInspectionStatus | null;
+    inspection_warnings?: string[];
+    deposit_outline_normalized?: NormalizedPoint[] | null;
 }
 
 export interface AggregateMeasurements {
     mean_coverage: number | null;
     size_cv: number | null;
     missing_roi_ids: string[];
+    unassessed_roi_ids?: string[];
+    expected_roi_count?: number | null;
+    assessed_roi_count?: number | null;
+    inspection_coverage_status?: InspectionCoverageStatus | null;
     warnings: string[];
 }
 
@@ -92,11 +108,21 @@ export interface ImageAnalysisResponse {
     image_dimensions: ImageDimensions;
     roi_measurements: RoiMeasurement[];
     aggregate_measurements: AggregateMeasurements;
+    reference_aggregate_measurements?: AggregateMeasurements | null;
     observations: Observation[];
     warnings: string[];
 }
 
 export type UploadLifecycleStatus = "ready" | "analyzing" | "analyzed" | "error";
+
+export interface ImportedLayoutMetadata {
+    name: string;
+    sourceDimensions: { width: number; height: number };
+    importedAt: string;
+    confirmed: boolean;
+    confirmedAt?: string | null;
+    confirmedRevision?: number | null;
+}
 
 export interface UploadItem {
     id: string;
@@ -114,6 +140,9 @@ export interface UploadItem {
     errorMessage?: string | null;
     configRevision: number;
     activeRequestToken: number | null;
+    importedLayout?: ImportedLayoutMetadata | null;
+    /** Transient per-upload import identity used for deterministic state commits. */
+    activeLayoutImport?: { token: number; expectedRevision: number } | null;
 }
 
 export type UploadSnapshot = Record<string, UploadItem>;

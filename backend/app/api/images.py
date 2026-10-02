@@ -31,6 +31,7 @@ from app.services.vision.preprocessing import (
     decode_and_validate_image,
     normalize_roi_to_pixels,
 )
+from app.services.vision.overlay import extract_deposit_outline
 from app.services.vision.segmentation import segment_roi
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ def _sync_analyze_image(
 
     # 2. Process all ROIs on current image
     roi_measurements: list[RoiMeasurement] = []
+    outline_warnings: list[str] = []
     for roi in profile.rois:
         target_roi, win_roi = normalize_roi_to_pixels(roi, dims.width, dims.height)
         seg_result = segment_roi(img, target_roi, win_roi)
@@ -60,6 +62,19 @@ def _sync_analyze_image(
             roi_id=roi.roi_id,
             mm_per_pixel=profile.mm_per_pixel,
         )
+        outline, outline_warn = extract_deposit_outline(
+            seg_result=seg_result,
+            inspection_status=feat.inspection_status,
+            window_roi=win_roi,
+            image_width=dims.width,
+            image_height=dims.height,
+            roi_id=roi.roi_id,
+        )
+        feat.deposit_outline_normalized = outline
+        if outline_warn:
+            if outline_warn not in feat.inspection_warnings:
+                feat.inspection_warnings.append(outline_warn)
+            outline_warnings.append(outline_warn)
         roi_measurements.append(feat)
 
     all_roi_ids = [r.roi_id for r in profile.rois]
@@ -97,12 +112,18 @@ def _sync_analyze_image(
         reference_limits=profile.reference_limits,
     )
 
+    # 5. Ensure missing outline warnings from DETECTED regions reach top-level response warnings
+    for ow in outline_warnings:
+        if ow not in warnings:
+            warnings.append(ow)
+
     return ImageAnalysisResponse(
         status=analysis_status,
         mode=profile.mode,
         image_dimensions=dims,
         roi_measurements=roi_measurements,
         aggregate_measurements=agg,
+        reference_aggregate_measurements=ref_agg,
         observations=observations,
         warnings=warnings,
     )

@@ -26,11 +26,14 @@ from app.schemas.diagnosis import (
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
+    ObservationType,
+    StatementType,
 )
 from app.services.reporting.report_generator import (
     _map_cause_confirmation,
     _map_check_result,
     _map_lifecycle_event,
+    _map_observation,
     _map_question_answer,
     build_case_report,
 )
@@ -334,3 +337,312 @@ def test_build_case_report_pinned_revision_consistency():
     mock_repo.get_case_check_results.assert_called_with(case_id, max_revision=6)
     mock_repo.get_case_cause_confirmations.assert_called_with(case_id, max_revision=6)
     mock_repo.get_case_lifecycle_events.assert_called_with(case_id, max_revision=6)
+    mock_repo.get_case_observations.assert_called_with(case_id, max_revision=6)
+
+
+def test_map_observation():
+    obs = ObservationModel()
+    obs.id = 42
+    obs.observation_id = "obs_img_01"
+    obs.case_id = "11111111-1111-4111-8111-111111111111"
+    obs.observation_type = "deposit_size"
+    obs.value = "undersized"
+    obs.original_text = "Vision inspection detected undersized deposit"
+    obs.statement_type = "AI_INFERENCE"
+    obs.source = "IMAGE"
+    obs.confidence = 0.92
+    obs.first_seen_revision = 1
+    obs.created_at = datetime(2026, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
+    obs.observation_metadata = {
+        "region_evidence_scope": "individual_regions",
+        "affected_roi_ids": ["site_01"],
+    }
+
+    record = _map_observation(obs)
+    assert record.id == "obs_img_01"
+    assert record.observation_id == "obs_img_01"
+    assert record.observation_type == ObservationType.DEPOSIT_SIZE
+    assert record.value == "undersized"
+    assert record.original_text == "Vision inspection detected undersized deposit"
+    assert record.statement_type == StatementType.AI_INFERENCE
+    assert record.source == EvidenceSource.IMAGE
+    assert record.confidence == 0.92
+    assert record.first_seen_revision == 1
+    assert record.metadata["region_evidence_scope"] == "individual_regions"
+    assert record.metadata["affected_roi_ids"] == ["site_01"]
+
+
+def test_build_case_report_image_observations_projection():
+    case_id = "11111111-1111-4111-8111-111111111111"
+    mock_repo = MagicMock()
+    case_model = _make_dummy_case_model(case_id, issue_condition="UNRESOLVED")
+    mock_repo.get_case.return_value = case_model
+
+    rev1 = AnalysisRevisionModel()
+    rev1.revision_number = 1
+    rev1.analyzed_at = case_model.created_at
+    rev1.defect_code = case_model.defect_code
+    rev1.issue_condition = "UNRESOLVED"
+    rev1.result_snapshot = _make_dummy_diagnosis_snapshot(case_id, revision_number=1)
+    mock_repo.get_latest_analysis_revision.return_value = rev1
+    mock_repo.get_case_question_answers.return_value = []
+    mock_repo.get_case_check_results.return_value = []
+    mock_repo.get_case_cause_confirmations.return_value = []
+    mock_repo.get_case_lifecycle_events.return_value = []
+
+    # Distinct site snapshots for obs1
+    reg1 = {
+        "roi_id": "site_01",
+        "current_measurements": {
+            "inspection_status": "DETECTED",
+            "deposit_area_px": 1800.0,
+            "equivalent_diameter_px": 47.87,
+            "calibrated_diameter_mm": 0.479,
+            "circularity": 0.88,
+            "solidity": 0.95,
+            "convexity": 0.96,
+            "aspect_ratio": 1.05,
+            "hole_void_ratio": 0.0,
+            "bubble_count": 0,
+            "has_bubbles": False,
+            "coverage_ratio": 0.72,
+            "overflow_ratio": 0.0,
+            "segmentation_quality": 0.95,
+            "target_area_px": 2500.0,
+        },
+        "reference_measurements": {
+            "inspection_status": "DETECTED",
+            "deposit_area_px": 2500.0,
+            "equivalent_diameter_px": 56.42,
+            "calibrated_diameter_mm": 0.564,
+            "circularity": 0.98,
+            "solidity": 0.98,
+            "convexity": 0.98,
+            "aspect_ratio": 1.0,
+            "hole_void_ratio": 0.0,
+            "bubble_count": 0,
+            "has_bubbles": False,
+            "coverage_ratio": 1.0,
+            "overflow_ratio": 0.0,
+            "segmentation_quality": 0.98,
+            "target_area_px": 2500.0,
+        },
+    }
+    reg2 = {
+        "roi_id": "site_02",
+        "current_measurements": {
+            "inspection_status": "DETECTED",
+            "deposit_area_px": 2480.0,
+            "equivalent_diameter_px": 56.19,
+            "calibrated_diameter_mm": None,
+            "circularity": 0.96,
+            "solidity": 0.98,
+            "convexity": 0.99,
+            "aspect_ratio": 1.01,
+            "hole_void_ratio": 0.0,
+            "bubble_count": 0,
+            "has_bubbles": False,
+            "coverage_ratio": 0.99,
+            "overflow_ratio": 0.0,
+            "segmentation_quality": 0.98,
+            "target_area_px": 2500.0,
+        },
+        "reference_measurements": None,
+    }
+
+    obs1 = ObservationModel()
+    obs1.id = 1
+    obs1.observation_id = "obs_img_1"
+    obs1.case_id = case_id
+    obs1.observation_type = "deposit_size"
+    obs1.value = "undersized"
+    obs1.statement_type = "AI_INFERENCE"
+    obs1.source = "IMAGE"
+    obs1.first_seen_revision = 1
+    obs1.created_at = datetime(2026, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
+    obs1.observation_metadata = {
+        "affected_roi_ids": ["site_01", "site_02"],
+        "region_evidence_scope": "individual_regions",
+        "applied_limits": {"target_area_px": 2500.0, "tolerance_pct": 10.0},
+        "region_evidence": [reg1, reg2],
+    }
+
+    # Group comparison observation
+    obs2 = ObservationModel()
+    obs2.id = 2
+    obs2.observation_id = "obs_img_2"
+    obs2.case_id = case_id
+    obs2.observation_type = "aspect_ratio"
+    obs2.value = "irregular"
+    obs2.statement_type = "AI_INFERENCE"
+    obs2.source = "IMAGE"
+    obs2.first_seen_revision = 1
+    obs2.created_at = datetime(2026, 9, 15, 10, 1, 0, tzinfo=timezone.utc)
+    obs2.observation_metadata = {
+        "affected_roi_ids": ["site_01", "site_02"],
+        "region_evidence_scope": "comparison_group",
+        "applied_limits": {"max_aspect_ratio": 1.25},
+        "region_evidence": [reg1],
+    }
+
+    # Non-image observations (must be excluded from image_observations)
+    obs3 = ObservationModel()
+    obs3.id = 3
+    obs3.observation_id = "obs_user_1"
+    obs3.case_id = case_id
+    obs3.observation_type = "deposit_size"
+    obs3.value = "inconsistent"
+    obs3.statement_type = "USER_OBSERVATION"
+    obs3.source = "USER"
+    obs3.first_seen_revision = 1
+    obs3.created_at = datetime(2026, 9, 15, 10, 2, 0, tzinfo=timezone.utc)
+    obs3.observation_metadata = {}
+
+    obs4 = ObservationModel()
+    obs4.id = 4
+    obs4.observation_id = "obs_sys_1"
+    obs4.case_id = case_id
+    obs4.observation_type = "runtime_pattern"
+    obs4.value = "normal"
+    obs4.statement_type = "SYSTEM_OBSERVATION"
+    obs4.source = "SYSTEM"
+    obs4.first_seen_revision = 1
+    obs4.created_at = datetime(2026, 9, 15, 10, 3, 0, tzinfo=timezone.utc)
+    obs4.observation_metadata = {}
+
+    mock_repo.get_case_observations.return_value = [obs1, obs2, obs3, obs4]
+
+    report = build_case_report(case_id, mock_repo)
+    assert report is not None
+    mock_repo.get_case_observations.assert_called_with(case_id, max_revision=1)
+
+    # Only obs1 and obs2 are projected
+    assert len(report.image_observations) == 2
+    img1 = report.image_observations[0]
+    assert img1.id == "obs_img_1"
+    assert img1.source == EvidenceSource.IMAGE
+    assert img1.metadata["region_evidence_scope"] == "individual_regions"
+    assert img1.metadata["affected_roi_ids"] == ["site_01", "site_02"]
+    assert img1.metadata["applied_limits"]["target_area_px"] == 2500.0
+    assert img1.metadata["region_evidence"][0]["roi_id"] == "site_01"
+    assert img1.metadata["region_evidence"][0]["current_measurements"]["inspection_status"] == "DETECTED"
+    assert img1.metadata["region_evidence"][0]["current_measurements"]["deposit_area_px"] == 1800.0
+    assert img1.metadata["region_evidence"][0]["reference_measurements"]["deposit_area_px"] == 2500.0
+    assert img1.metadata["region_evidence"][1]["roi_id"] == "site_02"
+    assert img1.metadata["region_evidence"][1]["current_measurements"]["inspection_status"] == "DETECTED"
+    assert img1.metadata["region_evidence"][1]["reference_measurements"] is None
+
+    img2 = report.image_observations[1]
+    assert img2.id == "obs_img_2"
+    assert img2.source == EvidenceSource.IMAGE
+    assert img2.metadata["region_evidence_scope"] == "comparison_group"
+
+
+def test_build_case_report_image_observations_later_revision_isolated():
+    case_id = "11111111-1111-4111-8111-111111111111"
+    mock_repo = MagicMock()
+    case_model = _make_dummy_case_model(case_id, issue_condition="UNRESOLVED")
+    mock_repo.get_case.return_value = case_model
+
+    rev1 = AnalysisRevisionModel()
+    rev1.revision_number = 1
+    rev1.analyzed_at = case_model.created_at
+    rev1.defect_code = case_model.defect_code
+    rev1.issue_condition = "UNRESOLVED"
+    rev1.result_snapshot = _make_dummy_diagnosis_snapshot(case_id, revision_number=1)
+    mock_repo.get_analysis_revision.return_value = rev1
+    mock_repo.get_case_question_answers.return_value = []
+    mock_repo.get_case_check_results.return_value = []
+    mock_repo.get_case_cause_confirmations.return_value = []
+    mock_repo.get_case_lifecycle_events.return_value = []
+
+    obs_rev1 = ObservationModel()
+    obs_rev1.id = 1
+    obs_rev1.observation_id = "obs_rev_1"
+    obs_rev1.source = "IMAGE"
+    obs_rev1.first_seen_revision = 1
+    obs_rev1.created_at = datetime(2026, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
+    obs_rev1.observation_metadata = {"affected_roi_ids": ["site_01"]}
+
+    obs_rev2 = ObservationModel()
+    obs_rev2.id = 2
+    obs_rev2.observation_id = "obs_rev_2"
+    obs_rev2.source = "IMAGE"
+    obs_rev2.first_seen_revision = 2
+    obs_rev2.created_at = datetime(2026, 9, 15, 10, 10, 0, tzinfo=timezone.utc)
+    obs_rev2.observation_metadata = {"affected_roi_ids": ["site_02"]}
+
+    # Even if mock repository returns both rev1 and rev2, report assembler isolates by max_revision
+    mock_repo.get_case_observations.return_value = [obs_rev1, obs_rev2]
+
+    report = build_case_report(case_id, mock_repo, pinned_revision=1)
+    assert report is not None
+    mock_repo.get_case_observations.assert_called_with(case_id, max_revision=1)
+
+    # obs_rev2 must be excluded because first_seen_revision > 1
+    assert len(report.image_observations) == 1
+    assert report.image_observations[0].id == "obs_rev_1"
+
+
+def test_build_case_report_image_observations_legacy_and_empty_metadata():
+    case_id = "11111111-1111-4111-8111-111111111111"
+    mock_repo = MagicMock()
+    case_model = _make_dummy_case_model(case_id, issue_condition="UNRESOLVED")
+    mock_repo.get_case.return_value = case_model
+
+    rev1 = AnalysisRevisionModel()
+    rev1.revision_number = 1
+    rev1.analyzed_at = case_model.created_at
+    rev1.defect_code = case_model.defect_code
+    rev1.issue_condition = "UNRESOLVED"
+    rev1.result_snapshot = _make_dummy_diagnosis_snapshot(case_id, revision_number=1)
+    mock_repo.get_latest_analysis_revision.return_value = rev1
+    mock_repo.get_case_question_answers.return_value = []
+    mock_repo.get_case_check_results.return_value = []
+    mock_repo.get_case_cause_confirmations.return_value = []
+    mock_repo.get_case_lifecycle_events.return_value = []
+
+    obs_legacy = ObservationModel()
+    obs_legacy.id = 1
+    obs_legacy.observation_id = "obs_legacy"
+    obs_legacy.source = "IMAGE"
+    obs_legacy.first_seen_revision = 1
+    obs_legacy.created_at = datetime(2026, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
+    obs_legacy.observation_metadata = None  # Legacy or null metadata
+
+    mock_repo.get_case_observations.return_value = [obs_legacy]
+
+    report = build_case_report(case_id, mock_repo)
+    assert report is not None
+    assert len(report.image_observations) == 1
+    assert report.image_observations[0].id == "obs_legacy"
+    assert report.image_observations[0].metadata == {}
+
+
+def test_pdf_numeric_formatting_helpers_and_finite_checks():
+    """Verify exception-safe finite number validation and numeric formatting."""
+    from app.services.reporting.pdf_generator import _fmt_num, _is_finite_number
+
+    assert _is_finite_number(42) is True
+    assert _is_finite_number(3.1415) is True
+    assert _is_finite_number(0) is True
+    assert _is_finite_number(0.0) is True
+    assert _is_finite_number(True) is False
+    assert _is_finite_number(False) is False
+    assert _is_finite_number(float("nan")) is False
+    assert _is_finite_number(float("inf")) is False
+    assert _is_finite_number(float("-inf")) is False
+    assert _is_finite_number("123") is False
+    assert _is_finite_number([1, 2]) is False
+    assert _is_finite_number({"val": 1}) is False
+    assert _is_finite_number(None) is False
+    # Oversized integer beyond float conversion
+    assert _is_finite_number(10**400) is False
+    assert _is_finite_number(-(10**400)) is False
+
+    assert _fmt_num(None) == "-"
+    assert _fmt_num("invalid") == "unavailable"
+    assert _fmt_num(True) == "unavailable"
+    assert _fmt_num(10**400) == "unavailable"
+    assert _fmt_num(42) == "42"
+    assert _fmt_num(3.14159) == "3.1416"

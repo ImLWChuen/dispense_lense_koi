@@ -9,6 +9,7 @@ and structured diagnostic image analysis responses.
 from __future__ import annotations
 
 from enum import Enum
+import math
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -27,6 +28,20 @@ class AnalysisStatus(str, Enum):
     CALIBRATED = "CALIBRATED"
     UNCALIBRATED = "UNCALIBRATED"
     UNRELIABLE = "UNRELIABLE"
+
+
+class RoiInspectionStatus(str, Enum):
+    """Observation reliability status for an individual ROI."""
+    DETECTED = "DETECTED"
+    MISSING = "MISSING"
+    UNASSESSED = "UNASSESSED"
+
+
+class InspectionCoverageStatus(str, Enum):
+    """Overall inspection coverage status across expected sites."""
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    NONE = "NONE"
 
 
 class NormalizedROI(BaseModel):
@@ -65,6 +80,21 @@ class PixelROI(BaseModel):
     y: int
     width: int
     height: int
+
+
+class NormalizedPoint(BaseModel):
+    """Normalized 2D point coordinate with values in [0.0, 1.0]."""
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(..., ge=0.0, le=1.0, description="X coordinate normalized to image width [0.0, 1.0]")
+    y: float = Field(..., ge=0.0, le=1.0, description="Y coordinate normalized to image height [0.0, 1.0]")
+
+    @field_validator("x", "y")
+    @classmethod
+    def validate_finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("Coordinate must be finite.")
+        return v
 
 
 class ProcessLimits(BaseModel):
@@ -223,6 +253,9 @@ class RoiMeasurement(BaseModel):
     bubble_details: list[dict[str, Any]] = Field(default_factory=list)
     segmentation_quality: float
     is_missing: bool = False
+    inspection_status: RoiInspectionStatus = Field(default=RoiInspectionStatus.UNASSESSED)
+    inspection_warnings: list[str] = Field(default_factory=list)
+    deposit_outline_normalized: list[NormalizedPoint] | None = Field(default=None)
 
 
 class AggregateMeasurements(BaseModel):
@@ -232,6 +265,10 @@ class AggregateMeasurements(BaseModel):
     mean_coverage: float | None = None
     size_cv: float | None = None
     missing_roi_ids: list[str] = Field(default_factory=list)
+    unassessed_roi_ids: list[str] = Field(default_factory=list)
+    expected_roi_count: int | None = None
+    assessed_roi_count: int | None = None
+    inspection_coverage_status: InspectionCoverageStatus | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -244,5 +281,6 @@ class ImageAnalysisResponse(BaseModel):
     image_dimensions: ImageDimensions
     roi_measurements: list[RoiMeasurement] = Field(default_factory=list)
     aggregate_measurements: AggregateMeasurements
+    reference_aggregate_measurements: AggregateMeasurements | None = Field(default=None)
     observations: list[Observation] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

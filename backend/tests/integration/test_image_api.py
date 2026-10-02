@@ -438,3 +438,747 @@ def test_image_analyze_defensible_empty_target_returns_calibrated_d04_missing(cl
     obs = data["observations"][0]
     assert obs["observation_type"] == "deposit_presence"
     assert obs["value"] == "missing"
+    assert data["roi_measurements"][0]["inspection_status"] == "MISSING"
+    assert data["roi_measurements"][0]["is_missing"] is True
+    assert data["aggregate_measurements"]["missing_roi_ids"] == ["r1"]
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_uniform_uninspectable_image_end_to_end(client: TestClient) -> None:
+    """Verifies that an uninspectable uniform image returns UNASSESSED status, no missing IDs, and no observations."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05, "min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("uninspectable.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    # Must NOT be mislabeled as missing deposit
+    assert data["aggregate_measurements"]["missing_roi_ids"] == []
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == ["r1"]
+    # Check region measurement
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "UNASSESSED"
+    assert m["is_missing"] is False
+    assert len(m["inspection_warnings"]) > 0
+    # Top-level warnings expose affected ROI ID and reason
+    assert any("r1" in w and "unassessed" in w for w in data["warnings"])
+
+
+def test_image_analyze_mixed_valid_and_unassessed_rois(client: TestClient) -> None:
+    """A mixed image preserves valid ROI measurement, excludes unassessed from aggregates, and conservatively gates observations."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image: Left side has a dark circular deposit; right side is completely flat/uniform
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (100, 100), 25, (30, 30, 30), -1)
+    mixed_img = encode_image(img)
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r_valid", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r_unassessed", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "process_limits": {"min_presence_ratio": 0.05, "min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("mixed.png", mixed_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # 1. Conservative gating: any unassessed region yields UNRELIABLE and zero observations in calibrated mode
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("r_unassessed" in w for w in data["warnings"])
+
+    # 2. Region measurements preserve individual valid details
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert "r_valid" in meas_by_id
+    assert "r_unassessed" in meas_by_id
+
+    m_valid = meas_by_id["r_valid"]
+    assert m_valid["inspection_status"] == "DETECTED"
+    assert m_valid["is_missing"] is False
+    assert m_valid["coverage_ratio"] > 0.15
+    assert m_valid["deposit_area_px"] > 0
+
+    m_unassessed = meas_by_id["r_unassessed"]
+    assert m_unassessed["inspection_status"] == "UNASSESSED"
+    assert m_unassessed["is_missing"] is False
+    assert len(m_unassessed["inspection_warnings"]) > 0
+
+    # 3. Aggregate measurements exclude unassessed from coverage and size CV, and report PARTIAL coverage
+    agg = data["aggregate_measurements"]
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == ["r_unassessed"]
+    assert agg["mean_coverage"] == pytest.approx(m_valid["coverage_ratio"], rel=1e-3)
+    assert agg["size_cv"] is None  # Only 1 valid deposit
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 1
+    assert agg["inspection_coverage_status"] == "PARTIAL"
+
+
+def test_image_analyze_features_only_uniform_uninspectable_image_exposes_warnings(client: TestClient) -> None:
+    """R1 regression: Real uniform FEATURES_ONLY image exposes top-level ROI ID and failure reason."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("uninspectable.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNCALIBRATED"
+    assert data["observations"] == []
+    assert data["aggregate_measurements"]["missing_roi_ids"] == []
+    assert data["aggregate_measurements"]["unassessed_roi_ids"] == ["r1"]
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "UNASSESSED"
+    # Top-level warnings must contain the ROI ID and the actual failure reason
+    assert any("r1" in w and "unassessed" in w and "Target and surroundings are both uniform" in w for w in data["warnings"])
+
+
+def test_image_analyze_detected_deposit_returns_bounded_outline_normalized(client: TestClient) -> None:
+    """Real synthetic off-center deposit emits valid bounded outer outline in normalized coords."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image with an off-center circular deposit at (300, 100), radius 25
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (300, 100), 25, (30, 30, 30), -1)
+    img_bytes = encode_image(img)
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_offcenter", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("offcenter.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r_offcenter"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["is_missing"] is False
+
+    outline = m["deposit_outline_normalized"]
+    assert outline is not None
+    assert 3 <= len(outline) <= 128
+
+    # All points are in [0, 1]
+    for pt in outline:
+        assert 0.0 <= pt["x"] <= 1.0
+        assert 0.0 <= pt["y"] <= 1.0
+
+    # Centroid of the outline should closely match the normalized center of the deposit (300/400=0.75, 100/200=0.5)
+    mean_x = sum(p["x"] for p in outline) / len(outline)
+    mean_y = sum(p["y"] for p in outline) / len(outline)
+    assert mean_x == pytest.approx(0.75, abs=0.03)
+    assert mean_y == pytest.approx(0.50, abs=0.03)
+
+
+def test_image_analyze_missing_and_unassessed_regions_emit_null_outlines(client: TestClient) -> None:
+    """MISSING and UNASSESSED regions strictly emit null deposit outlines."""
+    # 1. Defensible empty target (MISSING)
+    empty_img = create_empty_image(200)
+    profile_missing = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_empty", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_presence_ratio": 0.05},
+    }
+    resp1 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("empty.png", empty_img, "image/png")},
+        data={"profile": json.dumps(profile_missing)},
+    )
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["roi_measurements"][0]["inspection_status"] == "MISSING"
+    assert data1["roi_measurements"][0]["deposit_outline_normalized"] is None
+
+    # 2. Flat uniform uninspectable target (UNASSESSED)
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile_unassessed = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r_gray", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+    }
+    resp2 = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("gray.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile_unassessed)},
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["roi_measurements"][0]["inspection_status"] == "UNASSESSED"
+    assert data2["roi_measurements"][0]["deposit_outline_normalized"] is None
+
+
+def test_image_analyze_detected_region_with_unavailable_outline_exposes_warning_without_downgrade(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DETECTED region with unavailable outline remains DETECTED and CALIBRATED with top-level warning."""
+    import app.api.images as images_mod
+
+    # Monkeypatch extract_deposit_outline to simulate an outline failure on a DETECTED region
+    def mock_extract(*args, **kwargs):
+        return None, "ROI 'r1' deposit outline unavailable (simulated test omission)."
+
+    monkeypatch.setattr(images_mod, "extract_deposit_outline", mock_extract)
+
+    img_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("dot.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # Gating and status remain CALIBRATED; not downgraded to UNRELIABLE
+    assert data["status"] == "CALIBRATED"
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r1"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["deposit_outline_normalized"] is None
+    # Specific warning reaches top-level warnings
+    assert any("deposit outline unavailable (simulated test omission)" in w for w in data["warnings"])
+
+
+def test_image_analyze_detected_region_with_nonconsecutive_duplicate_vertices_warning(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R1 regression: Nonconsecutive duplicate vertices rejection keeps region DETECTED and CALIBRATED."""
+    import app.api.images as images_mod
+
+    def mock_extract(*args, **kwargs):
+        roi_id = kwargs.get("roi_id") or (args[5] if len(args) > 5 else "r_dup")
+        return None, f"ROI '{roi_id}' deposit outline unavailable (nonconsecutive duplicate vertices detected)."
+
+    monkeypatch.setattr(images_mod, "extract_deposit_outline", mock_extract)
+
+    img_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r_dup", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+        "process_limits": {"min_coverage_ratio": 0.10},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("dot.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+    m = data["roi_measurements"][0]
+    assert m["roi_id"] == "r_dup"
+    assert m["inspection_status"] == "DETECTED"
+    assert m["deposit_outline_normalized"] is None
+    assert any("nonconsecutive duplicate vertices detected" in w for w in m["inspection_warnings"])
+    assert any("nonconsecutive duplicate vertices detected" in w for w in data["warnings"])
+
+
+def test_image_analyze_multi_site_same_defect_preserves_all_affected_roi_ids(client: TestClient) -> None:
+    """Real synthetic multi-site image with same defect on 2 ROIs emits 1 observation with both affected IDs."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # 400x200 image with two small dots (radius 10) at (100, 100) and (300, 100)
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 10)],
+    )
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_left", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "site_right", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {"min_coverage_ratio": 0.05},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("multi_undersized.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    # Must emit exactly 1 observation for deposit_size=undersized
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    assert obs["observation_type"] == "deposit_size"
+    assert obs["value"] == "undersized"
+    assert obs["metadata"]["affected_roi_ids"] == ["site_left", "site_right"]
+    assert obs["metadata"]["roi_id"] == "site_left"
+
+
+def test_image_analyze_multi_site_different_defects_isolates_affected_roi_ids(client: TestClient) -> None:
+    """Real synthetic multi-site image with different defects on 2 ROIs isolates affected IDs per value."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    # 400x200 image: left dot small (radius 10), right dot large (radius 45)
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 45)],
+    )
+
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_small", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "site_large", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.03,
+            "max_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("multi_different.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    obs_by_val = {o["value"]: o for o in data["observations"]}
+    assert "undersized" in obs_by_val
+    assert "oversized" in obs_by_val
+    assert obs_by_val["undersized"]["metadata"]["affected_roi_ids"] == ["site_small"]
+    assert obs_by_val["oversized"]["metadata"]["affected_roi_ids"] == ["site_large"]
+
+
+def test_image_analyze_inspection_coverage_complete_with_detected_and_missing(client: TestClient) -> None:
+    """A multi-site image with detected and confirmed missing deposits yields COMPLETE inspection coverage."""
+    import cv2
+    import numpy as np
+
+    # 400x200 image:
+    # Left window [0.0..0.5]: target box [0.125, 0.25, 0.25, 0.5] has a dark circular deposit at (100, 100)
+    # Right window [0.5..1.0]: target box [0.625, 0.25, 0.25, 0.5] is empty, with fiducials inside window margin
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(img, (100, 100), 20, (30, 30, 30), -1)
+    for pt in [(240, 40), (360, 40), (240, 160), (360, 160)]:
+        cv2.circle(img, pt, 5, (60, 60, 60), -1)
+
+    img_bytes = encode_image(img)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r_detected", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r_missing", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "process_limits": {
+            "min_presence_ratio": 0.05,
+            "min_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("complete_mixed.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert meas_by_id["r_detected"]["inspection_status"] == "DETECTED"
+    assert meas_by_id["r_missing"]["inspection_status"] == "MISSING"
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == ["r_missing"]
+    assert agg["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_inspection_coverage_complete_all_detected(client: TestClient) -> None:
+    """A multi-site image with all sites reliably detected yields COMPLETE inspection coverage."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    img_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 20), (300, 100, 20)],
+    )
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r1", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "r2", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.01,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("complete.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    meas_by_id = {m["roi_id"]: m for m in data["roi_measurements"]}
+    assert meas_by_id["r1"]["inspection_status"] == "DETECTED"
+    assert meas_by_id["r2"]["inspection_status"] == "DETECTED"
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+
+
+def test_image_analyze_inspection_coverage_none_all_unassessed(client: TestClient) -> None:
+    """An all-unassessed image reports NONE coverage status and 0 assessed count with UNRELIABLE status."""
+    gray_img = encode_image(create_blank_image(200, 200, bg_color=128))
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.35, "height": 0.8},
+            {"roi_id": "r2", "x": 0.55, "y": 0.1, "width": 0.35, "height": 0.8},
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.10,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("all_unassessed.png", gray_img, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 0
+    assert agg["inspection_coverage_status"] == "NONE"
+    assert set(agg["unassessed_roi_ids"]) == {"r1", "r2"}
+    assert agg["missing_roi_ids"] == []
+
+
+def test_image_analyze_reference_mode_exposes_reference_aggregate(client: TestClient) -> None:
+    """REFERENCE_IMAGE mode exposes separate reference_aggregate_measurements alongside current aggregate."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    curr_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 20), (300, 100, 20)],
+    )
+    ref_bytes = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 30), (300, 100, 30)],
+    )
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [
+            {"roi_id": "r1", "x": 0.0, "y": 0.0, "width": 0.5, "height": 1.0},
+            {"roi_id": "r2", "x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0},
+        ],
+        "reference_limits": {
+            "min_reference_ratio": 0.3,
+            "max_reference_ratio": 1.5,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+
+    # Current aggregate describes current image
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+    assert agg["mean_coverage"] is not None
+
+    # Reference aggregate describes reference image
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 2
+    assert ref_agg["assessed_roi_count"] == 2
+    assert ref_agg["inspection_coverage_status"] == "COMPLETE"
+    assert ref_agg["missing_roi_ids"] == []
+    assert ref_agg["unassessed_roi_ids"] == []
+    assert ref_agg["mean_coverage"] is not None
+
+    # Distinct values verify aggregates are not swapped or merged (reference deposits are larger)
+    assert ref_agg["mean_coverage"] > agg["mean_coverage"]
+
+
+def test_image_analyze_non_reference_modes_return_null_reference_aggregate(client: TestClient) -> None:
+    """Non-reference modes explicitly serialize reference_aggregate_measurements as null."""
+    curr_bytes = create_centered_dot_image(size=200, dot_radius=25)
+
+    # FEATURES_ONLY mode
+    fo_profile = {
+        "mode": "FEATURES_ONLY",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+    }
+    fo_resp = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("curr.png", curr_bytes, "image/png")},
+        data={"profile": json.dumps(fo_profile)},
+    )
+    assert fo_resp.status_code == 200
+    fo_data = fo_resp.json()
+    assert "reference_aggregate_measurements" in fo_data
+    assert fo_data["reference_aggregate_measurements"] is None
+    assert fo_data["aggregate_measurements"] is not None
+
+    # PROCESS_LIMITS mode
+    pl_profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+        "process_limits": {"min_coverage_ratio": 0.05},
+    }
+    pl_resp = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("curr.png", curr_bytes, "image/png")},
+        data={"profile": json.dumps(pl_profile)},
+    )
+    assert pl_resp.status_code == 200
+    pl_data = pl_resp.json()
+    assert "reference_aggregate_measurements" in pl_data
+    assert pl_data["reference_aggregate_measurements"] is None
+    assert pl_data["aggregate_measurements"] is not None
+
+
+def test_image_analyze_reference_mode_unassessed_reference_image(client: TestClient) -> None:
+    """Reliable current image paired with unassessed reference reports UNRELIABLE with reference coverage failure."""
+    curr_bytes = create_centered_dot_image(size=200, dot_radius=25)
+    ref_bytes = encode_image(create_blank_image(200, 200, bg_color=128))
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [{"roi_id": "r1", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}],
+        "reference_limits": {"min_reference_ratio": 0.8, "max_reference_ratio": 1.2},
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("Reference ROI 'r1' is unassessed" in w for w in data["warnings"])
+
+    # Current aggregate is COMPLETE
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 1
+    assert agg["assessed_roi_count"] == 1
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["unassessed_roi_ids"] == []
+
+    # Reference aggregate exposes unassessed failure
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 1
+    assert ref_agg["assessed_roi_count"] == 0
+    assert ref_agg["inspection_coverage_status"] == "NONE"
+    assert ref_agg["unassessed_roi_ids"] == ["r1"]
+    assert ref_agg["missing_roi_ids"] == []
+
+
+def test_image_analyze_reference_mode_confirmed_missing_reference_deposit(client: TestClient) -> None:
+    """Confirmed missing reference deposit reports COMPLETE reference coverage but forces UNRELIABLE status."""
+    import cv2
+    import numpy as np
+
+    # Current image: 400x200 with 2 detected deposits
+    curr_img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(curr_img, (100, 100), 20, (30, 30, 30), -1)
+    cv2.circle(curr_img, (300, 100), 20, (30, 30, 30), -1)
+    curr_bytes = encode_image(curr_img)
+
+    # Reference image: 400x200 with detected deposit at r1, confirmed missing at r2 (surrounding fiducials)
+    ref_img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.circle(ref_img, (100, 100), 20, (30, 30, 30), -1)
+    for pt in [(240, 40), (360, 40), (240, 160), (360, 160)]:
+        cv2.circle(ref_img, pt, 5, (60, 60, 60), -1)
+    ref_bytes = encode_image(ref_img)
+
+    profile = {
+        "mode": "REFERENCE_IMAGE",
+        "rois": [
+            {"roi_id": "r1", "x": 0.125, "y": 0.25, "width": 0.25, "height": 0.5},
+            {"roi_id": "r2", "x": 0.625, "y": 0.25, "width": 0.25, "height": 0.5},
+        ],
+        "reference_limits": {
+            "min_reference_ratio": 0.8,
+            "max_reference_ratio": 1.2,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={
+            "file": ("current.png", curr_bytes, "image/png"),
+            "reference_file": ("ref.png", ref_bytes, "image/png"),
+        },
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "UNRELIABLE"
+    assert data["observations"] == []
+    assert any("Reference ROI 'r2' is missing; downgrading analysis." in w for w in data["warnings"])
+
+    # Current aggregate
+    agg = data["aggregate_measurements"]
+    assert agg["expected_roi_count"] == 2
+    assert agg["assessed_roi_count"] == 2
+    assert agg["inspection_coverage_status"] == "COMPLETE"
+    assert agg["missing_roi_ids"] == []
+    assert agg["unassessed_roi_ids"] == []
+
+    # Reference aggregate: assessed_roi_count is 2 (both DETECTED and MISSING are assessed), status is COMPLETE
+    ref_agg = data["reference_aggregate_measurements"]
+    assert ref_agg is not None
+    assert ref_agg["expected_roi_count"] == 2
+    assert ref_agg["assessed_roi_count"] == 2
+    assert ref_agg["inspection_coverage_status"] == "COMPLETE"
+    assert ref_agg["missing_roi_ids"] == ["r2"]
+    assert ref_agg["unassessed_roi_ids"] == []
+
+
+def test_image_analysis_response_legacy_payload_deserialization() -> None:
+    """Historical ImageAnalysisResponse JSON without reference_aggregate_measurements deserializes as None."""
+    from app.schemas.image import ImageAnalysisResponse
+
+    legacy_payload = {
+        "status": "UNCALIBRATED",
+        "mode": "FEATURES_ONLY",
+        "image_dimensions": {"width": 200, "height": 200},
+        "roi_measurements": [],
+        "aggregate_measurements": {
+            "mean_coverage": None,
+            "size_cv": None,
+            "missing_roi_ids": [],
+            "unassessed_roi_ids": [],
+            "expected_roi_count": 0,
+            "assessed_roi_count": 0,
+            "inspection_coverage_status": "NONE",
+            "warnings": [],
+        },
+        "observations": [],
+        "warnings": [],
+    }
+
+    resp = ImageAnalysisResponse.model_validate(legacy_payload)
+    assert resp.reference_aggregate_measurements is None
+
+    dumped = resp.model_dump(mode="json")
+    assert "reference_aggregate_measurements" in dumped
+    assert dumped["reference_aggregate_measurements"] is None
+
+
+def test_image_analyze_preserves_per_region_evidence_in_api_response(client: TestClient) -> None:
+    """API response preserves region_evidence_scope, applied_limits, and per-region snapshots."""
+    img_bytes = create_centered_dot_image(size=200, dot_radius=10)
+    profile = {
+        "mode": "PROCESS_LIMITS",
+        "rois": [
+            {"roi_id": "site_1", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}
+        ],
+        "process_limits": {
+            "min_coverage_ratio": 0.15,
+        },
+    }
+
+    response = client.post(
+        "/api/v1/images/analyze",
+        files={"file": ("test.png", img_bytes, "image/png")},
+        data={"profile": json.dumps(profile)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CALIBRATED"
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    meta = obs["metadata"]
+
+    assert meta["region_evidence_scope"] == "individual_regions"
+    assert meta["applied_limits"] == {"min_coverage_ratio": 0.15}
+    assert meta["affected_roi_ids"] == ["site_1"]
+
+    evidence = meta["region_evidence"]
+    assert len(evidence) == 1
+    assert evidence[0]["roi_id"] == "site_1"
+    assert evidence[0]["current_measurements"]["inspection_status"] == "DETECTED"
+    assert evidence[0]["current_measurements"]["coverage_ratio"] < 0.15
+    assert evidence[0]["reference_measurements"] is None

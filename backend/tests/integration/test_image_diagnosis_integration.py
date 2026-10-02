@@ -26,6 +26,7 @@ from app.schemas.diagnosis import (
     EvidenceSource,
     Observation,
     ObservationType,
+    StatementType,
     StructuredCase,
 )
 from app.services.diagnosis.engine import DiagnosticEngine
@@ -289,3 +290,147 @@ def test_calibrated_bubbles_identifies_d06():
     assert len(image_ev) >= 1
     assert image_ev[0].score_contribution > 0
 
+
+def test_multiple_sites_same_defect_produces_identical_diagnosis_score():
+    """Two sites with same defect emit one deduplicated observation with identical engine diagnosis scores."""
+    from tests.fixtures.synthetic_images import create_multi_roi_image
+
+    engine = DiagnosticEngine()
+
+    # 1. Single-site undersized dot
+    img_single = create_centered_dot_image(size=200, dot_radius=10)
+    profile_single = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[NormalizedROI(roi_id="r1", x=0.25, y=0.25, width=0.5, height=0.5)],
+        process_limits=ProcessLimits(min_coverage_ratio=0.15),
+    )
+    res_single = _run_vision_pipeline(img_single, profile_single)
+    assert len(res_single.observations) == 1
+    obs_single = res_single.observations[0]
+    assert obs_single.metadata["affected_roi_ids"] == ["r1"]
+
+    # 2. Multi-site (2 sites) both undersized
+    img_multi = create_multi_roi_image(
+        width=400,
+        height=200,
+        deposits=[(100, 100, 10), (300, 100, 10)],
+    )
+    profile_multi = AnalysisProfile(
+        mode=ImageAnalysisMode.PROCESS_LIMITS,
+        rois=[
+            NormalizedROI(roi_id="r1", x=0.0, y=0.0, width=0.5, height=1.0),
+            NormalizedROI(roi_id="r2", x=0.5, y=0.0, width=0.5, height=1.0),
+        ],
+        process_limits=ProcessLimits(min_coverage_ratio=0.05),
+    )
+    res_multi = _run_vision_pipeline(img_multi, profile_multi)
+    assert len(res_multi.observations) == 1
+    obs_multi = res_multi.observations[0]
+    assert obs_multi.metadata["affected_roi_ids"] == ["r1", "r2"]
+
+    # 3. Diagnose both cases
+    diag_single = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[obs_single]))
+    diag_multi = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[obs_multi]))
+
+    # Must produce exact identical scores and rankings
+    assert diag_single.defect == diag_multi.defect
+    assert len(diag_single.ranked_causes) == len(diag_multi.ranked_causes)
+    for c_s, c_m in zip(diag_single.ranked_causes, diag_multi.ranked_causes):
+        assert c_s.cause_id == c_m.cause_id
+        assert c_s.score == c_m.score
+        assert c_s.conclusion == c_m.conclusion
+        assert len(c_s.supporting_evidence) == len(c_m.supporting_evidence)
+
+
+def test_enriched_observation_diagnostic_parity_with_legacy_metadata() -> None:
+    """DiagnosticEngine produces exact identical scores, conclusions, and evidence counts for legacy vs enriched observations."""
+    engine = DiagnosticEngine()
+
+    # Legacy observation (only base metadata + affected_roi_ids, no snapshots)
+    legacy_meta = {
+        "roi_id": "r1",
+        "coverage_ratio": 0.02,
+        "overflow_ratio": 0.0,
+        "aspect_ratio": 1.0,
+        "circularity": 0.9,
+        "solidity": 0.95,
+        "bubble_count": 0,
+        "hole_void_ratio": 0.0,
+        "mode": "PROCESS_LIMITS",
+        "status": "CALIBRATED",
+        "affected_roi_ids": ["r1", "r2"],
+    }
+    legacy_obs = Observation(
+        observation_type=ObservationType.DEPOSIT_SIZE,
+        value="undersized",
+        source=EvidenceSource.IMAGE,
+        statement_type=StatementType.AI_INFERENCE,
+        metadata=legacy_meta,
+    )
+
+    # Enriched observation (additive snapshots, limits, and scope)
+    enriched_meta = dict(legacy_meta)
+    enriched_meta["region_evidence_scope"] = "individual_regions"
+    enriched_meta["applied_limits"] = {"min_coverage_ratio": 0.10}
+    enriched_meta["region_evidence"] = [
+        {
+            "roi_id": "r1",
+            "current_measurements": {
+                "inspection_status": "DETECTED",
+                "deposit_area_px": 50.0,
+                "target_area_px": 1000.0,
+                "coverage_ratio": 0.05,
+                "overflow_ratio": 0.0,
+                "equivalent_diameter_px": 8.0,
+                "calibrated_diameter_mm": None,
+                "circularity": 0.90,
+                "solidity": 0.95,
+                "convexity": 1.0,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.95,
+            },
+            "reference_measurements": None,
+        },
+        {
+            "roi_id": "r2",
+            "current_measurements": {
+                "inspection_status": "DETECTED",
+                "deposit_area_px": 80.0,
+                "target_area_px": 1000.0,
+                "coverage_ratio": 0.08,
+                "overflow_ratio": 0.0,
+                "equivalent_diameter_px": 10.0,
+                "calibrated_diameter_mm": None,
+                "circularity": 0.90,
+                "solidity": 0.95,
+                "convexity": 1.0,
+                "aspect_ratio": 1.0,
+                "hole_void_ratio": 0.0,
+                "bubble_count": 0,
+                "has_bubbles": False,
+                "segmentation_quality": 0.95,
+            },
+            "reference_measurements": None,
+        },
+    ]
+    enriched_obs = Observation(
+        observation_type=ObservationType.DEPOSIT_SIZE,
+        value="undersized",
+        source=EvidenceSource.IMAGE,
+        statement_type=StatementType.AI_INFERENCE,
+        metadata=enriched_meta,
+    )
+
+    diag_legacy = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[legacy_obs]))
+    diag_enriched = engine.diagnose(StructuredCase(defect_code="D01_TOO_LITTLE", observations=[enriched_obs]))
+
+    assert diag_legacy.defect == diag_enriched.defect
+    assert len(diag_legacy.ranked_causes) == len(diag_enriched.ranked_causes)
+    for c_leg, c_enr in zip(diag_legacy.ranked_causes, diag_enriched.ranked_causes):
+        assert c_leg.cause_id == c_enr.cause_id
+        assert c_leg.score == c_enr.score
+        assert c_leg.conclusion == c_enr.conclusion
+        assert len(c_leg.supporting_evidence) == len(c_enr.supporting_evidence)

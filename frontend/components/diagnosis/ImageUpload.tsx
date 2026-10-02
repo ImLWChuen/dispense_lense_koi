@@ -8,7 +8,6 @@ import {
     Loader2,
     CheckCircle2,
     AlertCircle,
-    Info,
     ChevronDown,
     ChevronUp,
     Play,
@@ -17,6 +16,13 @@ import {
 } from "lucide-react";
 import ImageRoiEditor from "./ImageRoiEditor";
 import ImageCalibrationPanel from "./ImageCalibrationPanel";
+import RegionInspectionPanel from "./RegionInspectionPanel";
+import RegionLayoutControls from "./RegionLayoutControls";
+import {
+    getEffectiveRoiStatus,
+    formatMetricNumber,
+    formatMetricPercent,
+} from "@/lib/region-inspection-view";
 import { imagesApi } from "@/lib/api/images";
 import {
     AnalysisProfile,
@@ -33,8 +39,16 @@ import {
     reconfigureUpload,
     removeUploadItem,
     cleanupControllerEntry,
+    confirmRegionPlacement,
+    abandonImportedLayout,
+    ImportCoordinator,
+    beginRegionLayoutImport,
+    beginRegionLayoutFileSelection,
+    clearRegionLayoutImport,
+    startCoordinatedImport,
     type InFlightController,
 } from "@/lib/image-upload-state";
+import { MAX_LAYOUT_FILE_BYTES, parseRegionLayout } from "@/lib/region-layout";
 
 export { validateAnalysisConfiguration } from "@/lib/image-upload-state";
 
@@ -51,19 +65,45 @@ export default function ImageUpload({
     isFullWidth = false,
 }: ImageUploadProps) {
     const [uploads, setUploads] = useState<UploadSnapshot>({});
+    const [selectedRoiByUpload, setSelectedRoiByUpload] = useState<Record<string, string | null>>({});
+    const [previewDimensions, setPreviewDimensions] = useState<Record<string, { width: number; height: number }>>({});
+    const [layoutErrors, setLayoutErrors] = useState<Record<string, string | null>>({});
     const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
     const [studioUploadId, setStudioUploadId] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [globalError, setGlobalError] = useState<string | null>(null);
 
+    const handleSelectRoi = useCallback((uploadId: string, roiId: string | null) => {
+        setSelectedRoiByUpload((prev) => ({
+            ...prev,
+            [uploadId]: roiId,
+        }));
+    }, []);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const controllersRef = useRef<Record<string, InFlightController>>({});
+    const importCoordinatorRef = useRef<ImportCoordinator>(new ImportCoordinator());
     const nextTokenRef = useRef<number>(1);
     const uploadsRef = useRef<UploadSnapshot>({});
 
     // Keep uploadsRef updated outside of render
     useEffect(() => {
         uploadsRef.current = uploads;
+    }, [uploads]);
+
+    // Finalize non-state effects only after React exposes the accepted import state.
+    // State updater callbacks remain pure even when React replays them.
+    useEffect(() => {
+        for (const item of Object.values(uploads)) {
+            if (importCoordinatorRef.current.finalizeCommittedImport(item)) {
+                const pending = controllersRef.current[item.id];
+                if (pending) {
+                    delete controllersRef.current[item.id];
+                    pending.controller.abort();
+                }
+            }
+        }
+        importCoordinatorRef.current.cancelStaleImports(uploads);
     }, [uploads]);
 
     // Sync snapshot to parent whenever uploads change
@@ -73,7 +113,11 @@ export default function ImageUpload({
         if (onAnalysisComplete) {
             const allObs: unknown[] = [];
             Object.values(uploads).forEach((u) => {
-                if (u.status === "analyzed" && u.result?.status === "CALIBRATED") {
+                if (
+                    u.status === "analyzed" &&
+                    u.result?.status === "CALIBRATED" &&
+                    (!u.importedLayout || u.importedLayout.confirmed)
+                ) {
                     allObs.push(...u.result.observations);
                 }
             });
@@ -81,9 +125,11 @@ export default function ImageUpload({
         }
     }, [uploads, onSnapshotChange, onAnalysisComplete]);
 
-    // Cleanup all object URLs and abort pending requests on unmount
+    // Cleanup all object URLs, abort pending requests, and cancel in-flight imports on unmount
     useEffect(() => {
+        const coordinator = importCoordinatorRef.current;
         return () => {
+            coordinator.cancelAll();
             Object.values(controllersRef.current).forEach((req) => req.controller.abort());
             controllersRef.current = {};
             Object.values(uploadsRef.current).forEach((item) => {
@@ -160,6 +206,116 @@ export default function ImageUpload({
         }
     };
 
+    const handleDimensionsChange = useCallback((uploadId: string, dims: { width: number; height: number }) => {
+        setPreviewDimensions((prev) => {
+            if (prev[uploadId]?.width === dims.width && prev[uploadId]?.height === dims.height) {
+                return prev;
+            }
+            return {
+                ...prev,
+                [uploadId]: dims,
+            };
+        });
+    }, []);
+
+    const handleSelectLayoutFile = useCallback((uploadId: string, file: File) => {
+        // Invalidate any pending import session immediately on any new file selection,
+        // before any file validation or early return.
+        const isWithinSizeLimit = beginRegionLayoutFileSelection(
+            importCoordinatorRef.current,
+            uploadId,
+            file.size,
+            MAX_LAYOUT_FILE_BYTES
+        );
+        setUploads((prev) => clearRegionLayoutImport(prev, uploadId));
+        if (!isWithinSizeLimit) {
+            setLayoutErrors((prev) => ({
+                ...prev,
+                [uploadId]: `File "${file.name}" rejected: payload (${(file.size / 1024).toFixed(1)} KiB) exceeds maximum 256 KiB limit.`,
+            }));
+            return;
+        }
+
+        const currentItem = uploadsRef.current[uploadId];
+        if (!currentItem) return;
+
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
+
+        startCoordinatedImport(
+            importCoordinatorRef.current,
+            uploadId,
+            currentItem.configRevision,
+            (onSuccess, onError) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target?.result;
+                    if (typeof text === "string") {
+                        onSuccess(text);
+                    } else {
+                        onError(new Error("File content is not text"));
+                    }
+                };
+                reader.onerror = () => onError(new Error("FileReader error"));
+                reader.readAsText(file, "utf-8");
+                return () => {
+                    try {
+                        reader.abort();
+                    } catch {
+                        // Ignore
+                    }
+                };
+            },
+            {
+                getCurrentUpload: () => uploadsRef.current[uploadId],
+                onStart: (token, expectedRevision) => {
+                    setUploads((prev) => beginRegionLayoutImport(prev, uploadId, token, expectedRevision));
+                },
+                onCommit: (token, layout, expectedRevision, startedAt) => {
+                    const latest = uploadsRef.current[uploadId];
+                    if (!importCoordinatorRef.current.canCommitImport(latest, token)) return;
+                    const pending = controllersRef.current[uploadId];
+                    if (pending) {
+                        delete controllersRef.current[uploadId];
+                        pending.controller.abort();
+                    }
+                    setLayoutErrors((errPrev) => ({ ...errPrev, [uploadId]: null }));
+                    setUploads((prev) => {
+                        const res = importCoordinatorRef.current.commitImport(
+                            prev,
+                            uploadId,
+                            token,
+                            layout,
+                            expectedRevision,
+                            startedAt
+                        );
+                        return res.committed ? res.nextState : prev;
+                    });
+                },
+                onError: (msg, token) => {
+                    setUploads((prev) => clearRegionLayoutImport(prev, uploadId, token));
+                    setLayoutErrors((prev) => ({ ...prev, [uploadId]: msg }));
+                },
+                parseLayout: parseRegionLayout,
+            }
+        );
+    }, []);
+
+    const handleConfirmPlacement = useCallback((uploadId: string) => {
+        const dims = previewDimensions[uploadId] || null;
+        const confirmedAt = new Date().toISOString();
+        setUploads((prev) => confirmRegionPlacement(prev, uploadId, dims, confirmedAt));
+    }, [previewDimensions]);
+
+    const handleAbandonLayout = useCallback((uploadId: string) => {
+        importCoordinatorRef.current.cancelImport(uploadId);
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
+        setUploads((prev) => abandonImportedLayout(prev, uploadId));
+    }, []);
+
+    const handleLayoutError = useCallback((uploadId: string, error: string | null) => {
+        setLayoutErrors((prev) => ({ ...prev, [uploadId]: error }));
+    }, []);
+
     const handleRunAnalysis = async (uploadId: string) => {
         const item = uploadsRef.current[uploadId] || uploads[uploadId];
         if (!item) return;
@@ -186,6 +342,24 @@ export default function ImageUpload({
         const uploadId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         const previewUrl = URL.createObjectURL(file);
 
+        // Decode image dimensions eagerly from previewUrl with cleanup
+        const img = new Image();
+        img.onload = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setPreviewDimensions((prev) => ({
+                    ...prev,
+                    [uploadId]: { width: img.naturalWidth, height: img.naturalHeight },
+                }));
+            }
+            img.onload = null;
+            img.onerror = null;
+        };
+        img.onerror = () => {
+            img.onload = null;
+            img.onerror = null;
+        };
+        img.src = previewUrl;
+
         // Initialize with calibrated defaults so visual defect evidence is ready immediately
         const newItem: UploadItem = {
             id: uploadId,
@@ -195,7 +369,7 @@ export default function ImageUpload({
             mode: "PROCESS_LIMITS",
             rois: [
                 {
-                    roi_id: "roi_1",
+                    roi_id: "dot-1",
                     x: 0.15,
                     y: 0.15,
                     width: 0.70,
@@ -255,6 +429,9 @@ export default function ImageUpload({
             pending.controller.abort();
         }
 
+        // Invalidate any pending layout import session and abort its reader
+        importCoordinatorRef.current.cancelImport(uploadId);
+
         const item = uploads[uploadId];
         if (item) {
             if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
@@ -262,6 +439,24 @@ export default function ImageUpload({
         }
 
         setUploads((prev) => removeUploadItem(prev, uploadId));
+        setSelectedRoiByUpload((prev) => {
+            if (!(uploadId in prev)) return prev;
+            const next = { ...prev };
+            delete next[uploadId];
+            return next;
+        });
+        setPreviewDimensions((prev) => {
+            if (!(uploadId in prev)) return prev;
+            const next = { ...prev };
+            delete next[uploadId];
+            return next;
+        });
+        setLayoutErrors((prev) => {
+            if (!(uploadId in prev)) return prev;
+            const next = { ...prev };
+            delete next[uploadId];
+            return next;
+        });
 
         if (expandedUploadId === uploadId) {
             setExpandedUploadId(null);
@@ -280,6 +475,9 @@ export default function ImageUpload({
                 delete controllersRef.current[uploadId];
                 pending.controller.abort();
             }
+
+            // Invalidate any pending layout import session and abort its reader
+            importCoordinatorRef.current.cancelImport(uploadId);
 
             setUploads((prev) => reconfigureUpload(prev, uploadId, updates));
         },
@@ -467,24 +665,37 @@ export default function ImageUpload({
 
                                     {/* Action Row */}
                                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 pt-2.5">
-                                        <button
-                                            type="button"
-                                            disabled={isAnalyzing}
-                                            onClick={() => handleRunAnalysis(item.id)}
-                                            className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition hover:bg-[#5848e8] disabled:opacity-50"
-                                        >
-                                            {isAnalyzing ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" />
-                                                    <span>Analyzing...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Play size={14} />
-                                                    <span>Analyze</span>
-                                                </>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                disabled={isAnalyzing || Boolean(item.importedLayout && !item.importedLayout.confirmed)}
+                                                onClick={() => handleRunAnalysis(item.id)}
+                                                title={
+                                                    Boolean(item.importedLayout && !item.importedLayout.confirmed)
+                                                        ? "Confirm region placement before running analysis"
+                                                        : undefined
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-xl bg-[#6d5dfc] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition hover:bg-[#5848e8] disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isAnalyzing ? (
+                                                    <>
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        <span>Analyzing...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play size={14} />
+                                                        <span>Analyze</span>
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            {item.importedLayout && !item.importedLayout.confirmed && (
+                                                <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                                                    Placement confirmation required
+                                                </span>
                                             )}
-                                        </button>
+                                        </div>
 
                                         {item.result?.observations && item.result.observations.length > 0 && (
                                             <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#eeebff] dark:bg-[#6d5dfc]/20 px-2.5 py-1 text-xs font-semibold text-[#5848e8] dark:text-[#a397ff] border border-[#dcd6ff] dark:border-[#6d5dfc]/40">
@@ -508,6 +719,17 @@ export default function ImageUpload({
                                         <div className={isFullWidth ? "grid grid-cols-1 xl:grid-cols-12 gap-8 items-start" : "space-y-6"}>
                                             {/* ROI Editor */}
                                             <div className={isFullWidth ? "xl:col-span-7 space-y-5" : "space-y-5"}>
+                                                <RegionLayoutControls
+                                                    uploadItem={item}
+                                                    targetDimensions={previewDimensions[item.id] || null}
+                                                    isAnalyzing={isAnalyzing}
+                                                    onSelectFile={(file) => handleSelectLayoutFile(item.id, file)}
+                                                    onConfirmPlacement={() => handleConfirmPlacement(item.id)}
+                                                    onAbandonLayout={() => handleAbandonLayout(item.id)}
+                                                    onLayoutError={(err) => handleLayoutError(item.id, err)}
+                                                    layoutError={layoutErrors[item.id]}
+                                                />
+
                                                 <ImageRoiEditor
                                                     imageUrl={item.previewUrl}
                                                     rois={item.rois}
@@ -515,7 +737,11 @@ export default function ImageUpload({
                                                     onChange={(newRois) =>
                                                         updateUploadConfig(item.id, { rois: newRois })
                                                     }
+                                                    onDimensionsChange={(dims) => handleDimensionsChange(item.id, dims)}
                                                     onExpandStudio={() => setStudioUploadId(item.id)}
+                                                    selectedRoiId={selectedRoiByUpload[item.id] ?? null}
+                                                    onSelectRoi={(roiId) => handleSelectRoi(item.id, roiId)}
+                                                    result={item.result}
                                                 />
                                             </div>
 
@@ -555,185 +781,17 @@ export default function ImageUpload({
                                             </div>
                                         </div>
 
-                                        {/* Returned Analysis Results */}
+                                        {/* Returned Analysis Results: Region Inspection Workbench */}
                                         {item.result && (
-                                            <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 sm:p-4">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-xs font-semibold text-gray-800">
-                                                        Analysis Results
-                                                    </span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span
-                                                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                                                item.result.status === "CALIBRATED"
-                                                                    ? "bg-green-100 text-green-800"
-                                                                    : item.result.status === "UNCALIBRATED"
-                                                                    ? "bg-blue-100 text-blue-800"
-                                                                    : "bg-amber-100 text-amber-800"
-                                                            }`}
-                                                        >
-                                                            {item.result.status}
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setStudioUploadId(item.id)}
-                                                            className="rounded p-1 text-gray-500 hover:text-[#6d5dfc] hover:bg-white transition"
-                                                            title="View in CV Studio"
-                                                        >
-                                                            <Maximize2 size={13} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {item.result.status === "CALIBRATED" && (
-                                                    <div className="flex items-start gap-1.5 rounded-lg bg-green-50 p-2 text-xs text-green-800">
-                                                        <CheckCircle2 size={14} className="shrink-0 text-green-600 mt-0.5" />
-                                                        <span>
-                                                            Calibrated evidence produced:{" "}
-                                                            {item.result.observations.length} canonical observation(s)
-                                                            ready to attach to diagnosis.
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {item.result.status === "UNCALIBRATED" && (
-                                                    <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 p-2 text-xs text-blue-800">
-                                                        <Info size={14} className="shrink-0 text-blue-600 mt-0.5" />
-                                                        <span>
-                                                            Pure geometric features extracted. No diagnostic observations
-                                                            will be attached to case (FEATURES_ONLY mode).
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {item.result.status === "UNRELIABLE" && (
-                                                    <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-                                                        <AlertCircle size={14} className="shrink-0 text-amber-600 mt-0.5" />
-                                                        <span>
-                                                            Ambiguous or unsegmentable image. Results are kept as measurements
-                                                            only and emit 0 diagnostic observations.
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {/* Quick summary metric cards for compact view */}
-                                                {item.result.roi_measurements.length > 0 && (
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                        <div className="rounded-lg border border-gray-200 bg-white p-2">
-                                                            <span className="block text-[10px] font-medium text-gray-500">Coverage</span>
-                                                            <span className="text-xs sm:text-sm font-bold text-gray-900">
-                                                                {(item.result.roi_measurements[0].coverage_ratio * 100).toFixed(1)}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="rounded-lg border border-gray-200 bg-white p-2">
-                                                            <span className="block text-[10px] font-medium text-gray-500">Overflow</span>
-                                                            <span className="text-xs sm:text-sm font-bold text-gray-900">
-                                                                {(item.result.roi_measurements[0].overflow_ratio * 100).toFixed(1)}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="rounded-lg border border-gray-200 bg-white p-2">
-                                                            <span className="block text-[10px] font-medium text-gray-500">
-                                                                {item.mmPerPixel ? "Calibrated Dia" : "Equiv Dia"}
-                                                            </span>
-                                                            <span className="text-xs sm:text-sm font-bold text-[#5848e8]">
-                                                                {item.mmPerPixel && item.result.roi_measurements[0].calibrated_diameter_mm !== null && item.result.roi_measurements[0].calibrated_diameter_mm !== undefined
-                                                                    ? `${item.result.roi_measurements[0].calibrated_diameter_mm.toFixed(3)} mm`
-                                                                    : `${item.result.roi_measurements[0].equivalent_diameter_px.toFixed(1)} px`}
-                                                            </span>
-                                                        </div>
-                                                        <div className="rounded-lg border border-gray-200 bg-white p-2">
-                                                            <span className="block text-[10px] font-medium text-gray-500">Quality</span>
-                                                            <span className="text-xs sm:text-sm font-bold text-emerald-600">
-                                                                {(item.result.roi_measurements[0].segmentation_quality * 100).toFixed(0)}%
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* ROI Measurements Table with Clean Horizontal Scroll */}
-                                                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-2xs">
-                                                    <table className="w-full text-left text-xs min-w-[540px]">
-                                                        <thead>
-                                                            <tr className="border-b border-gray-200 bg-gray-50/70 text-gray-500">
-                                                                <th className="py-2 px-2.5 font-medium">ROI</th>
-                                                                <th className="py-2 px-2.5 font-medium">Coverage</th>
-                                                                <th className="py-2 px-2.5 font-medium">Overflow</th>
-                                                                <th className="py-2 px-2.5 font-medium">Equiv Dia</th>
-                                                                {item.mmPerPixel && (
-                                                                    <th className="py-2 px-2.5 font-medium">Calibrated Dia</th>
-                                                                )}
-                                                                <th className="py-2 px-2.5 font-medium">Shape (Circ / AR)</th>
-                                                                <th className="py-2 px-2.5 font-medium">Bubbles</th>
-                                                                <th className="py-2 px-2.5 font-medium">Quality</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-100 text-gray-700">
-                                                            {item.result.roi_measurements.map((rm) => (
-                                                                <tr key={rm.roi_id} className="hover:bg-gray-50/50">
-                                                                    <td className="py-1.5 px-2.5 font-semibold text-[#5848e8]">
-                                                                        {rm.roi_id}
-                                                                    </td>
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        {(rm.coverage_ratio * 100).toFixed(1)}%
-                                                                    </td>
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        {(rm.overflow_ratio * 100).toFixed(1)}%
-                                                                    </td>
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        {rm.equivalent_diameter_px.toFixed(1)} px
-                                                                    </td>
-                                                                    {item.mmPerPixel && (
-                                                                        <td className="py-1.5 px-2.5">
-                                                                            {rm.calibrated_diameter_mm !== null &&
-                                                                            rm.calibrated_diameter_mm !== undefined
-                                                                                ? `${rm.calibrated_diameter_mm.toFixed(3)} mm`
-                                                                                : "-"}
-                                                                        </td>
-                                                                    )}
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        <span>
-                                                                            {(rm.circularity * 100).toFixed(0)}% circ · {rm.aspect_ratio.toFixed(2)} AR
-                                                                        </span>
-                                                                        {rm.is_tailing ? (
-                                                                            <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
-                                                                                Tailing
-                                                                            </span>
-                                                                        ) : rm.is_abnormal_shape ? (
-                                                                            <span className="ml-1 rounded bg-rose-100 px-1 py-0.5 text-[10px] font-medium text-rose-800">
-                                                                                Abnormal
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </td>
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        {(rm.bubble_count ?? 0) > 0 || rm.has_bubbles ? (
-                                                                            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                                                                                {rm.bubble_count ?? 1} void(s)
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-gray-400">0</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="py-1.5 px-2.5">
-                                                                        {(rm.segmentation_quality * 100).toFixed(0)}%
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-
-                                                {/* Warnings */}
-                                                {item.result.warnings.length > 0 && (
-                                                    <div className="space-y-1 text-[11px] text-amber-700">
-                                                        {item.result.warnings.map((w, idx) => (
-                                                            <div key={idx} className="flex items-start gap-1">
-                                                                <span>&bull;</span>
-                                                                <span>{w}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <RegionInspectionPanel
+                                                rois={item.rois}
+                                                result={item.result}
+                                                selectedRoiId={selectedRoiByUpload[item.id] ?? null}
+                                                onSelectRoi={(roiId) => handleSelectRoi(item.id, roiId)}
+                                                mode={item.mode}
+                                                mmPerPixel={item.mmPerPixel}
+                                                onOpenStudio={() => setStudioUploadId(item.id)}
+                                            />
                                         )}
                                     </div>
                                 )}
@@ -771,9 +829,17 @@ export default function ImageUpload({
                             <div className="flex items-center gap-2 shrink-0">
                                 <button
                                     type="button"
-                                    disabled={studioItem.status === "analyzing"}
+                                    disabled={
+                                        studioItem.status === "analyzing" ||
+                                        Boolean(studioItem.importedLayout && !studioItem.importedLayout.confirmed)
+                                    }
                                     onClick={() => handleRunAnalysis(studioItem.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#5848e8] transition disabled:opacity-50"
+                                    title={
+                                        Boolean(studioItem.importedLayout && !studioItem.importedLayout.confirmed)
+                                            ? "Confirm region placement before running analysis"
+                                            : undefined
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#5848e8] transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {studioItem.status === "analyzing" ? (
                                         <>
@@ -803,13 +869,28 @@ export default function ImageUpload({
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                 {/* Left: Interactive Canvas */}
                                 <div className="lg:col-span-7 space-y-4">
-                                    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
+                                    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs space-y-4">
+                                        <RegionLayoutControls
+                                            uploadItem={studioItem}
+                                            targetDimensions={previewDimensions[studioItem.id] || null}
+                                            isAnalyzing={studioItem.status === "analyzing"}
+                                            onSelectFile={(file) => handleSelectLayoutFile(studioItem.id, file)}
+                                            onConfirmPlacement={() => handleConfirmPlacement(studioItem.id)}
+                                            onAbandonLayout={() => handleAbandonLayout(studioItem.id)}
+                                            onLayoutError={(err) => handleLayoutError(studioItem.id, err)}
+                                            layoutError={layoutErrors[studioItem.id]}
+                                        />
+
                                         <ImageRoiEditor
                                             imageUrl={studioItem.previewUrl}
                                             rois={studioItem.rois}
                                             disabled={studioItem.status === "analyzing"}
                                             onChange={(newRois) => updateUploadConfig(studioItem.id, { rois: newRois })}
+                                            onDimensionsChange={(dims) => handleDimensionsChange(studioItem.id, dims)}
                                             isStudioMode={true}
+                                            selectedRoiId={selectedRoiByUpload[studioItem.id] ?? null}
+                                            onSelectRoi={(roiId) => handleSelectRoi(studioItem.id, roiId)}
+                                            result={studioItem.result}
                                         />
                                     </div>
                                 </div>
@@ -838,45 +919,17 @@ export default function ImageUpload({
                                         }}
                                     />
 
-                                    {/* Analysis results in Studio view */}
+                                    {/* Analysis results in Studio view: Shared Region Inspection Workbench */}
                                     {studioItem.result && (
-                                        <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-semibold text-gray-800">
-                                                    OpenCV Defect Findings
-                                                </span>
-                                                <span
-                                                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                                                        studioItem.result.status === "CALIBRATED"
-                                                            ? "bg-green-100 text-green-800"
-                                                            : studioItem.result.status === "UNCALIBRATED"
-                                                            ? "bg-blue-100 text-blue-800"
-                                                            : "bg-amber-100 text-amber-800"
-                                                    }`}
-                                                >
-                                                    {studioItem.result.status}
-                                                </span>
-                                            </div>
-
-                                            {studioItem.result.observations.length > 0 && (
-                                                <div className="space-y-1.5">
-                                                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                                        Canonical Diagnostic Observations
-                                                    </p>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {studioItem.result.observations.map((obs, idx) => (
-                                                            <span
-                                                                key={idx}
-                                                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#eeebff] px-2.5 py-1 text-xs font-semibold text-[#5848e8] border border-[#dcd6ff]"
-                                                            >
-                                                                <span className="h-1.5 w-1.5 rounded-full bg-[#6d5dfc]" />
-                                                                {obs.observation_type} = {obs.value}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <RegionInspectionPanel
+                                            rois={studioItem.rois}
+                                            result={studioItem.result}
+                                            selectedRoiId={selectedRoiByUpload[studioItem.id] ?? null}
+                                            onSelectRoi={(roiId) => handleSelectRoi(studioItem.id, roiId)}
+                                            mode={studioItem.mode}
+                                            mmPerPixel={studioItem.mmPerPixel}
+                                            isStudioMode={true}
+                                        />
                                     )}
                                 </div>
                             </div>
@@ -892,6 +945,7 @@ export default function ImageUpload({
                                             <thead>
                                                 <tr className="border-b border-gray-200 bg-gray-50 text-gray-600">
                                                     <th className="py-2 px-3 font-semibold">ROI ID</th>
+                                                    <th className="py-2 px-3 font-semibold">Inspection Status</th>
                                                     <th className="py-2 px-3 font-semibold">Coverage</th>
                                                     <th className="py-2 px-3 font-semibold">Overflow</th>
                                                     <th className="py-2 px-3 font-semibold">Equiv Dia (px)</th>
@@ -906,60 +960,101 @@ export default function ImageUpload({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 text-gray-700">
-                                                {studioItem.result.roi_measurements.map((rm) => (
-                                                    <tr key={rm.roi_id} className="hover:bg-gray-50">
-                                                        <td className="py-2 px-3 font-bold text-[#5848e8]">
-                                                            {rm.roi_id}
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {(rm.coverage_ratio * 100).toFixed(1)}%
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {(rm.overflow_ratio * 100).toFixed(1)}%
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {rm.equivalent_diameter_px.toFixed(1)} px
-                                                        </td>
-                                                        {studioItem.mmPerPixel && (
-                                                            <td className="py-2 px-3 font-semibold text-gray-900">
-                                                                {rm.calibrated_diameter_mm !== null && rm.calibrated_diameter_mm !== undefined
-                                                                    ? `${rm.calibrated_diameter_mm.toFixed(3)} mm`
-                                                                    : "-"}
+                                                {studioItem.result.roi_measurements.map((rm) => {
+                                                    const statusInfo = getEffectiveRoiStatus(rm, true);
+                                                    const isSelected = selectedRoiByUpload[studioItem.id] === rm.roi_id;
+
+                                                    return (
+                                                        <tr
+                                                            key={rm.roi_id}
+                                                            tabIndex={0}
+                                                            role="button"
+                                                            aria-label={`Select ROI ${rm.roi_id}`}
+                                                            onClick={() => handleSelectRoi(studioItem.id, isSelected ? null : rm.roi_id)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === "Enter" || e.key === " ") {
+                                                                    e.preventDefault();
+                                                                    handleSelectRoi(studioItem.id, isSelected ? null : rm.roi_id);
+                                                                }
+                                                            }}
+                                                            className={`cursor-pointer transition ${
+                                                                isSelected
+                                                                    ? "bg-[#eeebff] dark:bg-[#6d5dfc]/20 font-medium"
+                                                                    : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                                                            }`}
+                                                        >
+                                                            <td className="py-2 px-3 font-bold text-[#5848e8]">
+                                                                {rm.roi_id}
                                                             </td>
-                                                        )}
-                                                        <td className="py-2 px-3">
-                                                            {(rm.circularity * 100).toFixed(1)}%
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {rm.aspect_ratio.toFixed(2)}
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {rm.is_tailing ? (
-                                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
-                                                                    Tailing Detected
+                                                            <td className="py-2 px-3">
+                                                                <span
+                                                                    className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                                                                        statusInfo.status === "DETECTED"
+                                                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                                            : statusInfo.status === "MISSING"
+                                                                            ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                                                            : statusInfo.status === "UNASSESSED"
+                                                                            ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                                                            : "bg-gray-100 text-gray-700 border border-gray-200"
+                                                                    }`}
+                                                                >
+                                                                    {statusInfo.label}
                                                                 </span>
-                                                            ) : rm.is_abnormal_shape ? (
-                                                                <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">
-                                                                    Abnormal
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-emerald-700 font-medium">Normal</span>
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {formatMetricPercent(rm.coverage_ratio, 1)}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {formatMetricPercent(rm.overflow_ratio, 1)}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {formatMetricNumber(rm.equivalent_diameter_px, 1, " px")}
+                                                            </td>
+                                                            {studioItem.mmPerPixel && (
+                                                                <td className="py-2 px-3 font-semibold text-gray-900">
+                                                                    {rm.calibrated_diameter_mm !== null && rm.calibrated_diameter_mm !== undefined && Number.isFinite(rm.calibrated_diameter_mm)
+                                                                        ? `${rm.calibrated_diameter_mm.toFixed(3)} mm`
+                                                                        : "-"}
+                                                                </td>
                                                             )}
-                                                        </td>
-                                                        <td className="py-2 px-3">
-                                                            {(rm.bubble_count ?? 0) > 0 || rm.has_bubbles ? (
-                                                                <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700">
-                                                                    {rm.bubble_count ?? 1} void(s)
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-gray-400">0</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="py-2 px-3 font-medium text-emerald-700">
-                                                            {(rm.segmentation_quality * 100).toFixed(0)}%
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                            <td className="py-2 px-3">
+                                                                {formatMetricPercent(rm.circularity, 1)}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {formatMetricNumber(rm.aspect_ratio, 2)}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {statusInfo.status === "MISSING" ? (
+                                                                    <span className="text-gray-400">Missing</span>
+                                                                ) : statusInfo.status === "UNASSESSED" ? (
+                                                                    <span className="text-gray-400">Not assessed</span>
+                                                                ) : rm.is_tailing ? (
+                                                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                                        Tailing Detected
+                                                                    </span>
+                                                                ) : rm.is_abnormal_shape ? (
+                                                                    <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">
+                                                                        Abnormal
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-emerald-700 font-medium">Normal</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                {(rm.bubble_count ?? 0) > 0 || rm.has_bubbles ? (
+                                                                    <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700">
+                                                                        {rm.bubble_count ?? 1} void(s)
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-gray-400">0</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 px-3 font-medium text-emerald-700">
+                                                                {formatMetricPercent(rm.segmentation_quality, 0)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

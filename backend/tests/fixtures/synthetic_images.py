@@ -206,3 +206,38 @@ def create_bubble_dot_image(
 
     return encode_image(img, fmt)
 
+
+def create_mixed_detected_and_unassessed_image(
+    width: int = 400,
+    height: int = 200,
+    dot_cx: int = 100,
+    dot_cy: int = 100,
+    dot_radius: int = 20,
+    dot_color: int = 30,
+    unassessed_bg: int = 128,
+    fmt: str = ".png",
+) -> bytes:
+    """Create a multi-site image with a detected deposit on left and flat unassessed region on right."""
+    img = create_blank_image(width, height, 255)
+    cv2.circle(img, (dot_cx, dot_cy), dot_radius, (dot_color, dot_color, dot_color), -1)
+    img[:, width // 2 :] = unassessed_bg
+    return encode_image(img, fmt)
+
+
+def create_mixed_detected_and_missing_image(
+    width: int = 400,
+    height: int = 200,
+    dot_cx: int = 100,
+    dot_cy: int = 100,
+    dot_radius: int = 20,
+    dot_color: int = 30,
+    fmt: str = ".png",
+) -> bytes:
+    """Create a multi-site image with a detected deposit on left and confirmed missing deposit on right."""
+    img = create_blank_image(width, height, 255)
+    cv2.circle(img, (dot_cx, dot_cy), dot_radius, (dot_color, dot_color, dot_color), -1)
+    # Fiducials in right window margin outside target ROI [0.625, 0.25, 0.25, 0.5]
+    fiducial_color = (60, 60, 60)
+    for pt in [(240, 40), (360, 40), (240, 160), (360, 160)]:
+        cv2.circle(img, pt, 5, fiducial_color, -1)
+    return encode_image(img, fmt)

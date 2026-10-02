@@ -19,6 +19,7 @@ from app.models.case import (
     QuestionAnswerModel,
 )
 from app.schemas.case import (
+    CaseObservationResponse,
     CaseOutcomeSummary,
     CaseReportResponse,
     CauseConfirmationRecord,
@@ -33,6 +34,8 @@ from app.schemas.diagnosis import (
     DiagnosisResult,
     EvidenceSource,
     IssueCondition,
+    ObservationType,
+    StatementType,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,6 +121,62 @@ def _map_lifecycle_event(model: CaseLifecycleEventModel) -> LifecycleEventRecord
         details=model.details or "",
         verification_passed=model.verification_passed,
         created_at=model.created_at,
+    )
+
+
+def _get_obs_metadata(obs: Any) -> dict[str, Any]:
+    """Extract metadata dictionary safely from observation model or schema."""
+    meta = getattr(obs, "observation_metadata", None)
+    if isinstance(meta, dict):
+        return meta
+    meta = getattr(obs, "metadata", None)
+    if isinstance(meta, dict):
+        return meta
+    return {}
+
+
+def _map_observation(obs: Any) -> CaseObservationResponse:
+    """Map an ObservationModel or Observation schema to CaseObservationResponse."""
+    obs_type_val = getattr(obs, "observation_type", None)
+    if obs_type_val in ObservationType._value2member_map_:
+        obs_type: ObservationType | str = ObservationType(obs_type_val)
+    elif isinstance(obs_type_val, ObservationType):
+        obs_type = obs_type_val
+    else:
+        obs_type = str(obs_type_val) if obs_type_val is not None else ""
+
+    stmt_type_val = getattr(obs, "statement_type", None)
+    if stmt_type_val in StatementType._value2member_map_:
+        stmt_type: StatementType | str = StatementType(stmt_type_val)
+    elif isinstance(stmt_type_val, StatementType):
+        stmt_type = stmt_type_val
+    else:
+        stmt_type = str(stmt_type_val) if stmt_type_val is not None else StatementType.USER_OBSERVATION
+
+    src_val = getattr(obs, "source", None)
+    if src_val in EvidenceSource._value2member_map_:
+        src: EvidenceSource | str = EvidenceSource(src_val)
+    elif isinstance(src_val, EvidenceSource):
+        src = src_val
+    else:
+        src = str(src_val) if src_val is not None else EvidenceSource.IMAGE
+
+    obs_id = getattr(obs, "observation_id", None) or getattr(obs, "id", None) or ""
+    created_at = getattr(obs, "created_at", None) or getattr(obs, "timestamp", None)
+
+    return CaseObservationResponse(
+        id=str(obs_id),
+        observation_id=str(obs_id),
+        observation_type=obs_type,
+        value=str(getattr(obs, "value", "")),
+        original_text=getattr(obs, "original_text", None),
+        statement_type=stmt_type,
+        source=src,
+        confidence=getattr(obs, "confidence", None),
+        timestamp=created_at,
+        created_at=created_at,
+        first_seen_revision=getattr(obs, "first_seen_revision", 1),
+        metadata=_get_obs_metadata(obs),
     )
 
 
@@ -228,6 +287,21 @@ def build_case_report(
         resolved=is_resolved,
     )
 
+    # 6. Persisted image observations (scoped to pinned revision basis)
+    raw_obs = repository.get_case_observations(case_id, max_revision=effective_revision)
+    image_observations: list[CaseObservationResponse] = []
+    if raw_obs:
+        for obs in raw_obs:
+            src = getattr(obs, "source", None)
+            is_img = (
+                src == EvidenceSource.IMAGE
+                or src == "IMAGE"
+                or getattr(src, "value", None) == "IMAGE"
+            )
+            rev = getattr(obs, "first_seen_revision", 1) or 1
+            if is_img and rev <= effective_revision:
+                image_observations.append(_map_observation(obs))
+
     defect_code = target_rev.defect_code or latest_diagnosis.defect or case_model.defect_code
     defect_name = latest_diagnosis.defect_name or case_model.defect_name
 
@@ -254,4 +328,5 @@ def build_case_report(
         issue_lifecycle_history=sorted_lc,
         outcome_summary=outcome_summary,
         current_outcome_summary=outcome_summary,
+        image_observations=image_observations,
     )

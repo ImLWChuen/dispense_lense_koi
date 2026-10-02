@@ -10,15 +10,17 @@
 
 ## Agent responsibilities
 
-- Planner/reviewer: `ChatGPT in Codex`
-- Implementer/executor: `Gemini 3.8 Flash in Antigravity`
+- Planner/reviewer: `ChatGPT in Codex; independent GPT-6 Astra or GPT-6 Sol review`
+- Implementer/executor: `GPT-6 Luna in Codex (takeover authorized 2026-10-02)`
 - Human authority: `Kee Chun Shang and the Team KOI maintainers`
 
-ChatGPT may inspect the repository, create task and review artifacts, and review local commits. Gemini performs implementation, command execution, testing, and local commits.
+Roles are selected by task, not by provider. The planner/reviewer inspects code and maintains handoff records; GPT-6 Luna performs implementation, command execution, testing and local commits. An independent GPT-6 Astra or GPT-6 Sol session reviews the resulting commit before acceptance. Earlier references to Gemini describe the former implementer and now apply to Luna's implementer responsibilities. Use the same checkout sequentially; stop Antigravity implementation activity before takeover, preserving its unfinished changes. Do not let two implementers edit concurrently. A task packet does not itself launch or change a model.
 
 ## Review record policy
 
-- Every Gemini implementation review must produce or update a permanent review record at `.agents/handoff/reviews/<task-id>-review.md`, including when the detailed review is also summarized in chat.
+- From DLK-M3-045 onward, each task-creation response and packet must include an estimated completion for the region-inspection improvement, distinguishing delivered manual-region prototype scope from the full roadmap. Treat percentages as scope estimates, not measured accuracy; identify remaining dependencies and do not automatically increase completion for tooling alone.
+
+- Every implementation review must produce or update a permanent review record at `.agents/handoff/reviews/<task-id>-review.md`, including when the detailed review is also summarized in chat.
 - An accepted review records the exact accepted commit and supporting verification evidence.
 - A review with corrections records each actionable finding, its affected file or behavior, and its consequence. The planner must carry those correction requirements into the next bounded task packet before releasing further dependent work.
 - Chat remains the convenient copy-paste channel for feedback; it does not replace the repository review record.
@@ -30,7 +32,7 @@ ChatGPT may inspect the repository, create task and review artifacts, and review
 - Pull requests: `create only after explicit instruction; target main from backend-database`
 - Merge: `prohibited; Team KOI will review and merge manually`
 - Commit format: `type(scope): concise outcome`
-- Task packet commit policy: `The planner leaves the ready packet and review records uncommitted. Gemini includes pending handoff records, the completed implementation report, QUEUE.md, and task-related code in the next atomic implementation commit. If no implementation task follows, the planner may release a bounded handoff-closeout task for a local documentation commit.`
+- Task packet commit policy: `The planner leaves the ready packet and review records uncommitted. The implementer includes pending handoff records, the completed implementation report, QUEUE.md, and task-related code in the next atomic implementation commit. If no implementation task follows, the planner may release a bounded handoff-closeout task for a local documentation commit.`
 
 ## Project responsibilities in scope
 
@@ -67,4 +69,4 @@ Before changing Next.js code, follow `AGENTS.md` and read the relevant installed
 
 ## Planner escalation boundaries
 
-Gemini must return to ChatGPT before changing architecture, public API contracts, database contracts, material dependencies, ownership boundaries, authentication policy, evidence-score meaning, diagnostic knowledge, data-retention policy, or the agreed task scope.
+The implementer must return to the planner before changing architecture, public API contracts, database contracts, material dependencies, ownership boundaries, authentication policy, evidence-score meaning, diagnostic knowledge, data-retention policy, or the agreed task scope.

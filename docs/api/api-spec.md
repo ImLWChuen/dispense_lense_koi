@@ -2420,6 +2420,7 @@ Accepts identical diagnostic input semantics to `POST /api/v1/diagnoses`:
 | `issue_lifecycle_history` | `array[LifecycleEventRecord]` | **Yes** | Alias for `lifecycle_events`. |
 | `outcome_summary` | `CaseOutcomeSummary` | **Yes** | Compact summary of the persisted outcome state (aliased as `current_outcome_summary`). |
 | `current_outcome_summary` | `CaseOutcomeSummary` | **Yes** | Alias for `outcome_summary`. |
+| `image_observations` | `array[CaseObservationResponse]` | No | Persisted IMAGE observations scoped to effective revision (defaults to `[]`). |
 
 ##### Outcome Summary Schema (`CaseOutcomeSummary`)
 
@@ -2623,7 +2624,42 @@ Accept: application/json
     ],
     "is_resolved": true,
     "resolved": true
-  }
+  },
+  "image_observations": [
+    {
+      "id": "obs_img_01",
+      "observation_id": "obs_img_01",
+      "observation_type": "deposit_size",
+      "value": "undersized",
+      "original_text": "Vision inspection detected undersized deposit",
+      "statement_type": "AI_INFERENCE",
+      "source": "IMAGE",
+      "confidence": 0.95,
+      "timestamp": "2026-09-14T10:00:00Z",
+      "created_at": "2026-09-14T10:00:00Z",
+      "first_seen_revision": 1,
+      "metadata": {
+        "region_evidence_scope": "individual_regions",
+        "affected_roi_ids": ["site_01"],
+        "applied_limits": {
+          "target_area_px": 2500.0,
+          "tolerance_pct": 10.0
+        },
+        "region_evidence": [
+          {
+            "site_id": "site_01",
+            "inspection_status": "DEFECTIVE",
+            "current_measurements": {
+              "deposit_area_px": 1750.5,
+              "equivalent_diameter_px": 47.21,
+              "calibrated_diameter_mm": 0.472
+            },
+            "reference_measurements": null
+          }
+        ]
+      }
+    }
+  ]
 }
 ```
 
@@ -2668,7 +2704,8 @@ Accept: application/pdf
 6. **Troubleshooting-Check History**: Ascending revision/timestamp table of check IDs, execution status, findings, outcomes, and timestamps with item count header (`Troubleshooting Checks (N)` or `None recorded.`).
 7. **Cause-Confirmation History**: Ascending revision/timestamp table of confirmed cause IDs, technicians, notes, and timestamps with item count header (`Cause Confirmations (N)` or `None recorded.`).
 8. **Issue Lifecycle History**: Ascending revision/timestamp table of recovery actions, verifications, recurrences, conditions, actors, and timestamps with item count header (`Lifecycle Events (N)` or `None recorded.`).
-9. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
+9. **Image Inspection Evidence**: Bounded presentation of persisted vision findings (`image_observations`), region-evidence scope (`individual_regions` vs `comparison_group`), affected site IDs, applied limits (as a configuration snapshot), and 15-field scalar measurement snapshots with units (`px²`, `px`, `mm`) and reference comparisons where available, or neutral notice if none recorded.
+10. **Page Footer**: Running provenance notice ("Generated from persisted diagnostic records") and dynamic `Page X of Y` numbering on all pages.
 
 ---
 
@@ -2758,49 +2795,216 @@ Extracts resolution-independent geometric features from dispensing deposit image
   "roi_measurements": [
     {
       "roi_id": "dot_1",
+      "deposit_area_px": 8250.0,
+      "target_area_px": 100000.0,
       "coverage_ratio": 0.082,
       "overflow_ratio": 0.000,
-      "equivalent_diameter_px": 82.5,
-      "equivalent_diameter_mm": 0.4125,
+      "equivalent_diameter_px": 102.5,
+      "calibrated_diameter_mm": 0.5125,
       "circularity": 0.94,
       "solidity": 0.98,
+      "convexity": 1.0,
       "aspect_ratio": 1.02,
       "hole_void_ratio": 0.00,
-      "segmentation_quality": 0.96
+      "bubble_count": 0,
+      "has_bubbles": false,
+      "is_abnormal_shape": false,
+      "is_tailing": false,
+      "bubble_details": [],
+      "segmentation_quality": 0.96,
+      "is_missing": false,
+      "inspection_status": "DETECTED",
+      "inspection_warnings": [],
+      "deposit_outline_normalized": [
+        {"x": 0.280, "y": 0.260},
+        {"x": 0.320, "y": 0.260},
+        {"x": 0.340, "y": 0.300},
+        {"x": 0.320, "y": 0.340},
+        {"x": 0.280, "y": 0.340},
+        {"x": 0.260, "y": 0.300}
+      ]
     }
   ],
   "aggregate_measurements": {
-    "mean_coverage_ratio": 0.082,
-    "std_coverage_ratio": 0.000,
+    "mean_coverage": 0.082,
     "size_cv": null,
-    "mean_circularity": 0.94,
-    "mean_solidity": 0.98,
-    "mean_aspect_ratio": 1.02,
-    "mean_hole_void_ratio": 0.00,
-    "roi_count": 1,
-    "valid_roi_count": 1
+    "missing_roi_ids": [],
+    "unassessed_roi_ids": [],
+    "expected_roi_count": 1,
+    "assessed_roi_count": 1,
+    "inspection_coverage_status": "COMPLETE",
+    "warnings": []
   },
+  "reference_aggregate_measurements": null,
   "observations": [
     {
-      "id": "obs_image_dot_1_undersized",
       "observation_type": "deposit_size",
       "value": "undersized",
-      "original_text": "Calibrated image analysis: coverage_ratio=0.082 < min_coverage_ratio=0.150 on ROI dot_1",
       "statement_type": "AI_INFERENCE",
       "source": "IMAGE",
-      "confidence": 0.95,
       "metadata": {
         "roi_id": "dot_1",
+        "affected_roi_ids": ["dot_1"],
+        "region_evidence_scope": "individual_regions",
+        "applied_limits": {
+          "min_coverage_ratio": 0.15
+        },
+        "region_evidence": [
+          {
+            "roi_id": "dot_1",
+            "current_measurements": {
+              "inspection_status": "DETECTED",
+              "deposit_area_px": 820.0,
+              "target_area_px": 10000.0,
+              "coverage_ratio": 0.082,
+              "overflow_ratio": 0.000,
+              "equivalent_diameter_px": 32.3,
+              "calibrated_diameter_mm": null,
+              "circularity": 0.92,
+              "solidity": 0.95,
+              "convexity": 1.0,
+              "aspect_ratio": 1.0,
+              "hole_void_ratio": 0.0,
+              "bubble_count": 0,
+              "has_bubbles": false,
+              "segmentation_quality": 0.96
+            },
+            "reference_measurements": null
+          }
+        ],
         "coverage_ratio": 0.082,
         "overflow_ratio": 0.000,
-        "equivalent_diameter_px": 82.5,
-        "mode": "PROCESS_LIMITS"
+        "mode": "PROCESS_LIMITS",
+        "status": "CALIBRATED"
       }
     }
   ],
   "warnings": []
 }
 ```
+
+##### Region Inspection Reliability & Status Semantics
+- **`RoiInspectionStatus` (`inspection_status`):**
+  - `"DETECTED"`: Deposit reliably segmented with positive area. Indicates observation reliability; does not imply acceptance against process limits.
+  - `"MISSING"`: Region reliably inspected with verified substrate/background context confirming deposit absence (`is_missing=true`).
+  - `"UNASSESSED"`: Region could not be reliably inspected (e.g. flat exposure, camera failure, low contrast, boundary clipping, or omitted measurement). `is_missing` is strictly `false` for unassessed regions to prevent false missing deposit defect reports.
+- **Additive Measurement & Aggregate Fields:**
+  - `RoiMeasurement.inspection_status`: `RoiInspectionStatus` enum (`DETECTED`, `MISSING`, `UNASSESSED`, default: `UNASSESSED`).
+  - `RoiMeasurement.inspection_warnings`: Detailed per-region failure or ambiguity explanations (default: `[]`).
+  - `RoiMeasurement.deposit_outline_normalized`: Optional ordered list of `NormalizedPoint` coordinates (`x`, `y` in $[0.0, 1.0]$) representing the outer deposit contour, or `null`.
+  - `AggregateMeasurements.unassessed_roi_ids`: List of ROI IDs that are unassessed or missing measurement data (default: `[]`). Strictly disjoint from `missing_roi_ids`.
+  - `AggregateMeasurements.expected_roi_count`: Total count of unique expected ROIs in current profile (`int | null`, default: `null`).
+  - `AggregateMeasurements.assessed_roi_count`: Count of expected ROIs with reliable `DETECTED` or confirmed `MISSING` status (`int | null`, default: `null`).
+  - `AggregateMeasurements.inspection_coverage_status`: `InspectionCoverageStatus` enum (`COMPLETE`, `PARTIAL`, `NONE`, default: `null`).
+  - `ImageAnalysisResponse.reference_aggregate_measurements`: Separately scoped reference-image `AggregateMeasurements` object in `REFERENCE_IMAGE` mode with valid uploaded reference, or `null` for non-reference modes (default: `null`).
+- **Aggregate Boundary Handling:**
+  - `mean_coverage` and `size_cv` are calculated strictly over eligible `DETECTED` deposits with `deposit_area_px > 0`. `MISSING` and `UNASSESSED` regions are excluded.
+  - Zero eligible deposits: `mean_coverage = null`, `size_cv = null`.
+  - Exactly one eligible deposit: `mean_coverage` is calculated, `size_cv = null`.
+  - Two or more eligible deposits: `size_cv` is calculated as sample coefficient of variation ($\text{std} / \text{mean}$).
+- **Conservative Whole-Image Classification Gating:**
+  - In calibrated modes (`PROCESS_LIMITS`, `REFERENCE_IMAGE`), any unassessed current or reference ROI forces overall analysis `status = "UNRELIABLE"`, emits zero score-bearing observations (`observations = []`), and surfaces affected ROI IDs and reasons in top-level `warnings`.
+  - Explicit `UNASSESSED` status strictly overrides misleadingly high numeric quality scores.
+  - `FEATURES_ONLY` mode remains neutral and `UNCALIBRATED`.
+- **Backward Compatibility:**
+  - Historical payloads missing new fields deserialize safely using defaults (`UNASSESSED`, `[]`, `null`) without being promoted to reliable evidence.
+
+##### Bounded Deposit Outline Geometry (`deposit_outline_normalized`)
+- **Display Aid Only:**
+  - The normalized outline is an approximate visual drawing aid for future UI inspection workbenches. It does not establish deposit volume, internal voids/bubbles, or root-cause diagnosis.
+- **Outer Contour Representation:**
+  - Emits the selected outer contour of reliably detected material. Interior void/bubble boundaries and reference image contours are excluded.
+- **Coordinate System & Scaling:**
+  - Normalized coordinates use the complete current image frame ($[0.0, 1.0]$), with `(0, 0)` at top-left and `(1, 1)` at bottom-right.
+  - Analysis window local coordinates are translated using the expanded analysis window origin (`(window_roi.x + x_local) / width`), ensuring accurate alignment when images are resized or scaled.
+- **Point Cap & Deterministic Approximation:**
+  - Polygons contain 3 to 128 finite distinct points.
+  - Contours with $>128$ vertices are deterministically simplified using bounded Douglas-Peucker approximation (`cv2.approxPolyDP`). Arbitrary point slicing, bounding rectangles, or fabricated contours are strictly prohibited.
+- **Omission & Unavailability Handling:**
+  - Regions marked `MISSING` or `UNASSESSED` strictly emit `deposit_outline_normalized = null`.
+  - If a `DETECTED` region has unavailable outline geometry (e.g. missing contour, degenerate points, nonconsecutive duplicate vertices, out-of-bounds vertices, or inability to simplify within 128 points), `deposit_outline_normalized` is `null`. The region remains `DETECTED`, calibrated analysis status and observations remain intact, and an explicit explanatory warning is surfaced in `RoiMeasurement.inspection_warnings` and top-level response `warnings`.
+
+##### Affected Region Provenance in Deduplicated Observations (`metadata.affected_roi_ids`)
+- **Provenance Without Score Duplication:**
+  - Multiple inspected sites with the same defect type and value are deduplicated to exactly one canonical diagnostic `Observation`. This prevents artificial score inflation and duplicate-evidence penalties in downstream causal reasoning.
+  - The ordered, unique list of all ROI IDs triggering that exact defect is preserved in `Observation.metadata["affected_roi_ids"]`.
+  - For backward compatibility, `metadata["roi_id"]` and initial measurement metrics from the first triggering site are preserved.
+- **Rule Dimension & Value Isolation:**
+  - Each observation maintains an exact list of ROI IDs that triggered its specific observation type and defect value (`Observation.metadata["affected_roi_ids"]`).
+  - Separate defect values for the same dimension (such as `undersized` versus `oversized` for `deposit_size`) produce separate observations, containing non-overlapping affected lists for that rule.
+  - When a single region violates multiple independent defect rules or dimensions (e.g. triggering both `deposit_size=undersized` and `deposit_shape=tailing`, or triggering both `deposit_shape=tailing` and `deposit_shape=abnormal`), its ROI ID appears in each relevant observation's `affected_roi_ids`; affected lists across different rules may therefore overlap.
+- **D03 Inconsistent Size Comparison Participants:**
+  - For `deposit_size=inconsistent`, `affected_roi_ids` identifies all eligible `DETECTED`, positive-area ROIs that contributed to the sample coefficient of variation calculation. It identifies comparison participants rather than asserting individual limit breaches.
+- **Persistence Compatibility:**
+  - `metadata.affected_roi_ids` is stored as a primitive JSON list of strings, persisting losslessly through the durable case workflow across diagnostic revisions.
+
+##### Expected-Site Inspection Coverage (`expected_roi_count`, `assessed_roi_count`, `inspection_coverage_status`)
+- **Current-Image Scope:**
+  - The coverage summary describes inspection completeness across expected dispensing sites in the uploaded **current image** only.
+  - In `REFERENCE_IMAGE` mode, this summary does not represent reference-image inspection coverage or guarantee reference-image reliability.
+- **Distinction from Deposit Coverage and Evidence Support:**
+  - **Inspection Coverage (`COMPLETE | PARTIAL | NONE`)**: Quantifies whether the vision pipeline was able to reliably assess all expected inspection locations. It does NOT indicate that deposits met process limits, passed quality standards, or had no defects.
+  - **Deposit Coverage Ratio (`coverage_ratio` / `mean_coverage`)**: Physical ratio of deposit pixel area to target ROI area.
+  - **Evidence Support (`/100`)**: Diagnostic ranking score computed by the causal reasoning engine for suspected failure causes.
+- **Assessment Rules:**
+  - An expected site is counted as **assessed** only when its measurement has explicit `DETECTED` or confirmed `MISSING` status.
+  - `UNASSESSED` regions (due to uniform exposure, camera failure, ambiguous contrast, boundary clipping) or expected sites omitted from measurements are NOT assessed.
+  - A confirmed `MISSING` deposit **is** an assessed site (the absence of deposit was conclusively verified), distinguishing it from an unassessed region.
+  - Unexpected measurement IDs (not present in `rois`) and repeated expected ROI IDs do not distort counts.
+- **Coverage Status Values:**
+  - `COMPLETE`: Every expected site was reliably assessed (`assessed_roi_count == expected_roi_count > 0`).
+  - `PARTIAL`: At least one expected site was assessed, but one or more expected sites were `UNASSESSED` or omitted (`0 < assessed_roi_count < expected_roi_count`).
+  - `NONE`: No expected sites were assessed (`assessed_roi_count == 0`), including the empty-expected-list internal edge case (`0/0 -> NONE`).
+- **Gating Unchanged:**
+  - In calibrated modes, any unassessed region continues to enforce conservative zero-observation gating (`status = "UNRELIABLE"`, `observations = []`). `PARTIAL` coverage does not release partial score-bearing evidence.
+- **Backward Compatibility:**
+  - Legacy aggregates missing these fields deserialize to `null` (representing **unknown** coverage, not 0 sites). Newly calculated API responses always populate all three fields.
+
+##### Reference-Image Inspection Coverage (`reference_aggregate_measurements`)
+- **Scope & Mode Availability:**
+  - In `REFERENCE_IMAGE` mode with a valid uploaded reference image, `reference_aggregate_measurements` returns an `AggregateMeasurements` object calculated independently from the reference image.
+  - In `FEATURES_ONLY` and `PROCESS_LIMITS` modes, `reference_aggregate_measurements` is explicitly `null`.
+- **Separation of Aggregate Scopes:**
+  - `aggregate_measurements` exclusively describes the current image.
+  - `reference_aggregate_measurements` exclusively describes the paired reference image across the same configured expected ROI IDs.
+  - The two aggregates are never merged, swapped, or combined; each maintains its own independent expected/assessed counts, missing/unassessed ROI ID lists, and summary metrics.
+- **Distinction Between Inspection Coverage and Reference Suitability:**
+  - `reference_aggregate_measurements.inspection_coverage_status` (`COMPLETE | PARTIAL | NONE`) indicates whether expected sites on the reference image were reliably inspected.
+  - `COMPLETE` reference inspection means every expected reference site was reliably assessed (`DETECTED` or confirmed `MISSING`). It does NOT imply that all deposits are present or within limits, that current and reference images match, or that the analysis is calibrated.
+  - A confirmed `MISSING` reference deposit is an assessed site for coverage (`is_missing=true`), but because a missing reference deposit cannot serve as a valid geometric comparison baseline, the classifier continues to downgrade top-level analysis to `status = "UNRELIABLE"` with zero observations (`observations = []`).
+  - An `UNASSESSED` reference site (due to low contrast, camera failure, flat exposure, or omitted measurement) similarly forces `status = "UNRELIABLE"` and `observations = []`.
+- **Process Acceptance & Evidence Support /100 Independence:**
+  - Reference inspection coverage reports software inspection completeness, not physical process compliance or diagnostic causality.
+  - Diagnostic Evidence Support /100 is computed downstream by the causal reasoning engine only from eligible score-bearing observations; an `UNRELIABLE` image emits zero observations and contributes zero evidence score.
+- **Backward Compatibility:**
+  - Legacy serialized `ImageAnalysisResponse` objects missing `reference_aggregate_measurements` deserialize safely with `None`.
+
+##### Per-Region Evidence Snapshots & Applied Limits (`metadata.region_evidence`, `metadata.applied_limits`, `metadata.region_evidence_scope`)
+- **Additive Provenance Enrichment:**
+  - For already-emitted calibrated `IMAGE` observations, `Observation.metadata` is enriched with `region_evidence_scope`, `applied_limits`, and `region_evidence`.
+  - Legacy first-site scalar metadata keys (`roi_id`, `coverage_ratio`, `overflow_ratio`, etc.) remain intact for backward compatibility and reflect only that initial triggering site.
+- **Evidence Scope (`metadata.region_evidence_scope`):**
+  - `"individual_regions"`: Ordinary site findings where each entry in `region_evidence` represents an affected region that individually triggered the rule.
+  - `"comparison_group"`: Aggregate comparison findings (`deposit_size=inconsistent`, D03) where `region_evidence` includes all eligible detected positive-area participants evaluated for variation (`size_cv`), without implying individual limit failure or assigning outlier labels.
+- **Applied Limits Snapshot (`metadata.applied_limits`):**
+  - Active validated process or reference limits serialized as a JSON-compatible dictionary with null fields omitted.
+  - In reference mode, tolerance ratios resolve effective lower and upper ratio bounds (`min_reference_ratio`, `max_reference_ratio`).
+  - Represents the caller-supplied inspection configuration snapshot at analysis time, not an assertion that every limit was evaluated or violated.
+- **Per-Region Measurement Snapshots (`metadata.region_evidence`):**
+  - Ordered list strictly corresponding to `affected_roi_ids`.
+  - Multiple conditions on a single site never duplicate its entry within an observation.
+  - Each item contains:
+    - `roi_id`: Site identifier.
+    - `current_measurements`: Detached dictionary of exactly the 15 allowed scalar fields: `inspection_status`, `deposit_area_px`, `target_area_px`, `coverage_ratio`, `overflow_ratio`, `equivalent_diameter_px`, `calibrated_diameter_mm`, `circularity`, `solidity`, `convexity`, `aspect_ratio`, `hole_void_ratio`, `bubble_count`, `has_bubbles`, `segmentation_quality`.
+    - `reference_measurements`: Matching reference scalar snapshot in reference mode, or `null` in process mode or when no reference match exists.
+  - Immutability: Snapshots contain detached scalar primitives; mutations to runtime models cannot alter recorded evidence.
+- **Reconstruction Capability:**
+  - In reference mode, current and reference scalar snapshots plus effective limits permit downstream consumers to reconstruct comparisons without secondary algorithms.
+- **Persistence & Diagnostic Neutrality:**
+  - Persists losslessly in PostgreSQL JSONB storage across durable case creation, retrieval, and revision updates.
+  - Diagnostic scoring, cause rankings, candidate evidence counts, and reliability gates are strictly unchanged.
+  - Missing new fields in historical records signify unrecorded provenance, not zero measurements or clean inspection.
+
 
 #### Status and Error Codes
 - `200 OK`: Image successfully processed and analyzed.
