@@ -1,3 +1,13 @@
+/**
+ * Factory Telemetry & Consumable Work Life Dashboard Page (`/telemetry`)
+ *
+ * Real-time cleanroom environmental & physical dispensing telemetry:
+ * - Ambient cleanroom monitoring: ISO Class 6 verification, Temperature, Humidity, Differential Pressure.
+ * - Live line sensor gauges: Fluid Pressure (kPa), Vacuum suck-back, Nozzle temp (°C).
+ * - Epoxy & adhesive syringe management: Controlled thaw protocols (`ThawModal`), pot-life timers, nozzle tip wear.
+ * - Interactive mounting and scrapping workflow.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";

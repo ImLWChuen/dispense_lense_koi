@@ -19,16 +19,37 @@ import {
     shouldShowVerificationBadge,
 } from "@/lib/diagnostic-workflow-state";
 
+/**
+ * Props for EngineerVerification component.
+ */
 export interface EngineerVerificationProps {
+    /** Durable case state containing candidate causes, confirmations, and lifecycle events */
     caseData: DurableCaseResponse;
+    /** Callback to formally confirm a root cause hypothesis */
     onConfirmCause: (causeId: string, notes?: string) => Promise<void>;
+    /** Callback to record corrective maintenance / recovery actions taken */
     onSubmitRecoveryAction: (recoveryDetails: string) => Promise<void>;
+    /** Callback to submit recovery verification outcome (Pass / Fail) */
     onSubmitRecoveryVerification: (passed: boolean, details?: string) => Promise<void>;
+    /** Callback to record an issue recurrence if the defect re-emerges */
     onSubmitRecurrence: (details: string) => Promise<void>;
+    /** Async loading indicator during mutation submission */
     isSubmitting?: boolean;
+    /** Whether form controls are disabled */
     disabled?: boolean;
 }
 
+/**
+ * EngineerVerification
+ * 
+ * Production engineering verification interface enforcing the industrial lifecycle state machine:
+ * - UNRESOLVED: Allows cause confirmation and recording recovery maintenance.
+ * - RECOVERY_PENDING_VERIFICATION: Requires physical verification test results (Passed/Failed).
+ * - RESOLVED: Allows reporting recurrence if failure re-emerges during production run.
+ * - RECURRED: Re-opens investigation for secondary corrective actions.
+ * 
+ * Also displays an immutable audit timeline of lifecycle transitions and technician sign-offs.
+ */
 export default function EngineerVerification({
     caseData,
     onConfirmCause,
@@ -38,9 +59,11 @@ export default function EngineerVerification({
     isSubmitting = false,
     disabled = false,
 }: EngineerVerificationProps) {
+    // Current lifecycle condition and permitted action gates
     const issueCondition = (caseData.issue_condition || "UNRESOLVED").toUpperCase();
     const legalActions = getAvailableLifecycleActions(issueCondition);
 
+    // Diagnostic payload projections
     const diagnosis = caseData.diagnosis || caseData.initial_diagnosis;
     const rankedCauses = diagnosis?.ranked_causes || [];
     const previousConfirmations = caseData.previous_confirmations || [];
@@ -58,7 +81,8 @@ export default function EngineerVerification({
 
     const [actionError, setActionError] = useState<string | null>(null);
 
-    // Handlers
+    // Handlers for state-machine mutations
+    /** Confirms selected candidate cause without altering issue condition */
     const handleCauseConfirmSubmit = async () => {
         if (disabled || isSubmitting) return;
         if (!selectedCauseId) {
@@ -75,6 +99,7 @@ export default function EngineerVerification({
         }
     };
 
+    /** Records corrective maintenance actions and transitions condition to RECOVERY_PENDING_VERIFICATION */
     const handleRecoveryActionSubmit = async () => {
         if (disabled || isSubmitting) return;
         if (!recoveryDetails.trim()) {
@@ -91,6 +116,7 @@ export default function EngineerVerification({
         }
     };
 
+    /** Submits physical verification test shot outcome (transitions to RESOLVED or back to UNRESOLVED) */
     const handleVerificationSubmit = async () => {
         if (disabled || isSubmitting) return;
         if (!verificationDetails.trim()) {
@@ -107,6 +133,7 @@ export default function EngineerVerification({
         }
     };
 
+    /** Reports problem recurrence for resolved cases, reopening the investigation as RECURRED */
     const handleRecurrenceSubmit = async () => {
         if (disabled || isSubmitting) return;
         if (!recurrenceDetails.trim()) {
@@ -177,16 +204,20 @@ export default function EngineerVerification({
                 </div>
             </div>
 
+            {/* Error Message Alert Banner */}
             {actionError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
                     {actionError}
                 </div>
             )}
 
-            {/* 1. Cause Confirmation Section */}
+            {/* 1. Cause Confirmation Section: Candidate causes & technician sign-off */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]">
+                    <div 
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]"
+                        aria-hidden="true"
+                    >
                         <Shield size={20} />
                     </div>
                     <div>
@@ -303,20 +334,23 @@ export default function EngineerVerification({
                     </div>
                 )}
 
-                {/* Honest Callout on Cause Rejection */}
+                {/* Engineering Note on Cause Rejection */}
                 <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/50 p-3.5">
-                    <Info size={16} className="mt-0.5 text-blue-600 shrink-0" />
+                    <Info size={16} className="mt-0.5 text-blue-600 shrink-0" aria-hidden="true" />
                     <p className="text-xs leading-relaxed text-blue-900">
                         <span className="font-semibold">Note on Cause Rejection:</span> The diagnostic engine evaluates evidence support scores. There is no persisted cause-rejection endpoint in the system. If the top candidate causes do not match your findings, you can continue physical troubleshooting checks or perform corrective recovery directly.
                     </p>
                 </div>
             </div>
 
-            {/* 2. Recovery Action Section (UNRESOLVED or RECURRED) */}
+            {/* 2. Recovery Action Section: Form active during UNRESOLVED or RECURRED */}
             {legalActions.canSubmitRecoveryAction && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                        <div 
+                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"
+                            aria-hidden="true"
+                        >
                             <Wrench size={20} />
                         </div>
                         <div>
@@ -359,11 +393,14 @@ export default function EngineerVerification({
                 </div>
             )}
 
-            {/* 3. Recovery Verification Section (RECOVERY_PENDING_VERIFICATION) */}
+            {/* 3. Recovery Verification Section: Test shot validation during RECOVERY_PENDING_VERIFICATION */}
             {legalActions.canVerifyRecovery && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                        <div 
+                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"
+                            aria-hidden="true"
+                        >
                             <CheckCircle2 size={20} />
                         </div>
                         <div>
@@ -377,6 +414,7 @@ export default function EngineerVerification({
                     </div>
 
                     <div className="mt-5 grid grid-cols-2 gap-4">
+                        {/* Passed Choice Button */}
                         <button
                             type="button"
                             onClick={() => setVerificationPassed(true)}
@@ -401,6 +439,7 @@ export default function EngineerVerification({
                             </div>
                         </button>
 
+                        {/* Failed Choice Button */}
                         <button
                             type="button"
                             onClick={() => setVerificationPassed(false)}
@@ -461,11 +500,14 @@ export default function EngineerVerification({
                 </div>
             )}
 
-            {/* 4. Recurrence Reporting Section (RESOLVED) */}
+            {/* 4. Recurrence Reporting Section: Re-open case if defect re-emerges post-resolution */}
             {legalActions.canReportRecurrence && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                        <div 
+                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600"
+                            aria-hidden="true"
+                        >
                             <RotateCcw size={20} />
                         </div>
                         <div>
@@ -505,10 +547,13 @@ export default function EngineerVerification({
                 </div>
             )}
 
-            {/* 5. Lifecycle History Timeline */}
+            {/* 5. Lifecycle History Timeline: Audit trail of transitions */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
+                    <div 
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600"
+                        aria-hidden="true"
+                    >
                         <History size={20} />
                     </div>
                     <div>

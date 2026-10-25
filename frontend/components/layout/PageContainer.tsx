@@ -1,6 +1,17 @@
+/**
+ * PageContainer Component
+ *
+ * Responsive, centered viewport wrapper for interior page views.
+ * Standardizes padding, max-width constraints (1600px), and background color theming.
+ */
+
 import { ReactNode } from "react";
 
+/**
+ * Props for the PageContainer component.
+ */
 interface PageContainerProps {
+    /** Page content nodes */
     children: ReactNode;
 }
 

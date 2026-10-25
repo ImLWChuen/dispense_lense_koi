@@ -1,3 +1,16 @@
+/**
+ * SensorGauges Component
+ *
+ * Renders an instrument gauge card for an individual physical sensor
+ * (e.g., Fluid Pressure, Nozzle Temperature, Snorkel Vacuum, Flow Rate).
+ * Visualizes:
+ * - Current real-time value and engineering units.
+ * - Delta offset against calibrated recipe target nominals.
+ * - Upper and Lower Specification Limits (USL / LSL).
+ * - Real-time mini SVG sparkline showing historical sensor fluctuations.
+ * - Tri-state health badges: NOMINAL (emerald), WARNING/DRIFT (amber), CRITICAL (rose).
+ */
+
 "use client";
 
 import { SensorReading, SensorStatus } from "@/lib/api/telemetry";
@@ -11,8 +24,13 @@ import {
     Wind,
 } from "lucide-react";
 
+/**
+ * Props for the SensorGauges component.
+ */
 interface SensorGaugesProps {
+    /** Real-time sensor reading and configuration record */
     reading: SensorReading;
+    /** Physical sensor domain for choosing iconography */
     iconType?: "pressure" | "vacuum" | "temperature" | "generic";
 }
 

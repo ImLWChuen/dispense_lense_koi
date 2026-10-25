@@ -6,14 +6,29 @@ import { StarRating } from "./ConfidenceScore";
 import { CandidateCause } from "@/types/api";
 import { Sparkles, Table as TableIcon, LayoutList, HelpCircle } from "lucide-react";
 
+/**
+ * Props for CauseRanking component.
+ */
 interface CauseRankingProps {
+    /** Candidate root causes returned from the multi-evidence Bayesian ranking engine */
     causes?: CandidateCause[];
+    /** Current diagnosis revision cycle (increments upon each answer or check execution) */
     revision?: number;
 }
 
+/**
+ * CauseRanking
+ * 
+ * Displays ranked root causes based on evidence weighting (telemetry, vision features,
+ * questions answered, and physical check outcomes). Provides toggleable views between
+ * an executive scorecard table and detailed cause cards. Also surfaces explainable
+ * AI logical reasoning ("WHY") behind top recommendations.
+ */
 export default function CauseRanking({ causes = [], revision = 1 }: CauseRankingProps) {
+    // Toggle between compact scorecard table and expanded cards
     const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
+    // Empty state when no diagnostic causes have been ranked yet
     if (causes.length === 0) {
         return (
             <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
@@ -49,7 +64,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
 
     return (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
-            {/* Header with View Toggle */}
+            {/* Header with Title and View Mode Toggle Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-gray-100 dark:border-gray-800">
                 <div>
                     <h2 className="text-base font-bold text-gray-900 dark:text-white">
@@ -62,13 +77,16 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* Revision counter badge */}
                     <span className="rounded-full bg-[#eeebff] dark:bg-[#5848e8]/30 px-2.5 py-1 text-[10px] font-semibold text-[#5848e8] dark:text-[#a59bff]">
                         REVISION {revision}
                     </span>
 
+                    {/* Table vs Cards switcher */}
                     <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5 text-xs">
                         <button
                             onClick={() => setViewMode("table")}
+                            aria-pressed={viewMode === "table"}
                             className={`flex items-center gap-1 rounded-md px-2 py-1 transition ${
                                 viewMode === "table"
                                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-semibold shadow-2xs"
@@ -76,11 +94,12 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                             }`}
                             title="Score Table"
                         >
-                            <TableIcon size={13} />
+                            <TableIcon size={13} aria-hidden="true" />
                             <span>Score Table</span>
                         </button>
                         <button
                             onClick={() => setViewMode("cards")}
+                            aria-pressed={viewMode === "cards"}
                             className={`flex items-center gap-1 rounded-md px-2 py-1 transition ${
                                 viewMode === "cards"
                                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-semibold shadow-2xs"
@@ -88,18 +107,18 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                             }`}
                             title="Detailed Cause Cards"
                         >
-                            <LayoutList size={13} />
+                            <LayoutList size={13} aria-hidden="true" />
                             <span>Cards</span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* AI Logical Reasoning Callout ("WHY It Provides the Recommendation") */}
+            {/* AI Logical Reasoning Callout: Explainable rationale behind top cause */}
             {topCause && (
                 <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-[#faf9ff] dark:bg-indigo-950/20 p-4 text-xs">
                     <div className="flex items-center gap-1.5 mb-1 text-[#5848e8] dark:text-[#a59bff]">
-                        <Sparkles size={14} className="shrink-0" />
+                        <Sparkles size={14} className="shrink-0" aria-hidden="true" />
                         <span className="font-bold uppercase tracking-wider text-[10px]">
                             AI Logical Reasoning
                         </span>
@@ -113,7 +132,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                 </div>
             )}
 
-            {/* NSW Step 4 Table View */}
+            {/* Primary View: Score Table View */}
             {viewMode === "table" ? (
                 <div className="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-left text-xs">
@@ -136,6 +155,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                                         key={cause.cause_id}
                                         className={isTop ? "bg-indigo-50/30 dark:bg-indigo-950/20 font-medium" : "hover:bg-gray-50/50 dark:hover:bg-gray-800/50"}
                                     >
+                                        {/* Rank Index */}
                                         <td className="py-3 pl-4 pr-3 whitespace-nowrap">
                                             <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold ${
                                                 isTop ? "bg-[#6d5dfc] text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
@@ -143,6 +163,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                                                 {index + 1}
                                             </span>
                                         </td>
+                                        {/* Cause Name and ID */}
                                         <td className="px-3 py-3 whitespace-nowrap">
                                             <div className="flex flex-col">
                                                 <span className="font-semibold text-gray-900 dark:text-white">
@@ -153,6 +174,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                                                 </span>
                                             </div>
                                         </td>
+                                        {/* Likelihood Progress Bar & Numeric Percentage */}
                                         <td className="px-3 py-3 whitespace-nowrap">
                                             <div className="flex items-center gap-2.5">
                                                 <div className="h-2 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
@@ -166,9 +188,11 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                                                 <span className="font-bold text-gray-900 dark:text-white text-sm">{score}%</span>
                                             </div>
                                         </td>
+                                        {/* 5-Star Confidence Rating */}
                                         <td className="px-3 py-3 whitespace-nowrap">
                                             <StarRating score={score} />
                                         </td>
+                                        {/* Cause Status (CONFIRMED, SUSPECTED, RULED_OUT) */}
                                         <td className="px-3 py-3 whitespace-nowrap">
                                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                                 cause.conclusion === "CONFIRMED"
@@ -187,7 +211,7 @@ export default function CauseRanking({ causes = [], revision = 1 }: CauseRanking
                     </table>
                 </div>
             ) : (
-                /* Cards View */
+                /* Alternative View: Expanded Cause Cards List */
                 <div className="mt-5 space-y-3">
                     {causes.map((cause, index) => {
                         const cardData = {

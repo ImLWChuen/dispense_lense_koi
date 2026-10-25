@@ -1,3 +1,12 @@
+/**
+ * SpcCapabilityHistogram Component
+ *
+ * Renders statistical process capability distributions, overlaying:
+ * - Measured sample frequency bar histogram across parameterized dimensional bins.
+ * - Fitted continuous Gaussian normal distribution curve.
+ * - Key capability indicators (Cp, Cpk, Pp, Ppk) and specification limit reference lines (LSL, USL, Target).
+ */
+
 "use client";
 
 import {
@@ -14,9 +23,15 @@ import {
 import { SpcCapabilityMetrics, SpcHistogramBin, SpcNormalCurvePoint } from "@/lib/api/spc";
 import { Layers, CheckCircle2, TrendingUp, Info } from "lucide-react";
 
+/**
+ * Props for the SpcCapabilityHistogram component.
+ */
 interface SpcCapabilityHistogramProps {
+    /** Binned sample frequency distribution */
     histogram: SpcHistogramBin[];
+    /** Normal probability density points for Gaussian overlay */
     normalCurve: SpcNormalCurvePoint[];
+    /** Statistical capability indices (Cpk, Cp, standard deviation, target offset) */
     metrics: SpcCapabilityMetrics;
 }
 

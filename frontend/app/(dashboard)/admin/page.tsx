@@ -1,3 +1,13 @@
+/**
+ * Administrator Operations & User Management Dashboard (`/admin`)
+ *
+ * Restricted administrative control center:
+ * - Enterprise employee roster with search, role filters (admin, engineer, technician, operator), and activity metrics.
+ * - Provisioning new team members and managing system access privileges.
+ * - Password reset triggers and account deactivation/soft-delete workflows.
+ * - Real-time administrative audit activity feed.
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";

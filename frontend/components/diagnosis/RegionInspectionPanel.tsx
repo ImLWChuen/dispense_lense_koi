@@ -29,17 +29,37 @@ import {
     type EffectiveRoiInspectionStatus,
 } from "@/lib/region-inspection-view";
 
+/**
+ * Props for the RegionInspectionPanel component.
+ */
 interface RegionInspectionPanelProps {
+    /** List of expected target regions defined by operator */
     rois: NormalizedROI[];
+    /** Analysis output payload from OpenCV vision engine */
     result: ImageAnalysisResponse | null | undefined;
+    /** ID of currently selected ROI */
     selectedRoiId: string | null;
+    /** Callback when an ROI is clicked or selected */
     onSelectRoi: (roiId: string | null) => void;
+    /** Current calibration mode ('FEATURES_ONLY', 'PROCESS_LIMITS', or 'REFERENCE_IMAGE') */
     mode: ImageAnalysisMode;
+    /** Optical scale factor in mm/px */
     mmPerPixel?: number | null;
+    /** Whether rendered inside the full-screen Studio modal */
     isStudioMode?: boolean;
+    /** Callback to open the full Studio modal */
     onOpenStudio?: () => void;
 }
 
+/**
+ * StatusBadge
+ * 
+ * Standardized status pill indicating region deposition condition:
+ * - DETECTED: Material present within bounds
+ * - MISSING: Expected target starved / empty
+ * - UNASSESSED: Site omitted from analysis
+ * - UNAVAILABLE: No telemetry/cv record
+ */
 function StatusBadge({
     status,
     label,
@@ -51,21 +71,21 @@ function StatusBadge({
         case "DETECTED":
             return (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                    <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                    <CheckCircle2 size={12} className="text-emerald-600 shrink-0" aria-hidden="true" />
                     <span>{label}</span>
                 </span>
             );
         case "MISSING":
             return (
                 <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                    <XCircle size={12} className="text-rose-600 shrink-0" />
+                    <XCircle size={12} className="text-rose-600 shrink-0" aria-hidden="true" />
                     <span>{label}</span>
                 </span>
             );
         case "UNASSESSED":
             return (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                    <AlertTriangle size={12} className="text-amber-600 shrink-0" />
+                    <AlertTriangle size={12} className="text-amber-600 shrink-0" aria-hidden="true" />
                     <span>{label}</span>
                 </span>
             );
@@ -73,13 +93,22 @@ function StatusBadge({
         default:
             return (
                 <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                    <HelpCircle size={12} className="text-gray-500 shrink-0" />
+                    <HelpCircle size={12} className="text-gray-500 shrink-0" aria-hidden="true" />
                     <span>{label}</span>
                 </span>
             );
     }
 }
 
+/**
+ * RegionInspectionPanel
+ * 
+ * Workbench displaying quantitative computer vision inspection results:
+ * - Current vs reference site coverage statistics (Complete, Partial, None).
+ * - Individual site drilldown showing physical diameter (mm), equivalent px diameter,
+ *   coverage ratio, overflow, aspect ratio, solidity, void counts, and segmentation quality.
+ * - Clear semantic distinction between "Material Detected" and "Within Specification".
+ */
 export default function RegionInspectionPanel({
     rois,
     result,
@@ -92,6 +121,7 @@ export default function RegionInspectionPanel({
 }: RegionInspectionPanelProps) {
     if (!result) return null;
 
+    // Project aggregate coverage metrics
     const currentCoverage = projectCoverageSummary(result.aggregate_measurements);
     const referenceCoverage =
         mode === "REFERENCE_IMAGE" && result.reference_aggregate_measurements
@@ -126,7 +156,7 @@ export default function RegionInspectionPanel({
             {/* Header: Title, Analysis Mode, and Studio Link */}
             <div className="flex items-center justify-between gap-2 border-b border-gray-200/80 dark:border-gray-800 pb-3">
                 <div className="flex items-center gap-2">
-                    <Activity size={16} className="text-[#6d5dfc] shrink-0" />
+                    <Activity size={16} className="text-[#6d5dfc] shrink-0" aria-hidden="true" />
                     <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">
                         Region Inspection Workbench
                     </span>
@@ -150,7 +180,7 @@ export default function RegionInspectionPanel({
                         className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-[#5848e8] dark:text-[#a397ff] hover:bg-[#eeebff] dark:hover:bg-gray-800 transition"
                         title="Expand in Studio"
                     >
-                        <Maximize2 size={13} />
+                        <Maximize2 size={13} aria-hidden="true" />
                         <span>Studio</span>
                     </button>
                 )}
@@ -158,8 +188,8 @@ export default function RegionInspectionPanel({
 
             {/* Analysis Gating & UNRELIABLE Status Notice */}
             {result.status === "UNRELIABLE" && (
-                <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                    <ShieldAlert size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800" role="alert">
+                    <ShieldAlert size={16} className="text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
                     <div>
                         <p className="font-semibold">Inspection Quality Gate: UNRELIABLE</p>
                         <p className="mt-0.5 text-[11px] leading-relaxed">
@@ -175,7 +205,7 @@ export default function RegionInspectionPanel({
                     <p className="font-semibold text-amber-900 dark:text-amber-200">Analysis Warnings:</p>
                     {result.warnings.map((w, idx) => (
                         <div key={idx} className="flex items-start gap-1">
-                            <span>&bull;</span>
+                            <span aria-hidden="true">&bull;</span>
                             <span>{w}</span>
                         </div>
                     ))}
@@ -342,7 +372,7 @@ export default function RegionInspectionPanel({
                         <div className="text-[11px] font-medium">
                             {outlineResult.isValid ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                                    <Layers size={13} />
+                                    <Layers size={13} aria-hidden="true" />
                                     <span>Deposit Outline ({outlineResult.points.length} vertices rendered)</span>
                                 </span>
                             ) : (
@@ -435,7 +465,7 @@ export default function RegionInspectionPanel({
                                     <p className="font-semibold">Site Inspection Warnings:</p>
                                     {selectedMeasurement.inspection_warnings.map((w, idx) => (
                                         <div key={idx} className="flex items-start gap-1 text-[11px]">
-                                            <span>&bull;</span>
+                                            <span aria-hidden="true">&bull;</span>
                                             <span>{w}</span>
                                         </div>
                                     ))}
@@ -493,7 +523,7 @@ export default function RegionInspectionPanel({
             {/* Terminology and Semantic Legend */}
             <div className="rounded-lg bg-gray-100/70 dark:bg-gray-800/50 p-2.5 text-[11px] text-gray-600 dark:text-gray-400 space-y-1 border border-gray-200/60 dark:border-gray-700/60">
                 <div className="flex items-center gap-1 font-semibold text-gray-800 dark:text-gray-300">
-                    <Info size={13} className="text-[#6d5dfc]" />
+                    <Info size={13} className="text-[#6d5dfc]" aria-hidden="true" />
                     <span>Inspection Semantic Reference:</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">

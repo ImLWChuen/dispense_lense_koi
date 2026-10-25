@@ -1,3 +1,5 @@
+"""System Liveness & Health Probe Router."""
+
 from fastapi import APIRouter
 
 from app.schemas.health import HealthResponse

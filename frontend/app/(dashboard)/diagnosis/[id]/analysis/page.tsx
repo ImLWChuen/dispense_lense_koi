@@ -1,3 +1,13 @@
+/**
+ * Diagnostic Analysis Breakdown & Revision History Page (`/diagnosis/[id]/analysis`)
+ *
+ * Detailed engineering inspection view:
+ * - Evidence DAG graph rendering connections between observations and candidate causes.
+ * - Granular Bayesian scoring breakdown weights (prior, observation updates, check weights).
+ * - Calibrated image inspection details.
+ * - Analysis revision changelog.
+ */
+
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";

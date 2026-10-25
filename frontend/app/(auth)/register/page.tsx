@@ -1,3 +1,11 @@
+/**
+ * Register Page
+ *
+ * Self-service registration view for factory staff:
+ * - Submits user details (name, email, password) to `/auth/register`.
+ * - Confirms registration and redirects to `/login`.
+ */
+
 "use client";
 
 import { Activity, Lock, Mail, User } from "lucide-react";

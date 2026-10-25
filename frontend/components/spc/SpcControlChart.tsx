@@ -1,3 +1,14 @@
+/**
+ * SpcControlChart Component
+ *
+ * Implements statistical process control (SPC) Shewhart charts (I-MR: Individuals and Moving Range).
+ * Features:
+ * - Upper Control Limit (UCL), Center Line (CL), and Lower Control Limit (LCL) reference lines.
+ * - Upper and Lower Specification Limits (USL, LSL).
+ * - Western Electric & Nelson rule violation detection with visual anomaly halo indicators.
+ * - Toggle between Individuals (X) and Moving Range (MR) views.
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -14,11 +25,19 @@ import {
 import { SpcCapabilityMetrics, SpcDataPoint } from "@/lib/api/spc";
 import { AlertTriangle, Info, CheckCircle2 } from "lucide-react";
 
+/**
+ * Props for the SpcControlChart component.
+ */
 interface SpcControlChartProps {
+    /** Array of sequential sample measurements with violation flags */
     dataPoints: SpcDataPoint[];
+    /** Statistical control limits and specification parameters */
     metrics: SpcCapabilityMetrics;
 }
 
+/**
+ * Props for the custom interactive chart tooltip.
+ */
 interface CustomTooltipProps {
     active?: boolean;
     payload?: Array<{ payload: SpcDataPoint }>;
