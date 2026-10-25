@@ -19,17 +19,37 @@ import {
     triggerLayoutDownload,
 } from "@/lib/region-layout";
 
+/**
+ * Props for the RegionLayoutControls component.
+ */
 interface RegionLayoutControlsProps {
+    /** Target upload item containing current ROIs and imported layout metadata */
     uploadItem: UploadItem;
+    /** Current image display dimensions used for aspect ratio validation */
     targetDimensions: { width: number; height: number } | null;
+    /** Whether vision analysis is actively executing */
     isAnalyzing: boolean;
+    /** Callback when a layout file is chosen from the disk */
     onSelectFile: (file: File) => void;
+    /** Callback to confirm placement of imported ROI layout */
     onConfirmPlacement: () => void;
+    /** Callback to abandon imported layout and revert to manual drawing */
     onAbandonLayout: () => void;
+    /** Callback to report or clear layout errors */
     onLayoutError: (error: string | null) => void;
+    /** Current layout error message */
     layoutError?: string | null;
 }
 
+/**
+ * RegionLayoutControls
+ * 
+ * Provides import/export tooling for portable region layouts (`dispense-region-layout.json`).
+ * Features:
+ * - JSON schema export containing normalized ROI geometry without sensitive image binaries.
+ * - Dimension mismatch validation comparing source layout resolution against current image.
+ * - Explicit technician placement confirmation step before downstream analysis is unlocked.
+ */
 export default function RegionLayoutControls({
     uploadItem,
     targetDimensions,
@@ -68,7 +88,7 @@ export default function RegionLayoutControls({
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isSaveModalOpen]);
 
-    // File export handler
+    /** Open layout export naming dialog */
     const handleOpenSaveModal = () => {
         if (!canExport) return;
         const cleanBase = uploadItem.file?.name?.replace(/\.[^.]+$/, "") || "part";
@@ -77,6 +97,7 @@ export default function RegionLayoutControls({
         setIsSaveModalOpen(true);
     };
 
+    /** Validate and trigger browser file download for the JSON layout */
     const handleConfirmSave = () => {
         if (!hasValidDimensions || !targetDimensions) {
             setSaveValidationError("Target image dimensions unavailable.");
@@ -98,7 +119,7 @@ export default function RegionLayoutControls({
         setIsSaveModalOpen(false);
     };
 
-    // File import arbitration and parsing are owned by the shared parent coordinator.
+    /** Handles file selection from hidden input */
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         // Reset file input so re-selecting same file works
@@ -111,6 +132,7 @@ export default function RegionLayoutControls({
     const isUnconfirmed = Boolean(imported && !imported.confirmed);
     const isConfirmed = Boolean(imported && imported.confirmed);
 
+    // Flag if aspect ratio or resolution differs from when layout was authored
     const hasDimensionMismatch =
         imported &&
         targetDimensions &&
@@ -142,7 +164,7 @@ export default function RegionLayoutControls({
                         }
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                        <Download size={13} className="text-[#6d5dfc]" />
+                        <Download size={13} className="text-[#6d5dfc]" aria-hidden="true" />
                         <span>Save layout</span>
                     </button>
 
@@ -153,7 +175,7 @@ export default function RegionLayoutControls({
                         title="Load region layout JSON from disk"
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                        <Upload size={13} className="text-[#6d5dfc]" />
+                        <Upload size={13} className="text-[#6d5dfc]" aria-hidden="true" />
                         <span>Load layout</span>
                     </button>
 
@@ -167,16 +189,17 @@ export default function RegionLayoutControls({
                     />
                 </div>
 
+                {/* Status indicator pill */}
                 {imported && (
                     <div className="flex items-center gap-1.5">
                         {isConfirmed ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                <CheckCircle2 size={12} />
+                                <CheckCircle2 size={12} aria-hidden="true" />
                                 <span>Placement Confirmed</span>
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 animate-pulse">
-                                <AlertTriangle size={12} />
+                                <AlertTriangle size={12} aria-hidden="true" />
                                 <span>Unconfirmed Placement</span>
                             </span>
                         )}
@@ -186,9 +209,9 @@ export default function RegionLayoutControls({
 
             {/* Error Message Banner */}
             {layoutError && (
-                <div className="flex items-start justify-between gap-2 rounded-xl bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+                <div className="flex items-start justify-between gap-2 rounded-xl bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50" role="alert">
                     <div className="flex items-start gap-2">
-                        <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+                        <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" aria-hidden="true" />
                         <div>
                             <strong className="font-semibold">Layout Import Error:</strong>{" "}
                             <span>{layoutError}</span>
@@ -242,12 +265,12 @@ export default function RegionLayoutControls({
                             title="Discard imported layout and regions to draw manually"
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-[11px] font-medium text-gray-600 dark:text-gray-300 hover:text-red-600 hover:border-red-200 dark:hover:border-red-800 transition cursor-pointer"
                         >
-                            <RotateCcw size={11} />
+                            <RotateCcw size={11} aria-hidden="true" />
                             <span>Abandon & Draw Manually</span>
                         </button>
                     </div>
 
-                    {/* Dimensions Comparison */}
+                    {/* Dimensions Comparison Matrix */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-white/70 dark:bg-gray-900/60 p-2.5 rounded-lg border border-gray-200/60 dark:border-gray-800">
                         <div>
                             <span className="text-gray-500 dark:text-gray-400">Layout Source Dimensions:</span>{" "}
@@ -265,10 +288,10 @@ export default function RegionLayoutControls({
                         </div>
                     </div>
 
-                    {/* Dimension Mismatch Warning */}
+                    {/* Dimension Mismatch Warning Banner */}
                     {hasDimensionMismatch && (
                         <div className="flex items-start gap-2 rounded-lg bg-amber-100/70 dark:bg-amber-900/40 p-2 text-amber-900 dark:text-amber-200 text-xs border border-amber-300 dark:border-amber-700">
-                            <Info size={14} className="shrink-0 text-amber-700 mt-0.5" />
+                            <Info size={14} className="shrink-0 text-amber-700 mt-0.5" aria-hidden="true" />
                             <span>
                                 <strong>Dimension mismatch detected:</strong> Target image dimensions differ from layout source. Normalized coordinates map to this aspect ratio. Verify positioning carefully. Note: matching dimensions do not guarantee physical part alignment.
                             </span>
@@ -317,7 +340,7 @@ export default function RegionLayoutControls({
                                 }
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#6d5dfc] hover:bg-[#5848e8] text-white px-4 py-2 font-semibold shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                             >
-                                <Check size={14} />
+                                <Check size={14} aria-hidden="true" />
                                 <span>Confirm region placement</span>
                             </button>
                         </div>
@@ -327,11 +350,11 @@ export default function RegionLayoutControls({
 
             {/* Save Layout Modal */}
             {isSaveModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true">
                     <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white dark:bg-gray-900 p-5 shadow-2xl space-y-4">
                         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
                             <div className="flex items-center gap-2">
-                                <FileCode size={18} className="text-[#6d5dfc]" />
+                                <FileCode size={18} className="text-[#6d5dfc]" aria-hidden="true" />
                                 <h3 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                                     Save Portable Region Layout
                                 </h3>
@@ -385,7 +408,7 @@ export default function RegionLayoutControls({
                             </div>
 
                             {saveValidationError && (
-                                <div className="rounded-lg bg-red-50 p-2 text-red-700 text-xs border border-red-200">
+                                <div className="rounded-lg bg-red-50 p-2 text-red-700 text-xs border border-red-200" role="alert">
                                     {saveValidationError}
                                 </div>
                             )}
@@ -404,7 +427,7 @@ export default function RegionLayoutControls({
                                 onClick={handleConfirmSave}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#6d5dfc] hover:bg-[#5848e8] text-white px-3.5 py-1.5 font-semibold shadow-xs transition"
                             >
-                                <Download size={13} />
+                                <Download size={13} aria-hidden="true" />
                                 <span>Save & Download JSON</span>
                             </button>
                         </div>

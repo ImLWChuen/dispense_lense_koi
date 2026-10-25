@@ -1,3 +1,13 @@
+/**
+ * Diagnostic Questionnaire Page (`/diagnosis/[id]/questions`)
+ *
+ * Interactive Bayesian inquiry interview:
+ * - Dynamically evaluates evidence entropy and presents the optimal next diagnostic question.
+ * - Records operator answers (YES, NO, UNKNOWN) with revision concurrency safety.
+ * - Displays previous question history and answered evidence logs.
+ * - Automatically advances when inquiry thresholds are satisfied.
+ */
+
 "use client";
 
 import { useState, useEffect, useCallback, use, useRef } from "react";

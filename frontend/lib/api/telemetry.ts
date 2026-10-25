@@ -1,7 +1,19 @@
+/**
+ * Telemetry API Service & Types
+ *
+ * Client interface for real-time factory sensor and consumable tracking:
+ * - Production line sensor streams (fluid pressure, vacuum suck-back, nozzle heating, cycle hz).
+ * - Cleanroom ambient monitoring (temperature, relative humidity, differential air pressure, particle counts).
+ * - Adhesive syringe thaw sequencing and work life (pot life) tracking.
+ * - Automated tip purge cycles and needle wear analytics.
+ */
+
 import { apiClient } from "./client";
 
+/** Health status classifications for physical sensor readings */
 export type SensorStatus = "NOMINAL" | "WARNING" | "CRITICAL";
 
+/** Lifecycle state of adhesive consumable syringes */
 export type ConsumableState =
     | "FROZEN"
     | "THAWING"
@@ -10,6 +22,7 @@ export type ConsumableState =
     | "EXPIRED"
     | "SCRAPPED";
 
+/** Pot-life degradation status based on elapsed work time */
 export type PotLifeStatus = "OPTIMAL" | "WARNING" | "CRITICAL" | "EXPIRED";
 
 export interface CleanroomEnvironment {

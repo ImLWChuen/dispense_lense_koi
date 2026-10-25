@@ -1,3 +1,12 @@
+/**
+ * Diagnostic Cases Repository Page
+ *
+ * Searchable, filterable repository of historical and active dispensing cases:
+ * - Full-text filtering across case numbers, defect categories, and machine tags.
+ * - Categorical status filters (ALL, UNRESOLVED, RECOVERY_PENDING_VERIFICATION, RESOLVED, RECURRED).
+ * - Direct links to case dossiers and diagnostic workbench sessions.
+ */
+
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";

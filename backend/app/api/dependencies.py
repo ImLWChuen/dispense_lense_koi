@@ -1,3 +1,9 @@
+"""FastAPI Request Dependency Providers.
+
+Implements token decoding, identity resolution, active user status validation,
+and role-based access control (RBAC) authorization guards.
+"""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -9,6 +15,7 @@ from app.db.session import get_db
 from app.models.user import UserModel
 from app.schemas.user import TokenPayload
 
+# OAuth2 password bearer scheme for parsing Bearer tokens from HTTP Authorization header
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"/api/auth/login"
 )

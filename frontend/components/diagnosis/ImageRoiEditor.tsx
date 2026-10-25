@@ -12,23 +12,56 @@ import {
     getEffectiveRoiStatus,
 } from "@/lib/region-inspection-view";
 
+/**
+ * Mode of canvas interaction:
+ * - 'inspect': Clicking selects regions and views measurements without modifying bounds.
+ * - 'draw': Dragging draws new rectangular target ROIs.
+ */
 export type RoiInteractionMode = "inspect" | "draw";
 
+/**
+ * Props for ImageRoiEditor component.
+ */
 interface ImageRoiEditorProps {
+    /** URL of the dispensing image to display and annotate */
     imageUrl: string;
+    /** List of user-defined normalized [0, 1] regions of interest */
     rois: NormalizedROI[];
+    /** Callback updating the ROI list */
     onChange: (rois: NormalizedROI[]) => void;
+    /** Whether editing interactions are disabled */
     disabled?: boolean;
+    /** Callback opening the full-screen Studio modal */
     onExpandStudio?: () => void;
+    /** Whether the editor is currently displayed inside full Studio mode */
     isStudioMode?: boolean;
+    /** Currently selected ROI identifier */
     selectedRoiId?: string | null;
+    /** Callback when user selects or deselects an ROI */
     onSelectRoi?: (roiId: string | null) => void;
+    /** Computer vision analysis results payload (measurements, polygon outlines, statuses) */
     result?: ImageAnalysisResponse | null;
+    /** Optional controlled interaction mode */
     interactionMode?: RoiInteractionMode;
+    /** Callback when interaction mode switches */
     onInteractionModeChange?: (mode: RoiInteractionMode) => void;
+    /** Callback reporting the intrinsic natural dimensions of the loaded image */
     onDimensionsChange?: (dims: { width: number; height: number }) => void;
 }
 
+/**
+ * ImageRoiEditor
+ * 
+ * Interactive canvas editor allowing operators to draw, edit, and inspect rectangular
+ * Regions of Interest (ROIs) on dispensing defect images.
+ * 
+ * Key capabilities:
+ * - Letterbox/pillarbox geometry calculations so coordinates strictly map to image content.
+ * - Normalized coordinate system ([0, 1]) independent of display resolution.
+ * - Dual interaction modes: Inspect (selection & measurement reading) vs Draw (creating boxes).
+ * - SVG segmentation polygon overlays showing exact detected fluid outlines.
+ * - Status-coded color tags (DETECTED in green, MISSING in dashed red, UNASSESSED in amber).
+ */
 export default function ImageRoiEditor({
     imageUrl,
     rois,
@@ -46,9 +79,12 @@ export default function ImageRoiEditor({
     const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
 
+    // Natural pixel dimensions of image file
     const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    // Dynamic rendered container dimensions
     const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
+    // Internal fallback mode state
     const [internalMode, setInternalMode] = useState<RoiInteractionMode>(() => {
         if (rois.length === 0) return "draw";
         if (result) return "inspect";
@@ -74,10 +110,12 @@ export default function ImageRoiEditor({
         }
     }, [rois.length, activeMode, setInteractionMode]);
 
+    // Active drag-draw coordinates state
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
     const [currentPoint, setCurrentPoint] = useState<{ x: number; y: number } | null>(null);
 
+    // Sync refs for high-frequency pointer event loop
     const isDrawingRef = useRef(false);
     const startPointRef = useRef<{ x: number; y: number } | null>(null);
     const currentPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -118,7 +156,7 @@ export default function ImageRoiEditor({
         }
     }, [imageUrl, onDimensionsChange]);
 
-    // Letterbox/pillarbox content rectangle
+    // Letterbox/pillarbox content rectangle computation
     const contentRect = useMemo(() => {
         return computeContentRect(
             containerSize.width,
@@ -128,7 +166,7 @@ export default function ImageRoiEditor({
         );
     }, [containerSize.width, containerSize.height, naturalSize.width, naturalSize.height]);
 
-    // Normalized pointer coordinates relative to image content rect
+    // Transform screen pointer client coordinates to normalized [0, 1] relative to the image
     const getNormalizedCoords = useCallback(
         (e: React.PointerEvent<HTMLDivElement>) => {
             if (!containerRef.current) return { x: 0, y: 0, isInside: false };
@@ -149,6 +187,7 @@ export default function ImageRoiEditor({
         [naturalSize]
     );
 
+    /** Handle pointer down: start drawing box or deselect */
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
         if (disabled) return;
         // Only accept primary button
@@ -179,6 +218,7 @@ export default function ImageRoiEditor({
         setIsDrawing(true);
     };
 
+    /** Handle pointer move: update current drag bounding box */
     const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
         if (activeMode !== "draw") return;
         if (!isDrawingRef.current || !startPointRef.current || disabled) return;
@@ -187,6 +227,7 @@ export default function ImageRoiEditor({
         setCurrentPoint({ x: coords.x, y: coords.y });
     };
 
+    /** Handle pointer up: finalize rectangle and append to ROIs list */
     const handlePointerUp = () => {
         if (activeMode !== "draw") return;
         const isDrawingVal = isDrawingRef.current;
@@ -232,6 +273,7 @@ export default function ImageRoiEditor({
         }
     };
 
+    /** Deletes an individual ROI by ID */
     const handleRemoveRoi = (roiId: string) => {
         if (disabled) return;
         if (selectedRoiId === roiId) {
@@ -240,6 +282,7 @@ export default function ImageRoiEditor({
         onChange(rois.filter((r) => r.roi_id !== roiId));
     };
 
+    /** Clears all defined ROIs and resets to draw mode */
     const handleResetAll = () => {
         if (disabled) return;
         onSelectRoi?.(null);
@@ -247,7 +290,7 @@ export default function ImageRoiEditor({
         setInteractionMode("draw");
     };
 
-    // Calculate active drawing box
+    // Calculate active drawing box CSS dimensions
     const activeBox =
         isDrawing && startPoint && currentPoint
             ? {
@@ -262,9 +305,10 @@ export default function ImageRoiEditor({
 
     return (
         <div className="space-y-4">
+            {/* Top Toolbar: Counter, Mode Switcher, and Reset */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
-                    <Crosshair size={16} className="text-[#6d5dfc] shrink-0" />
+                    <Crosshair size={16} className="text-[#6d5dfc] shrink-0" aria-hidden="true" />
                     <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
                         Regions of Interest (ROIs)
                     </span>
@@ -293,7 +337,7 @@ export default function ImageRoiEditor({
                                     : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                             } ${disabled || rois.length === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
-                            <MousePointer size={12} />
+                            <MousePointer size={12} aria-hidden="true" />
                             <span>Inspect</span>
                         </button>
                         <button
@@ -309,7 +353,7 @@ export default function ImageRoiEditor({
                                     : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                             } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
-                            <Plus size={12} />
+                            <Plus size={12} aria-hidden="true" />
                             <span>Draw ROI</span>
                         </button>
                     </div>
@@ -320,14 +364,14 @@ export default function ImageRoiEditor({
                             onClick={handleResetAll}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 transition"
                         >
-                            <RotateCcw size={12} />
+                            <RotateCcw size={12} aria-hidden="true" />
                             <span>Reset ROIs</span>
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Interactive Image Container */}
+            {/* Interactive Image Container with Pointer Handlers */}
             <div
                 ref={containerRef}
                 onPointerDown={handlePointerDown}
@@ -354,12 +398,12 @@ export default function ImageRoiEditor({
                         className="absolute top-2.5 right-2.5 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/75 hover:bg-black/90 backdrop-blur-xs px-2.5 py-1.5 text-xs font-semibold text-white shadow-md transition"
                         title="Open Full Computer Vision Studio"
                     >
-                        <Maximize2 size={13} />
+                        <Maximize2 size={13} aria-hidden="true" />
                         <span>Expand Studio</span>
                     </button>
                 )}
 
-                {/* Safe natural-dimension local preview */}
+                {/* Base Image element */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                     ref={imgRef}
@@ -382,7 +426,7 @@ export default function ImageRoiEditor({
                 {/* Helper prompt overlay when 0 ROIs */}
                 {rois.length === 0 && !isDrawing && (
                     <div className="pointer-events-none absolute bottom-2 left-2 right-2 z-20 flex items-center justify-center gap-1.5 rounded-lg bg-black/60 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-white/90">
-                        <Crosshair size={13} className="text-amber-400 shrink-0" />
+                        <Crosshair size={13} className="text-amber-400 shrink-0" aria-hidden="true" />
                         <span className="truncate">Drag box over deposit to define target ROI</span>
                     </div>
                 )}
@@ -434,7 +478,7 @@ export default function ImageRoiEditor({
                         })}
                     </svg>
 
-                    {/* Existing ROIs overlay */}
+                    {/* Existing ROIs overlay boxes */}
                     {rois.map((roi) => {
                         const isSelected = roi.roi_id === selectedRoiId;
                         const measurement = result
@@ -508,6 +552,7 @@ export default function ImageRoiEditor({
                                     height: `${roi.height * 100}%`,
                                 }}
                             >
+                                {/* ROI Identifier Badge & delete trigger */}
                                 <div
                                     className={`absolute -top-6 left-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-xs pointer-events-auto ${tagBgClass}`}
                                 >
@@ -537,7 +582,7 @@ export default function ImageRoiEditor({
                         );
                     })}
 
-                    {/* Active drawing rectangle */}
+                    {/* Active drawing rectangle shown while dragging */}
                     {activeBox && (
                         <div
                             className="pointer-events-none absolute border-2 border-dashed border-amber-400 bg-amber-400/20 z-30"
@@ -552,10 +597,10 @@ export default function ImageRoiEditor({
                 </div>
             </div>
 
-            {/* Helper guidance */}
+            {/* Helper Guidance Alert */}
             {rois.length === 0 && (
                 <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                    <AlertCircle size={14} className="shrink-0 text-amber-600" />
+                    <AlertCircle size={14} className="shrink-0 text-amber-600" aria-hidden="true" />
                     <span>
                         Draw at least one rectangular target ROI over the image by clicking and dragging.
                     </span>
@@ -565,7 +610,7 @@ export default function ImageRoiEditor({
             {rois.length > 0 && isDrawMode && (
                 <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 p-2.5 text-xs text-[#5848e8] dark:text-[#a397ff] border border-indigo-100 dark:border-indigo-900/50">
                     <div className="flex items-center gap-2">
-                        <Crosshair size={14} className="shrink-0 text-[#6d5dfc]" />
+                        <Crosshair size={14} className="shrink-0 text-[#6d5dfc]" aria-hidden="true" />
                         <span>
                             <strong>Draw Mode active:</strong> Drag anywhere on the image to add a new ROI. You can start drawing inside existing regions.
                         </span>
@@ -580,6 +625,7 @@ export default function ImageRoiEditor({
                 </div>
             )}
 
+            {/* List of Saved Target Regions with Coordinate Matrix */}
             {rois.length > 0 && (
                 <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between">
@@ -673,7 +719,7 @@ export default function ImageRoiEditor({
                                             title={`Delete ${roi.roi_id}`}
                                             aria-label={`Delete ${roi.roi_id}`}
                                         >
-                                            <Trash2 size={16} />
+                                            <Trash2 size={16} aria-hidden="true" />
                                         </button>
                                     )}
                                 </div>

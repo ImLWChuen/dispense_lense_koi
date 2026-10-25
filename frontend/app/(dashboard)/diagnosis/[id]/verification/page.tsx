@@ -1,3 +1,13 @@
+/**
+ * Engineer Verification & Lifecycle Closure Page (`/diagnosis/[id]/verification`)
+ *
+ * Facilitates formal engineering sign-off on diagnostic cases:
+ * - Confirms true root causes against Bayesian rankings.
+ * - Logs prescribed recovery maintenance actions executed on the dispensing line.
+ * - Verifies test shot recovery or logs defect recurrence.
+ * - Updates canonical issue condition: UNRESOLVED -> RECOVERY_PENDING_VERIFICATION -> RESOLVED / RECURRED.
+ */
+
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";

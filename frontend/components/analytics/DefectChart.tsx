@@ -1,3 +1,10 @@
+/**
+ * DefectChart Component
+ *
+ * Renders a longitudinal line chart visualizing total defect occurrences
+ * over a trailing six-month operational horizon.
+ */
+
 "use client";
 
 import {
@@ -12,7 +19,11 @@ import {
 import { DefectTrendItem } from "@/lib/api/analytics";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * Props for the DefectChart component.
+ */
 interface DefectChartProps {
+    /** Time-series data points indicating defect counts grouped by calendar month */
     data?: DefectTrendItem[];
 }
 

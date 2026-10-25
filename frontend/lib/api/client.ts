@@ -1,5 +1,18 @@
+/**
+ * API HTTP Client
+ *
+ * Provides a unified wrapper over standard `fetch`:
+ * - Automatically injects `Authorization: Bearer <token>` from localStorage.
+ * - Manages Content-Type headers for JSON vs multipart/form-data.
+ * - Extracts and normalizes FastAPI/Pydantic validation error envelopes into readable messages.
+ * - Handles HTTP 204 No Content and HTTP 413 Payload Too Large responses.
+ */
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
+/**
+ * Custom error class capturing HTTP status codes and API error response payloads.
+ */
 export class ApiError extends Error {
     constructor(
         public status: number,

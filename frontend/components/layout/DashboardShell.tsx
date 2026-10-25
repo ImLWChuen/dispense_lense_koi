@@ -1,3 +1,14 @@
+/**
+ * DashboardShell Component
+ *
+ * Master layout shell wrapper for the authenticated application dashboard.
+ * Coordinates:
+ * - Responsive desktop sidebar navigation with mobile drawer backdrop toggle.
+ * - Global header containing search, notification bells, theme switchers, and user profiles.
+ * - Persistent real-time LiveTelemetryRibbon across dispensing lines.
+ * - Keyboard listener for Cmd+K / Ctrl+K spotlight command palette.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,7 +17,11 @@ import Header from "@/components/layout/Header";
 import CommandPalette from "@/components/layout/CommandPalette";
 import LiveTelemetryRibbon from "@/components/telemetry/LiveTelemetryRibbon";
 
+/**
+ * Props for the DashboardShell component.
+ */
 interface DashboardShellProps {
+    /** Child content to be rendered within the main view container */
     children: React.ReactNode;
 }
 

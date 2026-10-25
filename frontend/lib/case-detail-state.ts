@@ -1,9 +1,15 @@
 /**
- * Pure state and view derivation helpers for Case Detail (DLK-M3-030).
+ * Case Detail State Derivation Helpers (DLK-M3-030)
+ *
+ * Pure functions for transforming durable backend case responses into
+ * presentation-ready timeline entries, revision indices, and localized timestamps.
  */
 
 import type { DurableCaseResponse } from "@/types/api";
 
+/**
+ * Normalized timeline audit log item for rendering in case history feeds.
+ */
 export interface CaseTimelineEntry {
     key: string;
     event: string;
@@ -13,6 +19,9 @@ export interface CaseTimelineEntry {
     detail: string;
 }
 
+/**
+ * Safely parses and formats an ISO timestamp string into localized date-time notation.
+ */
 export function formatCaseTimestamp(timestamp?: string | null): string {
     if (!timestamp || typeof timestamp !== "string" || timestamp.trim() === "") {
         return "Not recorded";

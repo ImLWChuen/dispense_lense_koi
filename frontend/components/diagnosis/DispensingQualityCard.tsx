@@ -4,19 +4,37 @@ import { Award, CheckCircle2, AlertTriangle, ShieldAlert, Sparkles, Star } from 
 import { computeDispensingQuality, DispensingQualityAssessment } from "@/lib/quality-assessment";
 import { DurableCaseResponse } from "@/types/api";
 
+/**
+ * Props for DispensingQualityCard component.
+ */
 interface DispensingQualityCardProps {
+    /** Case payload containing defect code and computer vision observations */
     caseData?: DurableCaseResponse;
+    /** Optional pre-computed assessment override (e.g. from local image ROI editor) */
     customAssessment?: DispensingQualityAssessment;
 }
 
+/**
+ * DispensingQualityCard
+ * 
+ * Multi-dimensional quality breakdown evaluating four essential fluid dispensing criteria:
+ * 1. Shape Regularity (Circularity and aspect ratio)
+ * 2. Size Accuracy (Volume and area deviation vs nominal recipe)
+ * 3. Position Repeatability (XY centroid offset vs coordinate target)
+ * 4. Defect Risk (Satellite droplet, void, or bridging likelihood)
+ * 
+ * Integrates visual star ratings, colored progress bars, and an AI rationale summary.
+ */
 export default function DispensingQualityCard({
     caseData,
     customAssessment,
 }: DispensingQualityCardProps) {
+    // Extract defect classifications to parameterize the quality computation
     const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
     const defectCode = caseData?.defect_code || (diagnosis as any)?.defect_code || "";
     const defectName = diagnosis?.defect_name || diagnosis?.defect || "";
 
+    // Compute or adopt passed assessment
     const assessment =
         customAssessment ||
         computeDispensingQuality({
@@ -27,6 +45,7 @@ export default function DispensingQualityCard({
 
     const { overallScore, metrics, summary } = assessment;
 
+    // Ordered metrics list with specific brand accent colors
     const metricItems = [
         {
             item: metrics.shape,
@@ -49,10 +68,13 @@ export default function DispensingQualityCard({
 
     return (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-            {/* Header */}
+            {/* Header: Title, Description, and Aggregate Score Badge */}
             <div className="border-b border-gray-100 dark:border-gray-800 px-5 py-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
+                    <div 
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]"
+                        aria-hidden="true"
+                    >
                         <Award size={20} />
                     </div>
                     <div className="min-w-0">
@@ -81,7 +103,7 @@ export default function DispensingQualityCard({
                 </div>
             </div>
 
-            {/* Metrics Breakdown Grid */}
+            {/* Metrics Breakdown Grid: 2x2 grid for Shape, Size, Position, Defect Risk */}
             <div className="p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                     {metricItems.map(({ item, barColor }) => (
@@ -99,15 +121,17 @@ export default function DispensingQualityCard({
                                     </span>
                                 </div>
 
-                                {/* Star Rating Icons */}
+                                {/* 5-Star Rating Indicators */}
                                 <div
                                     className="mt-1 flex items-center gap-0.5"
                                     title={`${item.stars} out of 5 stars`}
+                                    aria-label={`${item.name} score: ${item.stars} out of 5 stars`}
                                 >
                                     {[1, 2, 3, 4, 5].map((star) => (
                                         <Star
                                             key={star}
                                             size={12}
+                                            aria-hidden="true"
                                             className={
                                                 star <= item.stars
                                                     ? "fill-amber-400 text-amber-400 dark:fill-amber-400 dark:text-amber-400 shrink-0"
@@ -122,6 +146,7 @@ export default function DispensingQualityCard({
                                 </p>
                             </div>
 
+                            {/* Score progress bar */}
                             <div className="mt-3">
                                 <div className="flex items-center justify-between text-[11px] mb-1">
                                     <span className="text-gray-600 dark:text-gray-300 font-medium truncate">
@@ -129,8 +154,13 @@ export default function DispensingQualityCard({
                                     </span>
                                 </div>
 
-                                {/* Progress bar */}
-                                <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700/60 overflow-hidden">
+                                <div 
+                                    className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700/60 overflow-hidden"
+                                    role="progressbar"
+                                    aria-valuenow={item.score}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                >
                                     <div
                                         className={`h-full rounded-full transition-all duration-500 ${barColor}`}
                                         style={{ width: `${item.score}%` }}
@@ -141,9 +171,9 @@ export default function DispensingQualityCard({
                     ))}
                 </div>
 
-                {/* Synthesis summary */}
+                {/* Synthesis Summary: Engineering rationale callout */}
                 <div className="rounded-xl bg-[#faf9ff] dark:bg-[#191d38] border border-indigo-100 dark:border-indigo-900/40 p-3 flex items-start gap-2.5">
-                    <Sparkles size={16} className="text-[#6d5dfc] dark:text-[#a59bff] shrink-0 mt-0.5" />
+                    <Sparkles size={16} className="text-[#6d5dfc] dark:text-[#a59bff] shrink-0 mt-0.5" aria-hidden="true" />
                     <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
                         <strong className="text-gray-900 dark:text-white font-semibold">Quality Assessment Rationale: </strong>
                         {summary}
@@ -153,4 +183,3 @@ export default function DispensingQualityCard({
         </div>
     );
 }
-

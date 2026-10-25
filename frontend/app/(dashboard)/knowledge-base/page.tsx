@@ -1,3 +1,15 @@
+/**
+ * Industrial Knowledge Base & Learning Catalog Page (`/knowledge-base`)
+ *
+ * Authoritative engineering knowledge directory:
+ * - Defects: D01-D06 symptom patterns, appearance criteria, and optical physics.
+ * - Root Causes: RC01-RC04 failure mechanisms and mechanical/fluidic origins.
+ * - Actions: Standard Operating Procedures (SOPs), tools required, and effort levels.
+ * - Bayesian Rules: Directed observation-cause belief update relationships.
+ * - Diagnostic Questions: Inquiry library and entropy-reduction rationale.
+ * - Learning Database: Historical 4-column defect resolution database with synthesized insights.
+ */
+
 "use client";
 
 import { useState, useEffect, Suspense, useCallback } from "react";

@@ -1,3 +1,10 @@
+/**
+ * ReportActions Component
+ *
+ * Provides quick action buttons for exporting, printing, and sharing
+ * diagnostic investigation dossiers and quality compliance reports.
+ */
+
 import { Download, Printer, Share2 } from "lucide-react";
 
 export default function ReportActions() {

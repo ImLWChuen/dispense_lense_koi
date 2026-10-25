@@ -1,3 +1,16 @@
+"""Top-Level API v1 Route Aggregator.
+
+Assembles and mounts all modular sub-routers:
+- System Health (`/health`)
+- Operator Authentication (`/auth`)
+- Diagnostic Engine & Cases (`/diagnoses`, `/cases`)
+- Knowledge Base Catalog (`/actions`, `/defects`, `/causes`, `/questions`, `/rules`)
+- Vision Inspection (`/images`)
+- Operational Analytics & SPC (`/analytics`)
+- Administrative Directory (`/admin`)
+- Cleanroom & Consumable Telemetry (`/telemetry`)
+"""
+
 from fastapi import APIRouter
 
 from app.api.actions import router as actions_router

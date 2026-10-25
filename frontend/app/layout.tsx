@@ -1,3 +1,11 @@
+/**
+ * Root Application Layout
+ *
+ * Provides base HTML shell, global typography and styling,
+ * anti-FOUC (Flash of Unstyled Content) theme initialization script,
+ * and core application Context Providers (ThemeProvider, AuthProvider).
+ */
+
 import type { Metadata } from "next";
 import "./globals.css";
 

@@ -1,3 +1,18 @@
+/**
+ * EightDReportView Component
+ *
+ * Renders an automotive and aerospace quality-standard Eight Disciplines (8D)
+ * incident investigation report (ISO/TS 16949 / AIAG compliant):
+ * - D1: Cross-Functional Team Formation
+ * - D2: Problem Description (5W2H) & Severity
+ * - D3: Interim Containment Actions (ICA)
+ * - D4: Root Cause Analysis (5 Whys & Ishikwawa Fishbone)
+ * - D5: Chosen Permanent Corrective Actions (PCA)
+ * - D6: Implementation & Verification of PCA
+ * - D7: Preventive Actions (FMEA & Control Plan updates)
+ * - D8: Team Recognition, Closure & Sign-Off
+ */
+
 "use client";
 
 import {
@@ -25,9 +40,15 @@ import {
     Loader2,
 } from "lucide-react";
 
+/**
+ * Props for the EightDReportView component.
+ */
 interface EightDReportViewProps {
+    /** Structured 8D report data model */
     report: EightDReportResponse;
+    /** Trigger for server-side PDF generation/export */
     onDownloadPdf: () => void;
+    /** Pending indicator for PDF export */
     isDownloadingPdf: boolean;
 }
 

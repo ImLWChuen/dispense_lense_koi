@@ -1,3 +1,10 @@
+/**
+ * CauseChart Component
+ *
+ * Visualizes root cause distribution across a given analytic reporting timeframe.
+ * Displays vertical bar columns with angled categorical labels and interactive tooltips.
+ */
+
 "use client";
 
 import {
@@ -12,7 +19,11 @@ import {
 import { CauseDistributionItem } from "@/lib/api/analytics";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * Props for the CauseChart component.
+ */
 interface CauseChartProps {
+    /** List of confirmed cause names and their respective case frequencies */
     data?: CauseDistributionItem[];
 }
 

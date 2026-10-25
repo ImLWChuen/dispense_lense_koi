@@ -1,14 +1,36 @@
+/**
+ * KpiCard Component
+ *
+ * Renders an executive key performance indicator (KPI) metric card.
+ * Features:
+ * - Large, prominent numeric/percentage display.
+ * - Dynamic trend badges (up, down, neutral) with color cues.
+ * - Lightweight inline SVG vector sparkline chart with gradient area fills.
+ * - Icon container with hover micro-interaction transitions.
+ */
+
 import { ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
+/**
+ * Props for the KpiCard component.
+ */
 interface KpiCardProps {
+    /** Label/title of the metric (e.g. "Active Cases", "MTTR") */
     title: string;
+    /** Formatted value string to display prominently (e.g. "12", "94.2%") */
     value: string;
+    /** Subtext caption describing time window or context */
     description: string;
+    /** Lucide icon element for the card header */
     icon: ReactNode;
+    /** Optional trend string (e.g. "+5% vs last week") */
     trend?: string | null;
+    /** Direction for trend coloring: "up" (positive/green), "down" (negative/red), "neutral" */
     trendDirection?: "up" | "down" | "neutral";
+    /** Sequence of numeric values used to generate the SVG sparkline */
     sparkline?: number[];
+    /** Accent hex color for the sparkline stroke and gradient */
     accentColor?: string;
 }
 
@@ -22,7 +44,7 @@ export default function KpiCard({
     sparkline = [10, 14, 12, 18, 16, 21, 25],
     accentColor = "#6d5dfc",
 }: KpiCardProps) {
-    // Generate normalized SVG sparkline path
+    // Generate normalized SVG sparkline path coordinates from data points
     const width = 100;
     const height = 32;
     const padding = 2;

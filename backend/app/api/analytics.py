@@ -1,3 +1,10 @@
+"""
+Analytics and Dashboard API Router.
+
+Provides endpoints for high-level KPI summaries, defect and cause distribution charts,
+SPC capability analysis, and real-time Server-Sent Events (SSE) broadcasting.
+"""
+
 from __future__ import annotations
 
 import asyncio

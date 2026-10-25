@@ -1,3 +1,14 @@
+/**
+ * TroubleshootingChecklist Component
+ *
+ * Renders an interactive accordion checklist of physical troubleshooting actions
+ * recommended by the diagnostic engine. Enables technicians and engineers to:
+ * - Review standard operating procedures (SOP) and target causes.
+ * - Log execution status (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN, NOT_APPLICABLE).
+ * - Record evidence findings (SUPPORTS, CONTRADICTS, INCONCLUSIVE) and canonical outcomes.
+ * - Capture contextual observation notes.
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -18,6 +29,9 @@ import {
     ValidExecutionStatus,
 } from "@/lib/diagnostic-workflow-state";
 
+/**
+ * Representation of an individual troubleshooting action/check.
+ */
 export interface TroubleshootingAction {
     id: string;
     name: string;
@@ -33,12 +47,14 @@ export interface TroubleshootingAction {
     findingDetails?: string;
 }
 
+/** Visual badge styling and human-readable labels for effort estimates */
 const effortConfig = {
     low: { className: "bg-green-50 text-green-700", label: "Low Effort" },
     medium: { className: "bg-amber-50 text-amber-700", label: "Medium Effort" },
     high: { className: "bg-red-50 text-red-700", label: "High Effort" },
 };
 
+/** Visual status icon, color, and label mapping for action checklist items */
 const statusConfig: Record<string, { icon: typeof Circle; className: string; label: string }> = {
     pending: { icon: Circle, className: "text-gray-400", label: "Active / Pending" },
     completed: { icon: CheckCircle2, className: "text-green-600", label: "Completed" },
@@ -50,6 +66,9 @@ const statusConfig: Record<string, { icon: typeof Circle; className: string; lab
     inconclusive: { icon: HelpCircle, className: "text-amber-500", label: "Inconclusive" },
 };
 
+/**
+ * Parameters submitted when completing or updating a physical troubleshooting check.
+ */
 export interface TroubleshootingCheckSubmitParams {
     check_id: string;
     execution_status: string;
@@ -58,14 +77,23 @@ export interface TroubleshootingCheckSubmitParams {
     finding_details?: string | null;
 }
 
+/**
+ * Props for the TroubleshootingChecklist component.
+ */
 interface TroubleshootingChecklistProps {
+    /** List of troubleshooting action items to display */
     actions: TroubleshootingAction[];
+    /** Identifier of the currently active pending check requiring execution */
     activeCheckId?: string;
+    /** Callback dispatched upon submitting check results */
     onSubmit?: (params: TroubleshootingCheckSubmitParams) => Promise<void> | void;
+    /** Submitting state indicator for disabling form actions */
     isSubmitting?: boolean;
+    /** Global disable switch (e.g. when case is resolved) */
     disabled?: boolean;
 }
 
+/** Supported execution status options with active badge styles */
 const executionStatusOptions: { value: ValidExecutionStatus; label: string; activeClass: string }[] = [
     { value: "COMPLETED", label: "Completed", activeClass: "bg-green-600 text-white shadow-sm" },
     { value: "BLOCKED", label: "Blocked", activeClass: "bg-rose-600 text-white shadow-sm" },

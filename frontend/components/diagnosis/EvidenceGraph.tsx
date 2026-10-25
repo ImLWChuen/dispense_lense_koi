@@ -12,11 +12,23 @@ import {
 } from "recharts";
 import { CandidateCause } from "@/types/api";
 
+/**
+ * Props for the EvidenceGraph component.
+ */
 interface EvidenceGraphProps {
+    /** Ranked candidate causes with their underlying supporting and contradicting evidence contributions */
     rankedCauses?: CandidateCause[];
 }
 
+/**
+ * EvidenceGraph
+ * 
+ * Horizontal diverging bar chart illustrating the positive (supporting) and negative
+ * (contradicting) Bayesian score contributions for each root cause hypothesis.
+ * Enables production engineers to visually inspect why certain causes scored higher or lower.
+ */
 export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps) {
+    // Empty state fallback when no candidate causes exist yet
     if (!rankedCauses || rankedCauses.length === 0) {
         return (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -35,10 +47,12 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
         );
     }
 
+    // Aggregate numeric score contributions per cause
     const chartData = rankedCauses.map((cause) => {
         let supports = 0;
         let contradicts = 0;
 
+        // Sum supporting evidence deltas
         if (Array.isArray(cause.supporting_evidence)) {
             for (const ev of cause.supporting_evidence) {
                 if (typeof ev.score_contribution === "number" && Number.isFinite(ev.score_contribution)) {
@@ -47,6 +61,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
             }
         }
 
+        // Sum contradicting evidence deltas
         if (Array.isArray(cause.contradicting_evidence)) {
             for (const ev of cause.contradicting_evidence) {
                 if (typeof ev.score_contribution === "number" && Number.isFinite(ev.score_contribution)) {
@@ -65,6 +80,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            {/* Header: Title and explanation */}
             <div>
                 <h2 className="text-base font-semibold text-gray-900">
                     Evidence Weight Distribution
@@ -75,6 +91,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
                 </p>
             </div>
 
+            {/* Recharts Bar Visualization */}
             <div className="mt-6 h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -84,6 +101,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
                     >
                         <CartesianGrid horizontal={false} strokeDasharray="3 3" />
 
+                        {/* X-Axis: Magnitude of evidence score delta */}
                         <XAxis
                             type="number"
                             tickLine={false}
@@ -91,6 +109,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
                             fontSize={11}
                         />
 
+                        {/* Y-Axis: Cause names */}
                         <YAxis
                             dataKey="cause"
                             type="category"
@@ -103,6 +122,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
                         <Tooltip />
                         <Legend />
 
+                        {/* Positive Supporting Bar */}
                         <Bar
                             dataKey="supports"
                             fill="#6d5dfc"
@@ -111,6 +131,7 @@ export default function EvidenceGraph({ rankedCauses = [] }: EvidenceGraphProps)
                             barSize={18}
                         />
 
+                        {/* Negative Contradicting Bar */}
                         <Bar
                             dataKey="contradicts"
                             fill="#f87171"

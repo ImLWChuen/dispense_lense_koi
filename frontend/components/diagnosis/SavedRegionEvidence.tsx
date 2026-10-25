@@ -19,10 +19,22 @@ import {
     formatPhysicalDiameter,
 } from "@/lib/saved-region-evidence";
 
+/**
+ * Props for SavedRegionEvidence component.
+ */
 interface SavedRegionEvidenceProps {
+    /** Structured view model projected from a persisted computer vision observation */
     observation: SavedImageObservationView;
 }
 
+/**
+ * ScalarMetricsView
+ * 
+ * Renders the 15-parameter scalar morphology measurements matrix:
+ * Primary grid: Coverage ratio, overflow ratio, equivalent diameter, calibrated mm diameter.
+ * Secondary table: Area (deposit vs target), circularity, aspect ratio, solidity, convexity,
+ * void/bubble ratios, and segmentation quality.
+ */
 function ScalarMetricsView({
     measurements: m,
     variant = "current",
@@ -169,6 +181,13 @@ function ScalarMetricsView({
     );
 }
 
+/**
+ * SavedRegionEvidence
+ * 
+ * Renders persisted quantitative inspection observations stored in durable case history.
+ * Decoupled from transient image files: presents persisted metrics, affected region lists,
+ * applied limit thresholds, and multi-site tabbed inspection snapshots.
+ */
 export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvidenceProps) {
     const instanceId = useId().replace(/:/g, "");
     const [selectedSnapshotIndex, setSelectedSnapshotIndex] = useState<number>(0);
@@ -203,6 +222,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
             ? displayedSnapshots[Math.min(selectedSnapshotIndex, displayedSnapshots.length - 1)]
             : null;
 
+    /** Keyboard arrow navigation for accessible tabs */
     const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
         if (displayedSnapshots.length === 0) return;
         let nextIndex = index;
@@ -243,14 +263,14 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
 
     return (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/40 p-4 sm:p-5 text-xs space-y-4">
-            {/* 1. Observation Header */}
+            {/* 1. Observation Header: Type, Value, Scope Badge, and Revision */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200/80 dark:border-gray-800 pb-3">
                 <div className="flex items-center gap-2 min-w-0">
-                    <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                    <CheckCircle2 size={16} className="text-green-600 shrink-0" aria-hidden="true" />
                     <span className="font-bold text-sm text-gray-900 dark:text-gray-100 truncate">
                         {obs.observationType.replace(/_/g, " ")}
                     </span>
-                    <span className="rounded-full bg-[#eeebff] dark:bg-[#6d5dfc]/20 px-2.5 py-0.5 font-bold text-[#5848e8] dark:text-[#a397ff] shrink-0">
+                    <span className="rounded-full bg-[#eeebff] dark:bg-[#6d5dfc]/20 px-2.5 py-0.5 font-bold text-[#5848e8] dark:text-[#a397ff] shrink-0 font-mono">
                         {obs.value}
                     </span>
                 </div>
@@ -287,7 +307,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
 
             {/* Scope Explanation Note */}
             <div className="flex items-start gap-1.5 rounded-lg bg-white/70 dark:bg-gray-800/50 p-2.5 text-[11px] text-gray-600 dark:text-gray-400 border border-gray-100 dark:border-gray-800">
-                <Info size={13} className="text-[#6d5dfc] shrink-0 mt-0.5" />
+                <Info size={13} className="text-[#6d5dfc] shrink-0 mt-0.5" aria-hidden="true" />
                 <span className="leading-relaxed">{obs.scopeDescription}</span>
             </div>
 
@@ -335,7 +355,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
                 {/* Applied Limits Snapshot Card */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/40 p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
-                        <Sliders size={13} className="text-[#6d5dfc] shrink-0" />
+                        <Sliders size={13} className="text-[#6d5dfc] shrink-0" aria-hidden="true" />
                         <span className="font-semibold text-gray-800 dark:text-gray-200">
                             Applied Limits Snapshot
                         </span>
@@ -364,9 +384,9 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
 
             {/* Malformed or Empty Region Evidence Banner */}
             {obs.regionEvidenceState === "malformed" && (
-                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-3 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 space-y-1">
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-3 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 space-y-1" role="alert">
                     <div className="flex items-center gap-1.5 font-semibold">
-                        <AlertCircle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                        <AlertCircle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
                         <span>Malformed Region Evidence</span>
                     </div>
                     <p className="text-[11px] text-amber-700 dark:text-amber-300">
@@ -378,7 +398,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
             {obs.regionEvidenceState === "empty" && (
                 <div className="rounded-lg bg-gray-100 dark:bg-gray-800/60 p-3 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 space-y-1">
                     <div className="flex items-center gap-1.5 font-semibold text-gray-700 dark:text-gray-300">
-                        <Info size={14} className="shrink-0 text-gray-500" />
+                        <Info size={14} className="shrink-0 text-gray-500" aria-hidden="true" />
                         <span>Empty Region Evidence</span>
                     </div>
                     <p className="text-[11px]">
@@ -392,7 +412,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
                 <div className="space-y-3 pt-1">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <Layers size={14} className="text-[#6d5dfc] shrink-0" />
+                            <Layers size={14} className="text-[#6d5dfc] shrink-0" aria-hidden="true" />
                             <span className="font-semibold text-gray-900 dark:text-gray-100">
                                 Persisted Per-Region Measurements ({obs.snapshots.length} sites)
                             </span>
@@ -656,7 +676,7 @@ export default function SavedRegionEvidence({ observation: obs }: SavedRegionEvi
             {/* 5. Warnings */}
             {obs.warnings.length > 0 && (
                 <div className="flex items-start gap-1.5 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 p-2.5 text-[10px] text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
-                    <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                    <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" aria-hidden="true" />
                     <div>{obs.warnings.join("; ")}</div>
                 </div>
             )}

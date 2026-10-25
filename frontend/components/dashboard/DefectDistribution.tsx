@@ -1,3 +1,11 @@
+/**
+ * DefectDistribution Component
+ *
+ * Renders a donut pie chart depicting the proportion of defect types reported
+ * (e.g. Line Bridging, Missing Dispense, Void/Air Bubble, Solder Balling).
+ * Uses Recharts with a custom legend and percentage tooltips.
+ */
+
 "use client";
 
 import {
@@ -10,6 +18,7 @@ import {
 import { DashboardDefectItem } from "@/lib/api/analytics";
 import { AlertCircle } from "lucide-react";
 
+/** Coordinated purple color palette for donut chart segments */
 const COLORS = [
     "#6d5dfc",
     "#8b7ff7",
@@ -18,7 +27,11 @@ const COLORS = [
     "#ddd9fd",
 ];
 
+/**
+ * Props for the DefectDistribution component.
+ */
 interface DefectDistributionProps {
+    /** Array of defect types and their percentage proportions / case counts */
     data?: DashboardDefectItem[];
 }
 

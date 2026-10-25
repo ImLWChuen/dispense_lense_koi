@@ -1,9 +1,16 @@
+"""User & Authentication Transport Schemas.
+
+Defines Pydantic models for operator profiles, login credential ingestion,
+JWT token serialization, and administrative employee management.
+"""
+
 from datetime import datetime
 from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class UserBase(BaseModel):
+    """Base user attributes shared across creation and read schemas."""
     email: EmailStr
     first_name: Optional[str] = None
     last_name: Optional[str] = None

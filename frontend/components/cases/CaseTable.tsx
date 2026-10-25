@@ -1,3 +1,13 @@
+/**
+ * CaseTable Component
+ *
+ * Renders a full tabular presentation of diagnostic cases with:
+ * - Case identifiers linked directly to their diagnostic workbench sessions.
+ * - Defect mode, equipment line, and identified root causes.
+ * - Normalized visual progress bars representing Bayesian evidence support (0-100).
+ * - Status indicators and pagination controls.
+ */
+
 import Link from "next/link";
 import {
     CheckCircle2,
@@ -5,6 +15,9 @@ import {
     AlertTriangle,
 } from "lucide-react";
 
+/**
+ * Normalized data structure for displaying a diagnostic case in tabular format.
+ */
 interface CaseRow {
     id: string;
     caseNumber: string;
@@ -17,6 +30,7 @@ interface CaseRow {
     engineer: string;
 }
 
+/** Visual badge configurations for resolution statuses */
 const statusConfig = {
     Resolved: {
         icon: CheckCircle2,
@@ -32,7 +46,11 @@ const statusConfig = {
     },
 };
 
+/**
+ * Props for the CaseTable component.
+ */
 interface CaseTableProps {
+    /** Array of cases to display */
     cases: CaseRow[];
 }
 

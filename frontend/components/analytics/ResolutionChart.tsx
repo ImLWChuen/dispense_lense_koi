@@ -1,3 +1,11 @@
+/**
+ * ResolutionChart Component
+ *
+ * Renders a column histogram visualizing the distribution of case resolution times
+ * (MTTR bins such as <1 hr, 1-4 hrs, 4-12 hrs, >12 hrs) to highlight
+ * maintenance efficiency and diagnostic latency.
+ */
+
 "use client";
 
 import {
@@ -12,7 +20,11 @@ import {
 import { ResolutionDistributionItem } from "@/lib/api/analytics";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * Props for the ResolutionChart component.
+ */
 interface ResolutionChartProps {
+    /** Binned resolution intervals and case counts */
     data?: ResolutionDistributionItem[];
 }
 

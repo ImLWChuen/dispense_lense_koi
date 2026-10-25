@@ -1,9 +1,17 @@
 /**
- * Pure state reducer and helpers for Diagnostic Reports view (DLK-M3-028).
+ * Reports State Reducer & View Derivation Helpers (DLK-M3-028)
+ *
+ * Provides pure state transitions and data mapping for the Diagnostic Reports overview:
+ * - Loading, success, and graceful failure state machines.
+ * - Stale error banner gating preserving existing data on background refresh faults.
+ * - Transforming durable case records into standardized report table view items.
  */
 
 import type { DurableCaseResponse } from "@/types/api";
 
+/**
+ * Normalized report view model displayed in the reports repository table.
+ */
 export interface ReportItem {
     id: string;
     displayId: string;
@@ -15,6 +23,9 @@ export interface ReportItem {
     isResolved: boolean;
 }
 
+/**
+ * Immutable state container for the reports page.
+ */
 export interface ReportsPageState {
     isLoading: boolean;
     error: string | null;

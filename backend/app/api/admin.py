@@ -1,3 +1,13 @@
+"""
+Admin management API router.
+
+Provides endpoints for system administrators to view overview metrics,
+manage employee accounts (create, update, deactivate, reset passwords),
+and inspect audit and activity histories.
+"""
+
+from __future__ import annotations
+
 import logging
 import uuid
 from typing import Any, Optional
