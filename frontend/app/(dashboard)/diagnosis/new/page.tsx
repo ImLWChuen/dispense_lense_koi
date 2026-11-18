@@ -136,8 +136,8 @@ export default function NewDiagnosisPage() {
                         type="button"
                         onClick={() => setLayoutMode("stacked")}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${layoutMode === "stacked"
-                                ? "bg-[#6d5dfc] text-white shadow-xs"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-[#6d5dfc] text-white shadow-xs"
+                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                             }`}
                         title="Spacious Full-Width Stacked View"
                     >
@@ -149,8 +149,8 @@ export default function NewDiagnosisPage() {
                         type="button"
                         onClick={() => setLayoutMode("split")}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${layoutMode === "split"
-                                ? "bg-[#6d5dfc] text-white shadow-xs"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-[#6d5dfc] text-white shadow-xs"
+                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                             }`}
                         title="Balanced 50/50 Split View"
                     >
@@ -173,11 +173,10 @@ export default function NewDiagnosisPage() {
 
             {/* Unified Adaptive Layout: keeps components mounted so user input, uploads, and annotations are never lost */}
             <div
-                className={`mt-8 ${
-                    layoutMode === "stacked"
-                        ? "flex flex-col space-y-8"
-                        : "grid grid-cols-1 gap-y-6 gap-x-8 lg:grid-cols-2 items-start"
-                }`}
+                className={`mt-8 ${layoutMode === "stacked"
+                    ? "flex flex-col space-y-8"
+                    : "grid grid-cols-1 gap-y-6 gap-x-8 lg:grid-cols-2 items-start"
+                    }`}
             >
                 {/* Visual Defect Evidence */}
                 <div
@@ -218,11 +217,10 @@ export default function NewDiagnosisPage() {
                         </p>
 
                         <ul
-                            className={`mt-3 ${
-                                layoutMode === "stacked"
-                                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-                                    : "space-y-2.5"
-                            } text-xs leading-5 text-gray-600 dark:text-gray-300`}
+                            className={`mt-3 ${layoutMode === "stacked"
+                                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+                                : "space-y-2.5"
+                                } text-xs leading-5 text-gray-600 dark:text-gray-300`}
                         >
                             <li className="flex items-start gap-2.5">
                                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6d5dfc]" />
