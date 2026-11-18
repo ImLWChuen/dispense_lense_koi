@@ -1,3 +1,12 @@
+/**
+ * Quality & Diagnostic Reports Hub Page (`/reports`)
+ *
+ * Central catalog of diagnostic incident reports and compliance dossiers:
+ * - Searchable and filterable case report table with direct PDF download buttons.
+ * - Links to comprehensive interactive dossier views and AIAG 8D compliance reports.
+ * - Retains loaded records during background refresh faults.
+ */
+
 "use client";
 
 import { useEffect, useState, useCallback, Suspense } from "react";

@@ -1,3 +1,12 @@
+/**
+ * Physical Troubleshooting SOP Page (`/diagnosis/[id]/troubleshooting`)
+ *
+ * Coordinates execution of standard operating procedures and hardware inspections:
+ * - Prioritizes low-effort, high-information-gain physical checks (e.g. nozzle orifice clean, fluid line inspection).
+ * - Records execution statuses (COMPLETED, BLOCKED, SKIPPED, FAILED, UNKNOWN).
+ * - Accumulates positive/negative evidence into Bayesian belief state.
+ */
+
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";

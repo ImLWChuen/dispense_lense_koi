@@ -2,11 +2,20 @@ import { Stethoscope } from "lucide-react";
 import ConfidenceScore from "./ConfidenceScore";
 import { DurableCaseResponse } from "@/types/api";
 
+/**
+ * Props for DiagnosisSummary component.
+ */
 interface DiagnosisSummaryProps {
+    /** Case payload including root cause rankings and defect classifications */
     caseData?: DurableCaseResponse;
+    /** Optional explicit workflow status override */
     status?: string;
 }
 
+/**
+ * Canonical industry symptom definitions mapped by defect classification code.
+ * Aligns with IPC/SMTA dispensing defect taxonomy (D01 - D06).
+ */
 const DEFECT_POSSIBLE_SYMPTOMS: Record<string, string[]> = {
     D01_TOO_LITTLE: [
         "Dispensed volume is consistently less than target specification (< 80%)",
@@ -40,10 +49,18 @@ const DEFECT_POSSIBLE_SYMPTOMS: Record<string, string[]> = {
     ],
 };
 
+/**
+ * DiagnosisSummary
+ * 
+ * Top-level diagnostic summary card summarizing the detected failure mode,
+ * AI classification confidence, key physical symptoms, candidate root causes count,
+ * and recorded sensor/inspection observation count.
+ */
 export default function DiagnosisSummary({
     caseData,
     status: externalStatus,
 }: DiagnosisSummaryProps) {
+    // Extract diagnosis object (either latest or initial intake diagnosis)
     const diagnosis = caseData?.diagnosis || caseData?.initial_diagnosis;
     const defectCode = caseData?.defect_code || (diagnosis as any)?.defect_code || "";
     const defect = diagnosis?.defect_name || diagnosis?.defect || "No defect identified";
@@ -57,7 +74,7 @@ export default function DiagnosisSummary({
     if (defectCode && DEFECT_POSSIBLE_SYMPTOMS[defectCode]) {
         symptoms = DEFECT_POSSIBLE_SYMPTOMS[defectCode];
     } else {
-        // Fallback matching by defect name
+        // Fallback matching by defect name substring
         const lowerName = defect.toLowerCase();
         if (lowerName.includes("inconsistent")) {
             symptoms = DEFECT_POSSIBLE_SYMPTOMS["D03_INCONSISTENT_SIZE"];
@@ -74,6 +91,7 @@ export default function DiagnosisSummary({
         }
     }
 
+    // Determine normalized human-readable status badge
     const computedStatus = caseData?.issue_condition === "RECOVERY_PENDING_VERIFICATION"
         ? "Pending Verification"
         : caseData?.issue_condition === "RESOLVED"
@@ -90,10 +108,14 @@ export default function DiagnosisSummary({
 
     return (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+            {/* Header: Title, Case Reference, and Status Pill */}
             <div className="border-b border-gray-100 dark:border-gray-800 px-6 py-5">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]">
+                        <div 
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eeebff] dark:bg-[#5848e8]/25 text-[#6d5dfc] dark:text-[#a59bff]"
+                            aria-hidden="true"
+                        >
                             <Stethoscope size={20} />
                         </div>
 
@@ -114,6 +136,7 @@ export default function DiagnosisSummary({
             </div>
 
             <div className="p-6">
+                {/* Defect Classification Highlight Box */}
                 <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-gray-100 dark:border-gray-800 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                         Identified Dispensing Defect
@@ -128,6 +151,7 @@ export default function DiagnosisSummary({
                     </p>
                 </div>
 
+                {/* Defect Confidence Level Gauge */}
                 <div className="mt-5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                         Defect Confidence Level
@@ -142,7 +166,7 @@ export default function DiagnosisSummary({
                     </div>
                 </div>
 
-                {/* Step 2: Characteristic Symptoms */}
+                {/* Step 2: Characteristic Engineering Symptoms */}
                 {symptoms.length > 0 && (
                     <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-[#faf9ff] dark:bg-indigo-950/20 p-3.5">
                         <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">
@@ -151,7 +175,7 @@ export default function DiagnosisSummary({
                         <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
                             {symptoms.map((symptom, idx) => (
                                 <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-[#6d5dfc] dark:text-[#a59bff] font-bold shrink-0">•</span>
+                                    <span className="text-[#6d5dfc] dark:text-[#a59bff] font-bold shrink-0" aria-hidden="true">•</span>
                                     <span>{symptom}</span>
                                 </li>
                             ))}
@@ -159,6 +183,7 @@ export default function DiagnosisSummary({
                     </div>
                 )}
 
+                {/* Summary Metrics: Candidate causes & Total observations */}
                 <div className="mt-5 grid grid-cols-2 gap-4">
                     <div className="rounded-xl bg-gray-50 dark:bg-[#151d2d] border border-transparent dark:border-gray-800 p-3 text-center">
                         <p className="text-2xl font-bold text-gray-900 dark:text-white">

@@ -1,3 +1,9 @@
+"""Dispense Lens Backend Application Entrypoint.
+
+Initializes the core FastAPI application, configures CORS middleware for frontend
+communication (Next.js), loads global application settings, and mounts the v1 API router.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -1,3 +1,9 @@
+"""Security & Cryptography Utilities.
+
+Provides JWT token issuance (HS256) and bcrypt password hashing / verification
+routines with truncation safety (72-byte limit).
+"""
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 
@@ -8,7 +14,7 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Since settings might not have SECRET_KEY, let's hardcode a fallback for the prototype
+# Fallback secret key for token signing in local/prototype environments
 SECRET_KEY = getattr(settings, "SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 8  # 8 days
@@ -17,6 +23,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 8  # 8 days
 def create_access_token(
     subject: Union[str, Any], expires_delta: timedelta = None
 ) -> str:
+    """Encode a signed JWT access token for the given subject with an expiration timestamp."""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:

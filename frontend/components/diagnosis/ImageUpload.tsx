@@ -52,27 +52,55 @@ import { MAX_LAYOUT_FILE_BYTES, parseRegionLayout } from "@/lib/region-layout";
 
 export { validateAnalysisConfiguration } from "@/lib/image-upload-state";
 
+/**
+ * Props for the ImageUpload component.
+ */
 interface ImageUploadProps {
+    /** Callback receiving the immutable snapshot of uploaded images and CV inspection states */
     onSnapshotChange?: (snapshot: UploadSnapshot) => void;
-    // Retained for backward compatibility if callers expect it
+    /** Backward compatibility hook forwarding evaluated vision observations to case context */
     onAnalysisComplete?: (observations: unknown[]) => void;
+    /** Whether the component should expand to fill a full-width multi-column grid layout */
     isFullWidth?: boolean;
 }
 
+/**
+ * ImageUpload
+ * 
+ * Comprehensive multi-file visual inspection workspace for dispensing defects.
+ * 
+ * Architectural Highlights:
+ * - Local file ingestion (drag-and-drop or file browser) with eager client-side validation.
+ * - Interactive ROI definition and coordinate normalization.
+ * - Multi-mode calibration (Features Only, Process Limits, Golden Reference Image).
+ * - Portable region layout import/export with coordinate transform confirmation.
+ * - Concurrency control & memory safety: AbortController cancellation of in-flight requests,
+ *   token-guarded state updates, and proper URL.revokeObjectURL cleanup.
+ * - Integrated Computer Vision Defect Studio modal for detailed morphology inspection.
+ */
 export default function ImageUpload({
     onSnapshotChange,
     onAnalysisComplete,
     isFullWidth = false,
 }: ImageUploadProps) {
+    // Map of uploadId -> UploadItem tracking files, configuration, and analysis responses
     const [uploads, setUploads] = useState<UploadSnapshot>({});
+    // Currently active ROI selection per upload
     const [selectedRoiByUpload, setSelectedRoiByUpload] = useState<Record<string, string | null>>({});
+    // Cached natural dimensions for loaded images
     const [previewDimensions, setPreviewDimensions] = useState<Record<string, { width: number; height: number }>>({});
+    // Region layout parse or validation errors per upload
     const [layoutErrors, setLayoutErrors] = useState<Record<string, string | null>>({});
+    // Accordion expand/collapse state for inline inspection card
     const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null);
+    // Active upload ID displayed inside full-screen Studio modal (null when closed)
     const [studioUploadId, setStudioUploadId] = useState<string | null>(null);
+    // Drag-over hover state for dropzone UI
     const [isDragging, setIsDragging] = useState(false);
+    // Global upload error banner message
     const [globalError, setGlobalError] = useState<string | null>(null);
 
+    /** Selects or deselects an ROI in an upload */
     const handleSelectRoi = useCallback((uploadId: string, roiId: string | null) => {
         setSelectedRoiByUpload((prev) => ({
             ...prev,
@@ -139,6 +167,10 @@ export default function ImageUpload({
         };
     }, []);
 
+    /**
+     * Executes computer vision analysis via backend endpoint with abort tokens
+     * and schema validation guards.
+     */
     const executeAnalysis = async (item: UploadItem) => {
         const uploadId = item.id;
         if (item.status === "analyzing") return;
@@ -206,6 +238,7 @@ export default function ImageUpload({
         }
     };
 
+    /** Cache decoded image dimensions */
     const handleDimensionsChange = useCallback((uploadId: string, dims: { width: number; height: number }) => {
         setPreviewDimensions((prev) => {
             if (prev[uploadId]?.width === dims.width && prev[uploadId]?.height === dims.height) {
@@ -218,6 +251,7 @@ export default function ImageUpload({
         });
     }, []);
 
+    /** Handles portable region layout file import */
     const handleSelectLayoutFile = useCallback((uploadId: string, file: File) => {
         // Invalidate any pending import session immediately on any new file selection,
         // before any file validation or early return.
@@ -300,28 +334,33 @@ export default function ImageUpload({
         );
     }, []);
 
+    /** Confirms placement of imported region layout */
     const handleConfirmPlacement = useCallback((uploadId: string) => {
         const dims = previewDimensions[uploadId] || null;
         const confirmedAt = new Date().toISOString();
         setUploads((prev) => confirmRegionPlacement(prev, uploadId, dims, confirmedAt));
     }, [previewDimensions]);
 
+    /** Discards imported region layout and restores prior manual ROIs */
     const handleAbandonLayout = useCallback((uploadId: string) => {
         importCoordinatorRef.current.cancelImport(uploadId);
         setLayoutErrors((prev) => ({ ...prev, [uploadId]: null }));
         setUploads((prev) => abandonImportedLayout(prev, uploadId));
     }, []);
 
+    /** Updates layout error state */
     const handleLayoutError = useCallback((uploadId: string, error: string | null) => {
         setLayoutErrors((prev) => ({ ...prev, [uploadId]: error }));
     }, []);
 
+    /** Triggers analysis execution for an upload */
     const handleRunAnalysis = async (uploadId: string) => {
         const item = uploadsRef.current[uploadId] || uploads[uploadId];
         if (!item) return;
         await executeAnalysis(item);
     };
 
+    /** Ingests and validates an added file, seeding sensible default parameters */
     const processAddedFile = (file: File) => {
         setGlobalError(null);
         // Pre-validation: JPEG/PNG only
@@ -403,6 +442,7 @@ export default function ImageUpload({
         executeAnalysis(newItem);
     };
 
+    /** Handles file drops into the drag-drop area */
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
@@ -410,6 +450,7 @@ export default function ImageUpload({
         droppedFiles.forEach(processAddedFile);
     };
 
+    /** Handles file selection via browser file dialog */
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const selectedFiles = Array.from(e.target.files);
@@ -421,6 +462,7 @@ export default function ImageUpload({
         }
     };
 
+    /** Removes an upload item and frees its allocated blob URLs */
     const removeUpload = (uploadId: string) => {
         // Synchronously invalidate and abort running request
         const pending = controllersRef.current[uploadId];
@@ -485,11 +527,11 @@ export default function ImageUpload({
     );
 
     const uploadList = Object.values(uploads);
-
     const studioItem = studioUploadId ? uploads[studioUploadId] : null;
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 lg:p-6 shadow-xs">
+            {/* Header: Title and explanatory subtitle */}
             <div className="flex items-center justify-between gap-2">
                 <div>
                     <h2 className="text-sm sm:text-base font-semibold text-gray-900">Image Evidence</h2>
@@ -499,13 +541,15 @@ export default function ImageUpload({
                 </div>
             </div>
 
+            {/* Global Error Banner */}
             {globalError && (
-                <div className="mt-3 flex items-center justify-between rounded-xl bg-red-50 p-3 text-xs text-red-700">
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-red-50 p-3 text-xs text-red-700" role="alert">
                     <span>{globalError}</span>
                     <button
                         type="button"
                         onClick={() => setGlobalError(null)}
                         className="text-red-500 hover:text-red-800"
+                        aria-label="Dismiss error"
                     >
                         ×
                     </button>
@@ -535,7 +579,10 @@ export default function ImageUpload({
                     accept="image/jpeg,image/png"
                     multiple
                 />
-                <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]">
+                <div 
+                    className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]"
+                    aria-hidden="true"
+                >
                     <Upload size={18} />
                 </div>
 
@@ -637,6 +684,7 @@ export default function ImageUpload({
                                                 onClick={() => setStudioUploadId(item.id)}
                                                 className="rounded-lg p-1.5 text-gray-500 hover:bg-[#eeebff] hover:text-[#5848e8] dark:hover:bg-gray-800 transition"
                                                 title="Expand Studio Canvas"
+                                                aria-label="Expand Studio Canvas"
                                             >
                                                 <Maximize2 size={16} />
                                             </button>
@@ -648,6 +696,7 @@ export default function ImageUpload({
                                                 }
                                                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 transition"
                                                 title={isExpanded ? "Collapse" : "Expand"}
+                                                aria-label={isExpanded ? "Collapse configuration" : "Expand configuration"}
                                             >
                                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </button>
@@ -657,6 +706,7 @@ export default function ImageUpload({
                                                 onClick={() => removeUpload(item.id)}
                                                 className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 transition"
                                                 title="Remove image"
+                                                aria-label="Remove image"
                                             >
                                                 <X size={16} />
                                             </button>
@@ -708,7 +758,7 @@ export default function ImageUpload({
 
                                 {/* Error message banner if present */}
                                 {item.errorMessage && (
-                                    <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+                                    <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs text-red-700" role="alert">
                                         {item.errorMessage}
                                     </div>
                                 )}
@@ -717,7 +767,7 @@ export default function ImageUpload({
                                 {isExpanded && (
                                     <div className="border-t border-gray-200/80 dark:border-gray-800 p-4 sm:p-6 lg:p-7 space-y-7 bg-slate-50/40 dark:bg-slate-900/20">
                                         <div className={isFullWidth ? "grid grid-cols-1 xl:grid-cols-12 gap-8 items-start" : "space-y-6"}>
-                                            {/* ROI Editor */}
+                                            {/* ROI Editor and Layout Controls */}
                                             <div className={isFullWidth ? "xl:col-span-7 space-y-5" : "space-y-5"}>
                                                 <RegionLayoutControls
                                                     uploadItem={item}
@@ -858,6 +908,7 @@ export default function ImageUpload({
                                     onClick={() => setStudioUploadId(null)}
                                     className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
                                     title="Close Studio"
+                                    aria-label="Close Studio"
                                 >
                                     <X size={18} />
                                 </button>
@@ -1031,7 +1082,7 @@ export default function ImageUpload({
                                                                 ) : rm.is_tailing ? (
                                                                     <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
                                                                         Tailing Detected
-                                                                    </span>
+                                                                      </span>
                                                                 ) : rm.is_abnormal_shape ? (
                                                                     <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">
                                                                         Abnormal

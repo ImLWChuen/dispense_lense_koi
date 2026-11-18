@@ -1,9 +1,21 @@
+/**
+ * CaseFilters Component
+ *
+ * Provides responsive filtering controls for the diagnostic case repository.
+ * Supports:
+ * - Free-text keyword search across case numbers, defect descriptions, and tags.
+ * - Categorical dropdown filters by lifecycle status, defect mode, and equipment line.
+ */
+
 "use client";
 
 import { useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 
+/** Standard lifecycle status filtering options */
 const statusOptions = ["All", "In Progress", "Resolved", "Needs Review"];
+
+/** Common defect mode filter categories */
 const defectOptions = [
     "All",
     "Too Little Material",
@@ -13,6 +25,8 @@ const defectOptions = [
     "Spreading",
     "Bubbles / Abnormal Shape",
 ];
+
+/** Production line filter categories */
 const equipmentOptions = [
     "All",
     "Dispensing Line A",
@@ -21,7 +35,11 @@ const equipmentOptions = [
     "Dispensing Line D",
 ];
 
+/**
+ * Props for the CaseFilters component.
+ */
 interface CaseFiltersProps {
+    /** Callback triggered whenever any filter criteria changes */
     onFilterChange?: (filters: Record<string, string>) => void;
 }
 

@@ -1,6 +1,19 @@
+/**
+ * Reports API Service & Types
+ *
+ * Client interface for generating diagnostic reports and compliance documentation:
+ * - Comprehensive case investigation summaries (`/cases/{id}/report`).
+ * - Generative AI case summaries (`/cases/{id}/summary`).
+ * - Industrial 8D (Eight Disciplines) quality compliance reports (`/cases/{id}/8d-report`).
+ * - Server-side PDF binary generation and download triggers.
+ */
+
 import { apiClient, API_BASE_URL } from "./client";
 import { DurableCaseResponse, DiagnosisResult, QuestionAnswerRecord, CheckResultRecord } from "../../types/api";
 
+/**
+ * High-level outcome summary of an investigated case.
+ */
 export interface CaseOutcomeSummary {
     issue_condition: string;
     current_revision: number;

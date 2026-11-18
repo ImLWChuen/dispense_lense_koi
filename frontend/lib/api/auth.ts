@@ -1,12 +1,27 @@
+/**
+ * Auth API Service
+ *
+ * Client interface for user identity and profile management:
+ * - Fetching current session identity (`/auth/me`).
+ * - Updating name, contact details, and department allocations.
+ * - Changing password credentials.
+ */
+
 import { apiClient } from "./client";
 import { User } from "@/components/providers/AuthContext";
 
+/**
+ * Payload for updating operator user profile fields.
+ */
 export interface UpdateProfileRequest {
     first_name?: string;
     last_name?: string;
     department?: string;
 }
 
+/**
+ * Payload for updating operator security password.
+ */
 export interface ChangePasswordRequest {
     current_password: string;
     new_password: string;

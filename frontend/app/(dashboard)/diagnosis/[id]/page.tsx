@@ -1,3 +1,14 @@
+/**
+ * Diagnostic Session Workbench Page (`/diagnosis/[id]`)
+ *
+ * Primary interactive diagnostic hub for resolving an active dispensing defect:
+ * - DiagnosticStepper guiding technician through progressive investigation phases.
+ * - Dynamic Bayesian root cause rankings with live probability scores.
+ * - Evidence graph & contribution panel displaying supporting/contradicting findings.
+ * - Historical learning insights and automated dispensing quality assessment.
+ * - Tabbed navigation into Questions, Physical Troubleshooting Checks, and Verification.
+ */
+
 "use client";
 
 import { useEffect, useState, use } from "react";

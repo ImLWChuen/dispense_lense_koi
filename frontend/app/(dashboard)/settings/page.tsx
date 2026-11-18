@@ -1,3 +1,13 @@
+/**
+ * User Account & Platform Settings Page (`/settings`)
+ *
+ * Configures operator preferences:
+ * - Profile: Personal details, job title, and factory department assignment.
+ * - Notifications: Toggles for high-severity alerts, case assignments, and email digest frequency.
+ * - Security: Password change and active login session audit.
+ * - Appearance: Light / Dark / System theme switching and Comfortable vs Compact layout density.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";

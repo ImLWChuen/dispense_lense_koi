@@ -1,3 +1,11 @@
+/**
+ * RecentCases Component
+ *
+ * Renders an overview table on the main dashboard displaying the most recent
+ * diagnostic incidents, their current resolution state, equipment line,
+ * top identified root cause, and evidence confidence bar.
+ */
+
 import Link from "next/link";
 import { ComponentType } from "react";
 import {
@@ -8,6 +16,9 @@ import {
 } from "lucide-react";
 import { RecentCaseRecord } from "@/lib/api/analytics";
 
+/**
+ * Status badge helper component mapping resolution states to color-coded pills.
+ */
 function StatusBadge({
     status,
 }: {
@@ -41,7 +52,11 @@ function StatusBadge({
     );
 }
 
+/**
+ * Props for the RecentCases component.
+ */
 interface RecentCasesProps {
+    /** List of recent diagnostic cases from the analytics API */
     cases?: RecentCaseRecord[];
 }
 

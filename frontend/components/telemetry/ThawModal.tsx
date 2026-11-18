@@ -1,3 +1,14 @@
+/**
+ * ThawModal Component
+ *
+ * Modal dialog for initiating the controlled warming/thawing protocol
+ * of frozen optical adhesives, UV acrylics, and thermal epoxies (e.g., stored at -40°C).
+ * Enforces:
+ * - Minimum thaw duration before syringe can be mounted to production lines.
+ * - Lot number and cleanroom rack location traceability.
+ * - Automatic pot life timer registration upon thaw completion.
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -13,12 +24,19 @@ import {
 } from "lucide-react";
 import { telemetryApi, ThawRequest } from "@/lib/api/telemetry";
 
+/**
+ * Props for the ThawModal component.
+ */
 interface ThawModalProps {
+    /** Modal visibility toggle */
     isOpen: boolean;
+    /** Close request handler */
     onClose: () => void;
+    /** Callback dispatched after successful registration of thaw session */
     onSuccess: () => void;
 }
 
+/** Standard qualified materials in cleanroom inventory */
 const MATERIALS = [
     {
         code: "NOA-68",

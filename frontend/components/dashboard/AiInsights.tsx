@@ -1,3 +1,11 @@
+/**
+ * AiInsights Component
+ *
+ * Displays high-level diagnostic intelligence summaries on the executive/line dashboard.
+ * Highlights observed failure patterns, emergent defect clustering, and shifts
+ * in verification confidence across active dispensing lines.
+ */
+
 import Link from "next/link";
 import {
     ArrowRight,
@@ -5,12 +13,18 @@ import {
     TrendingUp,
 } from "lucide-react";
 
+/**
+ * Props for the AiInsights component.
+ */
 interface AiInsightsProps {
+    /** Summary text of observed diagnostic patterns or recommendations */
     insightText?: string | null;
+    /** Trend description string (e.g. "+14% needle clog occurrences") */
     trendText?: string | null;
 }
 
 export default function AiInsights({ insightText, trendText }: AiInsightsProps) {
+    // Fallback default message when no active anomaly pattern has crossed threshold
     const text = insightText || "Diagnostic monitoring active. Verified patterns and confirmed root-cause aggregates will populate automatically as cases progress.";
     const hasActiveInsight = Boolean(insightText);
 

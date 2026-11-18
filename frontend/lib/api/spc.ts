@@ -1,5 +1,18 @@
+/**
+ * SPC (Statistical Process Control) API Service & Types
+ *
+ * Client interface for retrieving real-time statistical process capability metrics:
+ * - Shewhart control chart points with Western Electric violation markers.
+ * - Cp, Cpk, Pp, Ppk, and Cpm capability indices.
+ * - Gaussian normal probability distribution fits and histogram bins.
+ * - Multi-line benchmarking matrices.
+ */
+
 import { apiClient } from "./client";
 
+/**
+ * Individual sampled measurement point on a Shewhart control chart.
+ */
 export interface SpcDataPoint {
     index: number;
     timestamp: string;

@@ -12,17 +12,31 @@ import {
     Check,
 } from "lucide-react";
 
+/**
+ * Data payload collected by the problem intake form.
+ */
 export interface ProblemFormData {
+    /** Primary defect classification code (e.g., 'D01_TOO_LITTLE') */
     defect: string | null;
+    /** Free-form text description of symptoms observed by line operator */
     description: string;
+    /** Production line or dispensing machine identifier */
     equipment: string;
+    /** Fluid/adhesive chemistry name or batch ID */
     material: string;
+    /** Categorical size observation ('undersized', 'oversized', 'inconsistent') */
     depositSize: string;
+    /** Temporal manifestation frequency ('consistent', 'intermittent') */
     frequency: string;
+    /** Spatial distribution pattern ('all_points', 'specific_nozzle', 'random_locations') */
     location: string;
+    /** Recent process alterations ('none', 'material_refilled', 'nozzle_changed', etc.) */
     recentChange?: string;
 }
 
+/**
+ * Visual defect taxonomy definitions (D01 - D06) with SVG micro-illustrations.
+ */
 const defectTypes = [
     {
         code: "D01_TOO_LITTLE",
@@ -33,7 +47,7 @@ const defectTypes = [
         accent: "text-[#6d5dfc]",
         badgeBg: "bg-indigo-50 text-[#5848e8] border-indigo-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-[#6d5dfc]" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-[#6d5dfc]" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <circle cx="20" cy="20" r="14" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="3 3" />
                 <circle cx="20" cy="20" r="6" fill="currentColor" opacity="0.9" />
             </svg>
@@ -48,7 +62,7 @@ const defectTypes = [
         accent: "text-blue-600",
         badgeBg: "bg-blue-50 text-blue-700 border-blue-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-blue-600" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-blue-600" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <circle cx="20" cy="20" r="10" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="3 3" />
                 <circle cx="20" cy="20" r="16" fill="currentColor" opacity="0.65" />
                 <circle cx="20" cy="20" r="10" fill="currentColor" opacity="0.9" />
@@ -64,7 +78,7 @@ const defectTypes = [
         accent: "text-amber-600",
         badgeBg: "bg-amber-50 text-amber-700 border-amber-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-amber-600" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-amber-600" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <circle cx="8" cy="20" r="4" fill="currentColor" opacity="0.85" />
                 <circle cx="20" cy="20" r="11" fill="currentColor" opacity="0.85" />
                 <circle cx="33" cy="20" r="7" fill="currentColor" opacity="0.85" />
@@ -80,7 +94,7 @@ const defectTypes = [
         accent: "text-rose-600",
         badgeBg: "bg-rose-50 text-rose-700 border-rose-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-rose-600" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-rose-600" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <circle cx="8" cy="20" r="6" fill="currentColor" opacity="0.85" />
                 <circle cx="20" cy="20" r="7" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="2 2" />
                 <path d="M17 17L23 23M23 17L17 23" stroke="#f43f5e" strokeWidth="1.5" strokeLinecap="round" />
@@ -97,7 +111,7 @@ const defectTypes = [
         accent: "text-teal-600",
         badgeBg: "bg-teal-50 text-teal-700 border-teal-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-teal-600" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-teal-600" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <circle cx="20" cy="20" r="16" fill="currentColor" opacity="0.15" />
                 <circle cx="20" cy="20" r="11" fill="currentColor" opacity="0.35" />
                 <circle cx="20" cy="20" r="6" fill="currentColor" opacity="0.9" />
@@ -113,7 +127,7 @@ const defectTypes = [
         accent: "text-purple-600",
         badgeBg: "bg-purple-50 text-purple-700 border-purple-200",
         renderVisual: () => (
-            <svg className="h-10 w-10 text-purple-600" viewBox="0 0 40 40" fill="none">
+            <svg className="h-10 w-10 text-purple-600" viewBox="0 0 40 40" fill="none" aria-hidden="true">
                 <path d="M12 23 C10 15, 16 10, 25 11 C31 12, 34 19, 31 25 C27 30, 15 30, 12 23 Z" fill="currentColor" opacity="0.8" />
                 <circle cx="19" cy="18" r="4.5" fill="white" stroke="currentColor" strokeWidth="1.2" />
             </svg>
@@ -121,6 +135,7 @@ const defectTypes = [
     },
 ];
 
+/** Production dispensing equipment lines */
 const equipmentOptions = [
     "Dispensing Line A",
     "Dispensing Line B",
@@ -128,17 +143,20 @@ const equipmentOptions = [
     "Dispensing Line D",
 ];
 
+/** Deposit size categories */
 const depositSizeOptions = [
     { label: "Undersized (smaller than target)", value: "undersized" },
     { label: "Oversized (larger than target)", value: "oversized" },
     { label: "Inconsistent (shot-to-shot variance)", value: "inconsistent" },
 ];
 
+/** Defect occurrence frequency options */
 const frequencyOptions = [
     { label: "Consistent (occurs steadily / every shot)", value: "consistent" },
     { label: "Intermittent (occurs sporadically / occasionally)", value: "intermittent" },
 ];
 
+/** Spatial location distribution options */
 const locationOptions = [
     { label: "All dispensing points (systemic)", value: "all_points" },
     { label: "Specific nozzle (localized)", value: "specific_nozzle" },
@@ -146,6 +164,7 @@ const locationOptions = [
     { label: "Varies across points", value: "varies_across_points" },
 ];
 
+/** Recent process adjustment options */
 const recentChangeOptions = [
     { label: "No recent changes / Normal operation", value: "none" },
     { label: "Material refilled or new batch loaded", value: "material_refilled" },
@@ -154,11 +173,23 @@ const recentChangeOptions = [
     { label: "Equipment restarted or serviced", value: "equipment_serviced" },
 ];
 
+/**
+ * Props for ProblemForm component.
+ */
 interface ProblemFormProps {
+    /** Callback triggered upon case creation submission */
     onSubmit?: (data: ProblemFormData) => void;
+    /** Async loading indicator during case creation */
     isSubmitting?: boolean;
 }
 
+/**
+ * ProblemForm
+ * 
+ * Case intake form capturing defect symptoms, optical classifications (D01-D06),
+ * line context, and initial process discovery questions before triggering the
+ * Bayesian diagnostic engine.
+ */
 export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemFormProps) {
     const [selectedDefect, setSelectedDefect] = useState<string | null>(null);
     const [description, setDescription] = useState("");
@@ -184,7 +215,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
 
     return (
         <div className="space-y-8">
-            {/* Problem Description */}
+            {/* Section 1: Problem Description & Equipment Line Context */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-base font-semibold text-gray-900">
                     Problem Description
@@ -247,7 +278,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Visual Defect Taxonomy Picker */}
+            {/* Section 2: Visual Defect Taxonomy Picker (D01 - D06) */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
@@ -333,7 +364,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Dispensing Problem Discovery */}
+            {/* Section 3: Dispensing Problem Discovery Questions */}
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
@@ -347,6 +378,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {/* Discovery 1: Amount */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-700">
                             1. Dispensing Amount (Size)
@@ -366,6 +398,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                         </select>
                     </div>
 
+                    {/* Discovery 2: Frequency */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-700">
                             2. Defect Frequency
@@ -385,6 +418,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                         </select>
                     </div>
 
+                    {/* Discovery 3: Recent Changes */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-700">
                             3. Recent Changes
@@ -404,6 +438,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                         </select>
                     </div>
 
+                    {/* Discovery 4: Spatial Location */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-700">
                             4. Defect Location
@@ -425,7 +460,7 @@ export default function ProblemForm({ onSubmit, isSubmitting = false }: ProblemF
                 </div>
             </div>
 
-            {/* Submit */}
+            {/* Form Submission Action */}
             <div className="flex justify-end">
                 <button
                     type="button"

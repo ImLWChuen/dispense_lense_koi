@@ -1,3 +1,10 @@
+/**
+ * Auth Route Group Layout
+ *
+ * Centered layout with gradient ambient blur orbs designed for
+ * unauthenticated login and registration forms.
+ */
+
 export default function AuthLayout({
     children,
 }: {

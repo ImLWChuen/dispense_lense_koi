@@ -1,5 +1,17 @@
+/**
+ * Admin API Service & Types
+ *
+ * Client interface for administrative oversight and user management:
+ * - Enterprise user directory listing, provisioning, role assignment, and deactivation.
+ * - Password resets and audit trails.
+ * - Department and team case allocation summaries.
+ */
+
 import { apiClient } from "./client";
 
+/**
+ * Summary metrics and operational telemetry for an individual employee/technician.
+ */
 export interface EmployeeSummary {
     id: string;
     email: string;

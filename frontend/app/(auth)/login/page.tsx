@@ -1,3 +1,13 @@
+/**
+ * Login Page
+ *
+ * Authenticates factory personnel, technicians, and administrators:
+ * - Submits OAuth2 form credentials to `/auth/login`.
+ * - Resolves user profile from `/auth/me`.
+ * - Hydrates AuthContext and routes to `/dashboard`.
+ * - Pre-configured demo test user switcher for fast evaluation.
+ */
+
 "use client";
 
 import { Activity, Lock, Mail } from "lucide-react";

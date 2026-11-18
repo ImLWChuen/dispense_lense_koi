@@ -1,3 +1,11 @@
+/**
+ * CommandPalette Component
+ *
+ * Global keyboard-driven spotlight command palette (Cmd+K / Ctrl+K).
+ * Enables instant navigation, real-time case lookup, defect code exploration,
+ * and standard operating procedure (SOP) searches with arrow-key navigation.
+ */
+
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
@@ -26,11 +34,19 @@ import { useAuth } from "@/components/providers/AuthContext";
 import { casesApi } from "@/lib/api/cases";
 import { DurableCaseResponse } from "@/types/api";
 
+/**
+ * Props for the CommandPalette modal.
+ */
 interface CommandPaletteProps {
+    /** Palette open state */
     isOpen: boolean;
+    /** Handler invoked when modal closes */
     onClose: () => void;
 }
 
+/**
+ * Individual action item displayed in the command palette search results.
+ */
 interface PaletteItem {
     id: string;
     title: string;

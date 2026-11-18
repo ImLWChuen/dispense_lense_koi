@@ -1,5 +1,17 @@
+/**
+ * Analytics API Service & Types
+ *
+ * Provides typed client endpoints for querying operational and statistical analytics:
+ * - Executive dashboard aggregates (active cases, MTTR, defect distributions, recent incidents).
+ * - Longitudinal performance trends (monthly defect counts, cause breakdowns, resolution histogram).
+ * - Learning engine continuous improvement insights and benchmark metrics.
+ */
+
 import { apiClient, API_BASE_URL } from "./client";
 
+/**
+ * Key performance indicators computed over a specified analytical timeframe.
+ */
 export interface AnalyticsKpiMetrics {
     total_cases: number;
     resolved_cases: number;

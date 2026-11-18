@@ -1,10 +1,25 @@
+/**
+ * SpcMetricCards Component
+ *
+ * Renders executive statistical KPI summary cards:
+ * 1. Process Capability Index (Cpk) with Six-Sigma world-class classification badges.
+ * 2. Potential Process Capability (Cp) and overall performance ratio (Pp).
+ * 3. Process Centering & Mean Bias offset against engineering target nominals.
+ * 4. Nelson Rule Alarms & Out-of-Control Sample Violations count.
+ */
+
 "use client";
 
 import { SpcCapabilityMetrics } from "@/lib/api/spc";
 import { Award, Target, TrendingUp, AlertTriangle, ShieldCheck, Activity } from "lucide-react";
 
+/**
+ * Props for the SpcMetricCards component.
+ */
 interface SpcMetricCardsProps {
+    /** Computed capability metrics object */
     metrics?: SpcCapabilityMetrics;
+    /** Loading flag showing placeholder skeleton animations */
     isLoading?: boolean;
 }
 

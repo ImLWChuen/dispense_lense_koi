@@ -1,3 +1,14 @@
+/**
+ * Cases API Service
+ *
+ * Client interface for managing the diagnostic case state machine:
+ * - Case creation, listing, retrieval, and revision-controlled state transitions.
+ * - Submitting diagnostic questionnaire answers and physical check SOP results.
+ * - Confirming root causes and executing recovery / maintenance actions.
+ * - Verifying quality recovery and logging defect recurrences.
+ * - Querying nearest-neighbor historically similar cases.
+ */
+
 import { apiClient } from "./client";
 import {
     CreateCaseRequest,

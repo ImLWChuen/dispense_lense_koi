@@ -1,3 +1,14 @@
+/**
+ * LiveTelemetryRibbon Component
+ *
+ * Renders a collapsible real-time operational telemetry strip positioned across the top of dashboards.
+ * Displays:
+ * - Real-time dispensing line selector (Line A, Line B, Line C, Line D).
+ * - Live physical sensors: Nozzle Temperature (°C), Fluid Delivery Pressure (kPa), Flow Rate (mg/s).
+ * - Active consumable syringe tracking with dynamic live countdown clocks for pot-life expiration.
+ * - Out-of-spec alert indicators with direct drill-down links to telemetry investigation.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,6 +32,7 @@ import {
     PotLifeStatus,
 } from "@/lib/api/telemetry";
 
+/** Formats a second counter into hh:mm:ss countdown notation */
 function formatSecondsToHms(totalSeconds: number): string {
     if (totalSeconds <= 0) return "EXPIRED";
     const h = Math.floor(totalSeconds / 3600);

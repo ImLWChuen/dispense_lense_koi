@@ -1,3 +1,13 @@
+/**
+ * New Diagnostic Incident Registration Page (`/diagnosis/new`)
+ *
+ * Initiates a new diagnostic investigation case:
+ * - Equipment line, defect symptom, and material intake form (`ProblemForm`).
+ * - Computer vision calibrated microscopic image analysis and ROI definition (`ImageUpload`).
+ * - Aggregates physical image measurements and user observations into a unified `CreateCaseRequest`.
+ * - Redirects directly to the live diagnostic investigation workbench upon case creation.
+ */
+
 "use client";
 
 import { useState } from "react";

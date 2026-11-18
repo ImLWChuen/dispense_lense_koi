@@ -1,3 +1,12 @@
+/**
+ * SimilarCases Component
+ *
+ * Fetches and displays historically resolved cases with matching defect characteristics,
+ * visual symptoms, and equipment parameters.
+ * Employs vector/heuristic similarity metrics to recommend proven corrective remedies
+ * and benchmark MTTR (Mean Time to Resolution).
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,7 +26,11 @@ import {
 } from "lucide-react";
 import { casesApi, SimilarCaseItem } from "@/lib/api/cases";
 
+/**
+ * Props for the SimilarCases component.
+ */
 interface SimilarCasesProps {
+    /** Target diagnostic case ID used for querying nearest neighbor cases */
     caseId?: string;
 }
 

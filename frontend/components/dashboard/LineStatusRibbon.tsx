@@ -1,8 +1,19 @@
+/**
+ * LineStatusRibbon Component
+ *
+ * Displays a multi-column status banner showing current operational health,
+ * active machine types (Asymtek, Camalot, Nordson, PVA), yield percentages,
+ * and defect flags across all production dispensing lines.
+ */
+
 "use client";
 
 import Link from "next/link";
 import { Activity, CheckCircle2, AlertCircle, ArrowUpRight, Cpu } from "lucide-react";
 
+/**
+ * Representation of a production line's operational telemetry.
+ */
 interface LineStatus {
     id: string;
     name: string;
@@ -12,6 +23,7 @@ interface LineStatus {
     activeDefects: number;
 }
 
+/** Configured production lines monitored by the facility */
 const PRODUCTION_LINES: LineStatus[] = [
     {
         id: "Line A",

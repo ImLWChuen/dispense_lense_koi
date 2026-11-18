@@ -1,3 +1,13 @@
+/**
+ * SyringePotLifeCard Component
+ *
+ * Tracks the biochemical and operational state of adhesive / epoxy consumable syringes:
+ * - Real-time countdown timer tracking work life (pot life) since thaw.
+ * - State lifecycle transitions: IN_FREEZER, THAWING, READY, MOUNTED, EXPIRED, SCRAPPED.
+ * - Temperature ramp and stabilization progress indicators.
+ * - Operator action triggers: Start Purge, Mount to Production Line, Scrap Expired Syringe.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -22,13 +32,21 @@ import {
     telemetryApi,
 } from "@/lib/api/telemetry";
 
+/**
+ * Props for the SyringePotLifeCard component.
+ */
 interface SyringePotLifeCardProps {
+    /** Consumable syringe data model */
     item: ConsumableItem;
+    /** Refresh callback dispatched after state updates or purge operations */
     onUpdate?: () => void;
+    /** Handler opening mount assignment modal */
     onMountClick?: (item: ConsumableItem) => void;
+    /** Handler confirming disposal/scrap of consumable */
     onScrapClick?: (item: ConsumableItem) => void;
 }
 
+/** Formats elapsed seconds to hh:mm:ss representation */
 function formatSeconds(sec: number): string {
     if (sec <= 0) return "00h 00m 00s";
     const h = Math.floor(sec / 3600);

@@ -1,3 +1,12 @@
+/**
+ * Case Detail Dossier Page (`/cases/[id]`)
+ *
+ * Displays full historical lifecycle audit trail for a single diagnostic case:
+ * - Persisted case metadata and machine telemetry context.
+ * - Investigation session summary with confirmed Bayesian causes.
+ * - Nearest-neighbor historical benchmarks (SimilarCases).
+ */
+
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";

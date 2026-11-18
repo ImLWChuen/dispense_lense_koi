@@ -8,21 +8,46 @@ import {
     ReferenceLimits,
 } from "@/types/image";
 
+/**
+ * Props for ImageCalibrationPanel component.
+ */
 interface ImageCalibrationPanelProps {
+    /** Active computer vision analysis strategy ('FEATURES_ONLY', 'PROCESS_LIMITS', or 'REFERENCE_IMAGE') */
     mode: ImageAnalysisMode;
+    /** Callback when user changes the active analysis mode */
     onModeChange: (mode: ImageAnalysisMode) => void;
+    /** Optical scale factor: millimeters represented by each digital camera pixel */
     mmPerPixel?: number | null;
+    /** Callback when scale factor is updated */
     onMmPerPixelChange: (val: number | null) => void;
+    /** Statistical boundary parameters used in PROCESS_LIMITS mode */
     processLimits?: ProcessLimits | null;
+    /** Callback updating process limits */
     onProcessLimitsChange: (limits: ProcessLimits | null) => void;
+    /** Ratio thresholds comparing candidate inspection against golden reference */
     referenceLimits?: ReferenceLimits | null;
+    /** Callback updating reference thresholds */
     onReferenceLimitsChange: (limits: ReferenceLimits | null) => void;
+    /** Uploaded golden reference image file */
     referenceFile?: File | null;
+    /** Callback when reference file is chosen or removed */
     onReferenceFileChange: (file: File | null) => void;
+    /** Object URL for local image preview of the golden reference */
     referencePreviewUrl?: string | null;
+    /** Disables form controls during active upload/processing */
     disabled?: boolean;
 }
 
+/**
+ * ImageCalibrationPanel
+ * 
+ * Configures computer vision preprocessing and calibration parameters:
+ * 1. FEATURES_ONLY: Uncalibrated geometric feature extraction without tolerance gates.
+ * 2. PROCESS_LIMITS: Evaluates coverage ratio, overflow, and coefficient of variation against explicit bounds.
+ * 3. REFERENCE_IMAGE: Compares sample against a golden reference image using relative tolerance bounds.
+ * 
+ * Also handles physical optical scaling (mm/px) calibration.
+ */
 export default function ImageCalibrationPanel({
     mode,
     onModeChange,
@@ -39,11 +64,13 @@ export default function ImageCalibrationPanel({
 }: ImageCalibrationPanelProps) {
     const refFileInputRef = useRef<HTMLInputElement>(null);
 
+    /** Switch active analysis mode */
     const handleModeSelect = (newMode: ImageAnalysisMode) => {
         if (disabled) return;
         onModeChange(newMode);
     };
 
+    /** Update scalar process limit fields with numeric validation */
     const updateProcessLimit = (key: keyof ProcessLimits, rawVal: string) => {
         if (disabled) return;
         const numVal = rawVal.trim() === "" ? null : parseFloat(rawVal);
@@ -51,11 +78,12 @@ export default function ImageCalibrationPanel({
             ...(processLimits || {}),
             [key]: numVal !== null && !isNaN(numVal) ? numVal : null,
         };
-        // Clean empty values
+        // Clean empty values to prevent storing dead keys
         const hasAny = Object.values(next).some((v) => v !== null && v !== undefined);
         onProcessLimitsChange(hasAny ? next : null);
     };
 
+    /** Update reference comparison limit fields */
     const updateReferenceLimit = (key: keyof ReferenceLimits, rawVal: string) => {
         if (disabled) return;
         const numVal = rawVal.trim() === "" ? null : parseFloat(rawVal);
@@ -67,6 +95,7 @@ export default function ImageCalibrationPanel({
         onReferenceLimitsChange(hasAny ? next : null);
     };
 
+    /** Handles file selection for golden master image with client-side mime & size guards */
     const handleRefFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (disabled || !e.target.files?.[0]) return;
         const file = e.target.files[0];
@@ -85,12 +114,14 @@ export default function ImageCalibrationPanel({
         onReferenceFileChange(file);
     };
 
+    /** Clears selected golden reference file */
     const handleRemoveRefFile = () => {
         if (disabled) return;
         if (refFileInputRef.current) refFileInputRef.current.value = "";
         onReferenceFileChange(null);
     };
 
+    // Range consistency checks
     const coverageMin = processLimits?.min_coverage_ratio ?? null;
     const coverageMax = processLimits?.max_coverage_ratio ?? null;
     const hasCoverageError =
@@ -102,9 +133,10 @@ export default function ImageCalibrationPanel({
 
     return (
         <div className="space-y-5 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-800/30 p-4 sm:p-5 shadow-2xs">
+            {/* Header: Title and Active Mode Tag */}
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                    <Sliders size={16} className="text-[#6d5dfc] shrink-0" />
+                    <Sliders size={16} className="text-[#6d5dfc] shrink-0" aria-hidden="true" />
                     <h3 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                         Analysis Mode & Calibration
                     </h3>
@@ -114,8 +146,8 @@ export default function ImageCalibrationPanel({
                 </span>
             </div>
 
-            {/* Mode Selector */}
-            <div className="flex flex-col sm:flex-row gap-1.5 p-1.5 bg-gray-200/70 dark:bg-gray-800/70 rounded-xl">
+            {/* Mode Selector Buttons */}
+            <div className="flex flex-col sm:flex-row gap-1.5 p-1.5 bg-gray-200/70 dark:bg-gray-800/70 rounded-xl" role="tablist">
                 <button
                     type="button"
                     disabled={disabled}
@@ -154,7 +186,7 @@ export default function ImageCalibrationPanel({
                 </button>
             </div>
 
-            {/* Mode Descriptions */}
+            {/* Mode 1: Features Only Description */}
             {mode === "FEATURES_ONLY" && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed px-1">
                     Extracts resolution-independent geometric features without threshold evaluation. Returns status{" "}
@@ -162,6 +194,7 @@ export default function ImageCalibrationPanel({
                 </p>
             )}
 
+            {/* Mode 2: Process Limits Configuration Inputs */}
             {mode === "PROCESS_LIMITS" && (
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex items-center justify-between">
@@ -255,6 +288,7 @@ export default function ImageCalibrationPanel({
                         </div>
                     </div>
 
+                    {/* Validation Error banner */}
                     {hasCoverageError && (
                         <div className="flex items-center gap-1.5 text-[11px] text-red-600">
                             <AlertTriangle size={12} className="shrink-0" />
@@ -264,6 +298,7 @@ export default function ImageCalibrationPanel({
                 </div>
             )}
 
+            {/* Mode 3: Golden Reference Image Upload and Relative Limits */}
             {mode === "REFERENCE_IMAGE" && (
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex items-center justify-between">
@@ -381,10 +416,10 @@ export default function ImageCalibrationPanel({
                 </div>
             )}
 
-            {/* Optional Scale (mm_per_pixel) */}
+            {/* Optional Physical Scale (mm_per_pixel) Calibration */}
             <div className="border-t border-gray-200/80 dark:border-gray-800 pt-4">
                 <div className="flex items-center gap-2">
-                    <Ruler size={15} className="text-gray-500 dark:text-gray-400 shrink-0" />
+                    <Ruler size={15} className="text-gray-500 dark:text-gray-400 shrink-0" aria-hidden="true" />
                     <label className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200">
                         Physical Scale (mm per pixel)
                     </label>

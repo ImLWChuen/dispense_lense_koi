@@ -1,8 +1,21 @@
+/**
+ * AuthContext & AuthProvider
+ *
+ * Central React Context managing operator/engineer authentication state:
+ * - Session token persistence via localStorage.
+ * - Validation and hydration from `/auth/me` endpoint.
+ * - Role-based authorization flags (e.g. isAdmin).
+ * - Safe login, logout, and token expiration handlers.
+ */
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "@/lib/api/client";
 
+/**
+ * Authenticated user profile representation.
+ */
 export type User = {
     id: string;
     email: string;
@@ -15,6 +28,9 @@ export type User = {
     last_login?: string | null;
 };
 
+/**
+ * Interface contract provided by the AuthContext.
+ */
 type AuthContextType = {
     user: User | null;
     token: string | null;

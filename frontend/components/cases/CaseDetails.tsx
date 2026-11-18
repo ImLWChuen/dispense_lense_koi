@@ -1,3 +1,15 @@
+/**
+ * CaseDetails Component
+ *
+ * Renders the comprehensive dossier for an individual diagnostic case.
+ * Displays:
+ * - Header banner with case ID, defect classification, and lifecycle badge.
+ * - Key metadata grid (Case Owner, Created Timestamp, Total Revisions, Top Cause).
+ * - Direct transition links (e.g. "Continue Live Diagnosis Session").
+ * - Diagnostic session summary highlighting Bayesian probability and confirmed remedies.
+ * - Chronological revision and verification timeline.
+ */
+
 import Link from "next/link";
 import {
     CheckCircle2,
@@ -18,10 +30,15 @@ import {
     formatCaseTimestamp,
 } from "@/lib/case-detail-state";
 
+/**
+ * Props for the CaseDetails component.
+ */
 interface CaseDetailsProps {
+    /** Complete durable case object retrieved from the cases API */
     caseData?: DurableCaseResponse | null;
 }
 
+/** Styling mappings for case resolution status badges */
 const statusColors: Record<string, string> = {
     UNRESOLVED: "bg-yellow-100 text-yellow-800 border border-yellow-300 dark:bg-yellow-500/20 dark:text-yellow-300 dark:border-yellow-500/40",
     RECOVERY_PENDING_VERIFICATION: "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40",

@@ -1,3 +1,11 @@
+/**
+ * CauseDistribution Component
+ *
+ * Renders a horizontal bar chart depicting the frequency distribution of confirmed root causes.
+ * Built using Recharts, it visualizes which dispensing faults (e.g. needle wear, thermal drift,
+ * fluid viscosity shifts) are most prevalent across historical and active diagnostic cases.
+ */
+
 "use client";
 
 import {
@@ -12,7 +20,11 @@ import {
 import { CauseDistributionItem } from "@/lib/api/analytics";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * Props for the CauseDistribution component.
+ */
 interface CauseDistributionProps {
+    /** Array of cause distribution metrics (cause name, count of cases) */
     data?: CauseDistributionItem[];
 }
 

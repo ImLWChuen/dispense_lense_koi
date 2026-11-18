@@ -1,3 +1,9 @@
+"""User Entity ORM Model.
+
+Declares the SQLAlchemy mapping for operator, technician, and administrative user accounts,
+including hashed credentials, enterprise role flags, and activity timestamps.
+"""
+
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -6,7 +12,7 @@ from app.db.database import Base
 
 
 class UserModel(Base):
-    """Represents a user in the system."""
+    """Represents an operator, engineer, or administrator in the system."""
 
     __tablename__ = "users"
 

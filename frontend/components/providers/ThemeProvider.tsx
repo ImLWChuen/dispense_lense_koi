@@ -1,10 +1,25 @@
+/**
+ * ThemeProvider & ThemeContext
+ *
+ * Provides application-wide visual theme management:
+ * - Theme modes: Light, Dark, System (following OS media queries).
+ * - Density modes: Comfortable vs Compact (for high-density production shopfloor screens).
+ * - HTML root attribute synchronization (`dark`, `data-theme`, `data-density`).
+ * - LocalStorage state persistence.
+ */
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
+/** Supported visual appearance themes */
 export type ThemeMode = "light" | "dark" | "system";
+/** Supported UI density scale profiles */
 export type DensityMode = "comfortable" | "compact";
 
+/**
+ * Context value interface for the ThemeContext.
+ */
 interface ThemeContextType {
     theme: ThemeMode;
     density: DensityMode;

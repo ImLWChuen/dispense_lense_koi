@@ -1,3 +1,17 @@
+/**
+ * Analytics & SPC Quality Control Page (`/analytics`)
+ *
+ * Dual-mode engineering analytics portal:
+ * 1. Diagnostic Performance:
+ *    - Executive resolution metrics (MTTR, First-Time Resolution, Cause Confirmation Rate).
+ *    - Defect frequency trends and confirmed root cause distributions.
+ *    - Resolution latency histogram bins (<1 hr to >12 hrs).
+ * 2. Statistical Process Control (SPC):
+ *    - Shewhart individuals and moving range control charts (I-MR).
+ *    - Process capability indices (Cp, Cpk, Pp, Ppk) and Gaussian distribution overlays.
+ *    - Multi-line capability matrix comparing cleanroom bays.
+ */
+
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";

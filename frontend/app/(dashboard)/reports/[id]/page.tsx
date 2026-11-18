@@ -1,3 +1,12 @@
+/**
+ * Diagnostic Report Detail Page (`/reports/[id]`)
+ *
+ * Dual-format compliance and technical investigation report viewer:
+ * - Standard Diagnostic Report: Equipment context, Bayesian ranked causes, check outcomes, and AI summaries.
+ * - Automotive/Industrial 8D Report: ISO/TS 16949 compliant Disciplines (D1 to D8).
+ * - Instant export to PDF documents.
+ */
+
 "use client";
 
 import { useEffect, useState, useCallback, use, Suspense } from "react";

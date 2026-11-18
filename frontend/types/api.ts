@@ -1,4 +1,13 @@
 /**
+ * Dispense Lens - Core API Type Definitions
+ *
+ * TypeScript interface contracts mirroring backend Pydantic schemas:
+ * - Durable cases, revisions, answers, check results, and lifecycle transitions.
+ * - Bayesian cause ranking, candidate causes, and evidence contributions.
+ * - Prescribed recovery actions and recurrence verification.
+ */
+
+/**
  * Structured observation input submitted in requests (e.g. create case).
  * Allows client-omitted fields to be defaulted by the backend.
  */

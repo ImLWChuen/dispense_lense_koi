@@ -1,3 +1,9 @@
+"""Operator & User Authentication Router.
+
+Provides endpoints for OAuth2 password login, user self-registration,
+current user profile inspection (`/me`), profile updates, and password changes.
+"""
+
 import uuid
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException

@@ -1,7 +1,21 @@
+/**
+ * ReportPreview Component
+ *
+ * Renders an official printable/viewable diagnostic investigation dossier:
+ * - Equipment metadata and defect classification.
+ * - Bayesian ranked root cause probabilities with confidence scores.
+ * - Operator verification checklist and physical inspection findings.
+ * - Lifecycle status audit trail and recommended corrective actions.
+ */
+
 import { CaseReportResponse } from "@/lib/api/reports";
 import { CheckCircle2, ShieldCheck, Clock3 } from "lucide-react";
 
+/**
+ * Props for the ReportPreview component.
+ */
 interface ReportPreviewProps {
+    /** Detailed case report response object */
     report: CaseReportResponse;
 }
 

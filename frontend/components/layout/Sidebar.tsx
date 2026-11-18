@@ -1,3 +1,14 @@
+/**
+ * Sidebar Component
+ *
+ * Primary navigation sidebar for the DispenseLens platform.
+ * Features:
+ * - Brand logo and active system version badge.
+ * - Persistent navigation links: Dashboard, Telemetry, New Diagnosis, Cases, Analytics, Knowledge Base, Reports.
+ * - Role-conditional access links (e.g. Admin Settings, Rule Engine, User Provisioning).
+ * - Smooth transition drawer support on smaller screen viewports.
+ */
+
 "use client";
 
 import Link from "next/link";
@@ -17,8 +28,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthContext";
 
+/**
+ * Props for the Sidebar component.
+ */
 interface SidebarProps {
+    /** Whether the mobile slide-over drawer is open */
     isMobileOpen?: boolean;
+    /** Close handler when clicking links or backdrop */
     onCloseMobile?: () => void;
 }
 

@@ -1,3 +1,15 @@
+/**
+ * Header Component
+ *
+ * Top navigation app header across all authenticated views.
+ * Provides:
+ * - Hamburger drawer trigger for mobile breakpoints.
+ * - Global quick-search input with instant dropdown matching active cases and knowledge base defects.
+ * - Command palette shortcut trigger button (Ctrl+K).
+ * - Real-time notification center with unread badge counter, filtering, and dismiss actions.
+ * - User profile pill with role badge (e.g. ADMIN, ENGINEER, TECHNICIAN) and logout menu.
+ */
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -28,8 +40,13 @@ import { analyticsApi } from "@/lib/api/analytics";
 import { DurableCaseResponse } from "@/types/api";
 import { notificationService, AppNotification } from "@/lib/notifications";
 
+/**
+ * Props for the Header component.
+ */
 interface HeaderProps {
+    /** Mobile drawer open callback */
     onOpenMobileMenu?: () => void;
+    /** Command palette spotlight open callback */
     onOpenCommandPalette?: () => void;
 }
 

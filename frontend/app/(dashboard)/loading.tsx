@@ -1,3 +1,10 @@
+/**
+ * Dashboard Route Suspense Loading Fallback
+ *
+ * Renders pulse-animated skeleton placeholders for header, KPI cards,
+ * and data visualization containers during server-side data fetching or navigation.
+ */
+
 import React from "react";
 
 export default function DashboardLoading() {

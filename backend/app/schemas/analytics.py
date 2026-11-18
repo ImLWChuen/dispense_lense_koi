@@ -1,8 +1,16 @@
+"""Analytics & KPI Pydantic Schemas.
+
+Defines serialized data transfer objects for operational dashboard analytics,
+longitudinal trend charts, defect distributions, and MTTR performance metrics.
+"""
+
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
+
 class KpiMetrics(BaseModel):
+    """Core key performance indicators for active shopfloor dispensing."""
     active_diagnoses: int
     open_defects: int
     resolved_cases: int

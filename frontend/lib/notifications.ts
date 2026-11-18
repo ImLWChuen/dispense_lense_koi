@@ -1,3 +1,15 @@
+/**
+ * In-App Notification Service
+ *
+ * Manages operator/engineer notification events:
+ * - Alerts on case creation, root cause confirmation, quality verification, and system status.
+ * - Stores read/unread state in localStorage.
+ * - Dispatches custom window events (`dispenselens_notification_update`) for multi-component reactivity.
+ */
+
+/**
+ * Structure of an in-app notification event.
+ */
 export interface AppNotification {
     id: string;
     type: "CASE_CREATED" | "CAUSE_CONFIRMED" | "CASE_COMPLETED" | "SYSTEM";

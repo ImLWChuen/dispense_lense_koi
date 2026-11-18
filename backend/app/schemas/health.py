@@ -1,3 +1,5 @@
+"""Health Check Pydantic Schema."""
+
 from pydantic import BaseModel
 
 

@@ -5,17 +5,33 @@ import { CaseObservationResponse } from "@/types/api";
 import { projectSavedRegionEvidence } from "@/lib/saved-region-evidence";
 import SavedRegionEvidence from "./SavedRegionEvidence";
 
+/**
+ * Props for ImageAnalysis component.
+ */
 interface ImageAnalysisProps {
+    /** Case observation records containing computer-vision-derived inspection data */
     observations?: CaseObservationResponse[];
 }
 
+/**
+ * ImageAnalysis
+ * 
+ * Renders persisted computer vision inspection results. Filters observations down
+ * to source === 'IMAGE', projecting each quantitative metric (diameter, circularity,
+ * void ratio, area) into a structured SavedRegionEvidence card.
+ */
 export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps) {
+    // Filter to retain only observations originating from vision/image analysis
     const imageObservations = observations.filter((obs) => obs.source === "IMAGE");
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            {/* Header: Title and subtitle */}
             <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]">
+                <div 
+                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eeebff] text-[#6d5dfc]"
+                    aria-hidden="true"
+                >
                     <Scan size={20} />
                 </div>
 
@@ -30,6 +46,7 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
                 </div>
             </div>
 
+            {/* Content: Empty state or mapped visual observation cards */}
             {imageObservations.length === 0 ? (
                 <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-6 text-center">
                     <p className="text-xs text-gray-500 italic">
@@ -45,6 +62,7 @@ export default function ImageAnalysis({ observations = [] }: ImageAnalysisProps)
                 </div>
             )}
 
+            {/* Architecture note regarding durable storage boundaries */}
             <p className="mt-4 text-[10px] text-gray-400">
                 Raw image files and polygon outlines are not retained in durable storage. Visual evidence is preserved as quantitative scalar defect measurements, target ROI identifiers, and threshold limit snapshots.
             </p>

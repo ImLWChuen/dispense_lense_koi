@@ -1,12 +1,31 @@
+/**
+ * SpcLineMatrix Component
+ *
+ * Renders a comparative multi-line benchmarking matrix across production lines.
+ * Displays:
+ * - Line identifier and dispense technology (Jet, Auger, Time-Pressure).
+ * - Sample count, process mean (X̄), and standard deviation (σ).
+ * - Capability metrics (Cp, Cpk) with classification thresholds (World Class >= 1.67, Capable >= 1.33).
+ * - Active Nelson rule control alarm tallies.
+ * - Interactive row selection to filter specific lines.
+ */
+
 "use client";
 
 import { SpcLineComparison } from "@/lib/api/spc";
 import { Award, ShieldCheck, AlertTriangle, Cpu } from "lucide-react";
 
+/**
+ * Props for the SpcLineMatrix component.
+ */
 interface SpcLineMatrixProps {
+    /** Array of production line SPC benchmark records */
     comparisons: SpcLineComparison[];
+    /** Dimensional unit string (e.g. "mm", "mg") */
     unit: string;
+    /** Callback invoked when a user clicks a line row */
     onSelectLine?: (lineId: string) => void;
+    /** Currently selected production line identifier */
     selectedLineId?: string;
 }
 

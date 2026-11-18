@@ -1,3 +1,14 @@
+/**
+ * Executive Dashboard Page
+ *
+ * Operational mission control for dispensing operations:
+ * - Real-time KPI metrics (Active Diagnoses, Open Defects, Resolved Cases, MTTR).
+ * - Multi-line operational status ribbon (Line A - D).
+ * - Continuous AI diagnostic pattern insights and learning highlights.
+ * - Defect and confirmed root cause distribution charts.
+ * - Recent incidents table with direct session links.
+ */
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
